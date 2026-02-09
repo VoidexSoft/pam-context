@@ -15,12 +15,12 @@ This document details every technology choice, the rationale behind it, and alte
 | Parsing | Document parser | **Docling** (IBM / LF AI) | MIT |
 | Parsing | Chunking | Docling HybridChunker | MIT |
 | Parsing | Entity extraction | **LangExtract** (Google) — Phase 2 | Apache 2.0 |
-| Parsing | Embeddings | OpenAI `text-embedding-3-large` (3072 dims) | Proprietary API |
+| Parsing | Embeddings | OpenAI `text-embedding-3-large` (1536 dims via Matryoshka) | Proprietary API |
 | Storage | Vector + BM25 | **Elasticsearch** 8.x | SSPL / Elastic License |
 | Storage | Catalog & metadata | **PostgreSQL** 16 | PostgreSQL License |
 | Storage | Knowledge graph | **Neo4j** 5.x Community + **Graphiti** | GPL (Community) / MIT |
-| Storage | Cache | **Redis** 7.x | RSALv2 |
-| Orchestration | Agent framework | **LangGraph** (LangChain) | MIT |
+| Storage | Cache | **Redis** 7.x (Phase 2+; in-memory caching for Phase 1) | RSALv2 |
+| Orchestration | Agent framework | **Claude Agent SDK** or **LangGraph** (evaluate in Phase 1) | MIT |
 | Orchestration | Reranking | Cohere Rerank API or `cross-encoder/ms-marco-MiniLM-L-12-v2` | Proprietary / Apache 2.0 |
 | LLM | Primary model | **Claude** (Sonnet 4.5 / Opus 4.6) | Proprietary API |
 | Backend | API server | **FastAPI** (Python) | MIT |
@@ -61,7 +61,7 @@ This document details every technology choice, the rationale behind it, and alte
 | pgvector + pg_textsearch | Single Postgres, simplest ops | Limited vector perf at scale |
 | Pinecone + Elasticsearch | Best managed vector + best BM25 | Two vendors, higher cost |
 
-**Decision**: Elasticsearch provides vector + BM25 + filtering in one system. If RAGFlow is used alongside, it already expects Elasticsearch. Avoids multi-system fusion complexity.
+**Decision**: Elasticsearch provides vector + BM25 + filtering in one system. Avoids multi-system fusion complexity. For teams wanting even simpler Phase 1 ops, pgvector + pg_trgm is a viable stepping stone (migrate to ES when scaling demands it).
 
 ### Neo4j + Graphiti (Knowledge Graph)
 
@@ -76,18 +76,18 @@ This document details every technology choice, the rationale behind it, and alte
 
 **Decision**: Neo4j is the most production-proven graph DB. Graphiti adds the temporal layer needed for tracking metric/definition evolution over time. Can be deferred to Phase 2.
 
-### LangGraph (Agent Orchestration)
+### Agent Orchestration
 
-**Why LangGraph over alternatives:**
+**Evaluate before committing:**
 
 | Option | Pros | Cons |
 |---|---|---|
-| **LangGraph (chosen)** | State management, multi-step reasoning, human-in-the-loop, tool use | Learning curve, LangChain dependency |
-| Claude Agent SDK | Native Claude integration, simpler | Less mature, fewer patterns |
-| CrewAI | Multi-agent out of the box | Overkill for single-agent retrieval |
-| Custom agent loop | Full control | Reinventing the wheel |
+| **Claude Agent SDK (recommended for Phase 1)** | Native Claude integration, simpler, less code, mature as of 2026 | Tied to Claude, fewer patterns for complex state machines |
+| LangGraph | State management, multi-step reasoning, human-in-the-loop, LLM-agnostic | Steepest learning curve, LangChain dependency, over-engineered for single-agent |
+| Simple tool-use loop | Full control, minimal dependencies, fastest to build | Manual state management, harder to extend |
+| CrewAI | Multi-agent out of the box, intuitive role-based model | Overkill for single-agent retrieval |
 
-**Decision**: LangGraph provides the state machine and tool-use patterns needed for complex retrieval workflows (multi-hop reasoning, permission checks, citation assembly).
+**Decision**: For Phase 1's single-agent retrieval pattern (receive query → call tools → synthesize), **Claude Agent SDK or a simple tool-use loop** is likely sufficient and significantly simpler. The Claude Agent SDK has matured considerably through 2025-2026, with production adoption at scale. Reserve LangGraph for Phase 2+ if multi-agent workflows or complex state transitions become necessary.
 
 ### Claude (LLM)
 
@@ -109,19 +109,24 @@ This document details every technology choice, the rationale behind it, and alte
 
 ### Embedding Model
 
-**Primary: OpenAI `text-embedding-3-large`**
-- 3072 dimensions
-- Best-in-class retrieval benchmarks
-- Matryoshka support (can truncate to 1536 or 256 dims for cost savings)
+**Primary: OpenAI `text-embedding-3-large` @ 1536 dims**
+- Use Matryoshka truncation to 1536 dims (halves storage/compute, negligible quality loss)
+- Full 3072 dims available if quality testing shows meaningful improvement
+- MTEB score: 64.6
 
-**Alternative: Cohere `embed-v4`**
+**Strong alternative: Cohere `embed-v4`**
+- MTEB score: 65.2 (slightly outperforms OpenAI as of 2026 benchmarks)
+- Designed to work in tandem with Cohere Rerank (which is already in the stack)
 - Strong multilingual support
 - Native int8/binary quantization
 
-**Self-hosted alternative: `nomic-embed-text-v1.5`**
+**Self-hosted alternative: `nomic-embed-text-v1.5` or `jina-embeddings-v4`**
 - Runs locally via Ollama
-- 768 dimensions, good quality
+- 768 dimensions (nomic) or configurable (jina)
 - Zero API cost
+- Jina v4 supports multimodal (text + images)
+
+> **Important**: Build an abstracted embedding interface from Phase 1 so the model can be swapped without code changes. Run A/B comparisons on the evaluation set before committing.
 
 ---
 
@@ -130,7 +135,14 @@ This document details every technology choice, the rationale behind it, and alte
 ### Development
 
 ```
-Docker Compose:
+Phase 1 (Docker Compose):
+  - Elasticsearch: 4GB RAM
+  - PostgreSQL: 1GB RAM
+  - pam-api: 2GB RAM (Docling models loaded)
+  - pam-web: 512MB RAM
+  Total: ~7.5GB RAM minimum
+
+Full Stack (Phase 3+):
   - Elasticsearch: 4GB RAM
   - PostgreSQL: 1GB RAM
   - Neo4j: 2GB RAM
@@ -155,11 +167,13 @@ Docker Compose:
 
 | Service | Estimated Cost |
 |---|---|
-| OpenAI embeddings (initial ingestion) | ~$50 |
+| OpenAI embeddings (initial ingestion, 1536 dims) | ~$30 |
 | OpenAI embeddings (incremental) | ~$5/mo |
-| Claude API (queries) | ~$200-500/mo |
-| Cohere Rerank (optional) | ~$50/mo |
-| **Total API costs** | **~$300-600/mo** |
+| Claude API (queries — includes multi-tool calls per query) | ~$500-1,500/mo |
+| Cohere Rerank (Phase 2+) | ~$50/mo |
+| **Total API costs** | **~$600-1,600/mo** |
+
+> **Note**: Claude costs are higher than naive estimates because each query typically involves 2-4 tool calls (search, graph lookup, SQL, synthesis), each consuming input/output tokens. Use **Sonnet 4.5 for simple lookups** and **Opus for complex multi-hop reasoning** to optimize costs. Monitor token usage per query from Phase 1.
 
 ---
 

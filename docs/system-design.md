@@ -191,7 +191,7 @@ Index mapping:
   "mappings": {
     "properties": {
       "content": { "type": "text", "analyzer": "standard" },
-      "embedding": { "type": "dense_vector", "dims": 3072, "similarity": "cosine" },
+      "embedding": { "type": "dense_vector", "dims": 1536, "similarity": "cosine" },
       "source_type": { "type": "keyword" },
       "project": { "type": "keyword" },
       "owner": { "type": "keyword" },
@@ -205,9 +205,11 @@ Index mapping:
 
 **Why Elasticsearch over separate vector DB + BM25:**
 - Native hybrid search (no external fusion needed)
-- RAGFlow uses Elasticsearch as its default backend
 - Mature, battle-tested at scale
 - One system to operate instead of two
+- Strong metadata filtering capabilities alongside vector search
+
+> **Note**: For teams wanting an even simpler Phase 1, pgvector + pg_trgm in PostgreSQL is a viable alternative that eliminates a service. Elasticsearch becomes clearly beneficial at scale (>5-10M vectors) or when advanced BM25 tuning is needed.
 
 #### B. PostgreSQL — Metadata & Catalog Store
 
@@ -254,17 +256,21 @@ Edge types:
   - "When did the data source for this metric change?"
   - "What relationships changed this week?"
 
-#### D. Redis — Cache Layer
+#### D. Redis — Cache Layer (Phase 2+)
 
 - Cache frequently accessed segments and retrieval results
 - Session state for multi-turn conversations
 - TTL-based invalidation aligned with sync intervals
 
+> **Phase 1**: Use in-memory caching (e.g. `cachetools` or `lru_cache`) to keep infrastructure minimal. Introduce Redis when multi-instance scaling or persistent session state is required.
+
 ---
 
 ### 3.4 Layer 4: Retrieval & Reasoning
 
-The **brain-facing interface** — a LangGraph agent that orchestrates multi-step retrieval and reasoning.
+The **brain-facing interface** — an agent that orchestrates multi-step retrieval and reasoning.
+
+> **Framework choice**: LangGraph provides the most control for complex state machines and multi-agent workflows. However, for a single-agent retrieval system, the **Claude Agent SDK** (or a simple tool-use loop) may be sufficient and significantly simpler. Evaluate complexity needs before committing — start simple, upgrade if needed.
 
 #### Agent Architecture
 
@@ -376,7 +382,7 @@ Top-K segments with citations
        ↓
 5. HybridChunker produces knowledge segments
        ↓
-6. Segments embedded (text-embedding-3-large)
+6. Segments embedded (text-embedding-3-large @ 1536 dims via Matryoshka truncation)
        ↓
 7. Parallel writes:
    ├── Elasticsearch: segments + embeddings + BM25 index
@@ -408,15 +414,19 @@ Top-K segments with citations
 │  Docker Compose (Development / Staging)           │
 │  Kubernetes (Production)                          │
 │                                                   │
-│  Services:                                        │
-│  ├── pam-api        (FastAPI, LangGraph agent)    │
+│  Phase 1 Services:                                │
+│  ├── pam-api        (FastAPI, agent)              │
 │  ├── pam-web        (React frontend)              │
 │  ├── pam-ingestion  (Sync workers, Docling)       │
-│  ├── pam-scheduler  (Cron jobs, webhook listener) │
 │  ├── elasticsearch  (Vector + BM25 store)         │
-│  ├── postgresql     (Catalog + metadata)          │
-│  ├── neo4j          (Knowledge graph)             │
+│  └── postgresql     (Catalog + metadata)          │
+│                                                   │
+│  Added in Phase 2+:                               │
+│  ├── pam-scheduler  (Cron jobs, webhook listener) │
 │  └── redis          (Cache + session store)       │
+│                                                   │
+│  Added in Phase 3+:                               │
+│  └── neo4j          (Knowledge graph)             │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -429,3 +439,36 @@ Top-K segments with citations
 - **API authentication**: JWT tokens via OAuth2 (Google Workspace SSO)
 - **Data at rest**: Elasticsearch encryption, PostgreSQL encryption
 - **Audit logging**: All queries and access logged in PostgreSQL
+
+---
+
+## 7. Evaluation & Observability
+
+Quality measurement and system observability should be present **from Phase 1**, not deferred.
+
+### Retrieval Quality (Phase 1+)
+
+- Maintain a curated set of **20-30 question/answer pairs** from real business documents
+- Automated retrieval recall/precision measurement on each deploy
+- Track metrics: retrieval recall@k, answer faithfulness, citation accuracy
+- Use LLM-as-judge for answer quality scoring on the evaluation set
+
+### Observability (Phase 1+)
+
+- **Structured logging** (structlog → JSON) from day 1
+- **Request tracing**: log every agent step (tool calls, retrieval results, LLM calls) with correlation IDs
+- **Basic metrics**: query latency (p50/p95/p99), ingestion throughput, error rates
+- **Cost tracking**: log token usage per query to monitor LLM spend
+
+### Advanced Observability (Phase 4)
+
+- Prometheus + Grafana dashboards
+- OpenTelemetry distributed tracing
+- Alerting on stale documents, failed ingestions, latency spikes
+
+### Chunking Strategy
+
+Chunk size is a critical retrieval hyperparameter. The system should support **configurable chunk sizes** from the start:
+- Default: 512 tokens (good balance of specificity and context)
+- Plan to A/B test 256 vs 512 vs 1024 tokens using the evaluation framework
+- Measure retrieval recall at each size to find the optimal setting for the specific document corpus

@@ -5,7 +5,7 @@
 The system is built in **4 phases**, each delivering usable functionality. Each phase builds on the previous one, and the system is usable after Phase 1.
 
 ```
-Phase 1: Foundation (MVP)           — 3-4 weeks
+Phase 1: Foundation (MVP)           — 4-5 weeks
 Phase 2: Full Knowledge Layer       — 3-4 weeks
 Phase 3: Knowledge Graph & History  — 2-3 weeks
 Phase 4: Production Hardening       — 2-3 weeks
@@ -20,7 +20,7 @@ Phase 4: Production Hardening       — 2-3 weeks
 ### 1.1 Project Setup
 
 - [ ] Initialize Python monorepo structure
-- [ ] Set up Docker Compose with Elasticsearch, PostgreSQL, Redis
+- [ ] Set up Docker Compose with Elasticsearch, PostgreSQL (Redis deferred to Phase 2)
 - [ ] Configure environment variables and secrets management
 - [ ] Set up CI/CD pipeline (GitHub Actions)
 
@@ -126,12 +126,14 @@ CREATE TABLE sync_log (
 - [ ] Install and configure Docling with models
 - [ ] Parse DOCX/PDF → DoclingDocument
 - [ ] Extract hierarchical sections, tables, code blocks
-- [ ] HybridChunker configuration (512 token target, structural awareness)
+- [ ] HybridChunker configuration (**configurable** token target, default 512, structural awareness)
+- [ ] Chunk size as environment variable for A/B testing (256 / 512 / 1024)
 - [ ] Map Docling output to KnowledgeSegment model
 
 ### 1.5 Embedding Pipeline
 
-- [ ] OpenAI embedding client setup
+- [ ] Abstracted embedding interface (swap models without code changes)
+- [ ] OpenAI embedding client setup (text-embedding-3-large @ **1536 dims** via Matryoshka truncation)
 - [ ] Batch embedding with rate limiting and retries
 - [ ] Embedding cache (avoid re-embedding unchanged segments)
 
@@ -142,11 +144,14 @@ CREATE TABLE sync_log (
 - [ ] Basic hybrid search (vector + BM25 + RRF)
 - [ ] Filter by project, source_type, date
 
-### 1.7 LangGraph Agent (Basic)
+### 1.7 Retrieval Agent (Basic)
 
+> **Framework decision**: Evaluate Claude Agent SDK (simpler, native Claude integration) vs LangGraph (more control, steeper learning curve) before implementation. For Phase 1's single-agent retrieval, a simple tool-use loop or Claude Agent SDK is likely sufficient.
+
+- [ ] Evaluate agent framework (Claude Agent SDK vs LangGraph vs simple tool loop)
 - [ ] Agent with single tool: `search_knowledge`
 - [ ] Hybrid retrieval → top-K segments
-- [ ] Response generation with Claude
+- [ ] Response generation with Claude (Sonnet 4.5 for simple lookups, Opus for complex reasoning)
 - [ ] Citation formatting (link back to source document + section)
 
 ### 1.8 FastAPI Backend (Basic)
@@ -164,14 +169,31 @@ CREATE TABLE sync_log (
 - [ ] Document list view
 - [ ] Manual ingestion trigger
 
+### 1.10 Evaluation Framework (Minimal)
+
+- [ ] Curate 20-30 question/answer pairs from real business documents
+- [ ] Automated retrieval recall@k measurement script
+- [ ] LLM-as-judge scoring for answer quality (run on evaluation set)
+- [ ] CI integration: run evaluation on each deploy, fail on regression
+
+### 1.11 Basic Observability
+
+- [ ] Structured logging with structlog (JSON output)
+- [ ] Request correlation IDs across agent steps
+- [ ] Log every tool call, retrieval result count, and LLM token usage
+- [ ] Query latency tracking (p50/p95/p99)
+- [ ] LLM cost tracking: log token usage per query for spend monitoring
+
 ### Phase 1 Deliverable
 
 A working system that:
 - Ingests Google Docs and Markdown files
-- Parses them with Docling into structured chunks
+- Parses them with Docling into structured chunks (configurable chunk size)
 - Stores in Elasticsearch (vector + BM25) and PostgreSQL (metadata)
 - Answers questions with hybrid retrieval and citations
 - Basic web UI for interaction
+- Retrieval quality measured against curated evaluation set
+- Structured logging and cost tracking from day 1
 
 ---
 
@@ -181,21 +203,34 @@ A working system that:
 
 ### 2.1 Google Sheets Connector & Parser
 
+> **High-risk component**: The region detection (table vs. notes vs. config) is the most novel and risky custom component. Run a **dedicated spike/prototype** on 5-10 real sheets before committing to the full implementation.
+
+- [ ] **Spike**: Prototype region detection on real business sheets (1-2 days)
+- [ ] Define explicit failure modes: what happens when detection is ambiguous?
 - [ ] Google Sheets API: read sheet data with formatting
 - [ ] Region detection: table vs. notes vs. config sections
+- [ ] Consider LLM-assisted schema inference (have Claude analyze sheet structure)
 - [ ] Schema inference per table region
 - [ ] Cell notes and named ranges extraction
 - [ ] Multi-tab support
 - [ ] Convert to KnowledgeSegment with table-specific metadata
 
-### 2.2 Reranking Pipeline
+### 2.2 Redis Cache Layer
+
+- [ ] Add Redis to Docker Compose
+- [ ] Cache frequently accessed segments and retrieval results
+- [ ] Session state for multi-turn conversations
+- [ ] TTL-based invalidation aligned with sync intervals
+- [ ] Replace in-memory caching from Phase 1
+
+### 2.3 Reranking Pipeline
 
 - [ ] Integrate Cohere Rerank API (or self-hosted cross-encoder)
 - [ ] Add reranking step after RRF fusion
 - [ ] A/B test retrieval quality with and without reranking
 - [ ] Configurable reranking model per project
 
-### 2.3 Permission System
+### 2.4 Permission System
 
 - [ ] RBAC model: roles (viewer, editor, admin) per project
 - [ ] JWT authentication with Google OAuth2 SSO
@@ -203,7 +238,7 @@ A working system that:
 - [ ] API middleware for auth enforcement
 - [ ] Admin endpoints for user/project management
 
-### 2.4 Enhanced Agent Tools
+### 2.5 Enhanced Agent Tools
 
 - [ ] `query_database` tool — text-to-SQL for analytics databases
   - [ ] BigQuery connector
@@ -213,7 +248,7 @@ A working system that:
 - [ ] `get_document_context` tool — fetch full document for deep reading
 - [ ] `get_change_history` tool — query sync_log for recent changes
 
-### 2.5 LangExtract Integration (Entity Extraction)
+### 2.6 LangExtract Integration (Entity Extraction)
 
 - [ ] Define extraction schemas for business entities:
   - Metric definitions (name, formula, owner, data source)
@@ -223,7 +258,7 @@ A working system that:
 - [ ] Store extracted entities in PostgreSQL
 - [ ] Source grounding: link every entity to its origin segment
 
-### 2.6 Frontend Enhancements
+### 2.7 Frontend Enhancements
 
 - [ ] Source viewer (click citation → see original context)
 - [ ] Admin dashboard (ingestion status, document freshness)
@@ -233,6 +268,7 @@ A working system that:
 ### Phase 2 Deliverable
 
 - Google Sheets fully supported as a data source
+- Redis cache layer for retrieval results and session state
 - Reranked hybrid retrieval with measurable quality improvement
 - Permission-scoped access per project
 - SQL queries against analytics databases
@@ -304,13 +340,14 @@ A working system that:
 - [ ] Database backups (PostgreSQL, Neo4j)
 - [ ] Secret management (Vault or cloud KMS)
 
-### 4.2 Observability
+### 4.2 Advanced Observability
 
-- [ ] Structured logging (structlog → JSON)
+> Basic structured logging, cost tracking, and latency metrics are established in Phase 1. This phase adds production-grade monitoring infrastructure.
+
 - [ ] Metrics (Prometheus): ingestion throughput, retrieval latency, cache hit rate
-- [ ] Tracing (OpenTelemetry): end-to-end request tracing through agent steps
+- [ ] Tracing (OpenTelemetry): end-to-end distributed tracing through agent steps
 - [ ] Dashboards (Grafana): system health, freshness, quality metrics
-- [ ] Alerting: stale documents, failed ingestions, high error rate
+- [ ] Alerting: stale documents, failed ingestions, high error rate, cost anomalies
 
 ### 4.3 Reliability
 
@@ -365,8 +402,10 @@ A working system that:
 | Elasticsearch resource consumption | Medium | Start with single node; monitor and scale horizontally |
 | Google API rate limits | Low | Batch operations, exponential backoff, caching |
 | Neo4j complexity for small team | Medium | Defer to Phase 3; system works without it |
-| LLM cost at scale | Medium | Cache frequent queries; use Sonnet 4.5 for simple queries, Opus for complex |
-| Embedding model vendor lock-in | Low | Abstracted embedding interface; can swap models |
+| LLM cost at scale | **High** | Cache frequent queries; use Sonnet 4.5 for simple queries, Opus for complex; **monitor token usage per query from Phase 1** — expect $500-1500/mo at 1K queries/day with tool use |
+| Embedding model vendor lock-in | Low | Abstracted embedding interface from Phase 1; can swap models |
+| Google Sheets region detection | **Medium-High** | Dedicated spike/prototype before full implementation; define failure modes; consider LLM-assisted parsing |
+| Chunk size suboptimal for corpus | Medium | Configurable chunk size; A/B test with evaluation framework |
 
 ---
 
@@ -383,8 +422,8 @@ pip install docling langchain langgraph elasticsearch psycopg[binary] \
     redis fastapi uvicorn anthropic openai google-api-python-client \
     google-auth-oauthlib python-dotenv structlog pydantic alembic
 
-# Start infrastructure
-docker compose up -d elasticsearch postgresql redis
+# Start infrastructure (Phase 1: no Redis needed)
+docker compose up -d elasticsearch postgresql
 
 # Run initial migration
 alembic upgrade head
