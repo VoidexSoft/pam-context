@@ -1,0 +1,62 @@
+[
+  {
+    "id": "q001",
+    "question": "How is DAU defined?",
+    "expected_answer": "DAU (Daily Active Users) is defined as the count of unique users who performed at least one qualifying action (page view, feature interaction, or API call) within a single calendar day (UTC). Bot traffic and internal employee accounts are excluded from the count.",
+    "difficulty": "simple"
+  },
+  {
+    "id": "q002",
+    "question": "What is the conversion rate formula?",
+    "expected_answer": "Conversion rate is calculated as the number of users who completed the checkout_success event divided by the number of users who viewed the pricing page, expressed as a percentage. Formula: (checkout_success_users / pricing_page_viewers) * 100. The calculation uses a 30-day attribution window.",
+    "difficulty": "simple"
+  },
+  {
+    "id": "q003",
+    "question": "Who owns the tracking plan?",
+    "expected_answer": "The tracking plan is owned by the Product Analytics team, with Sarah Chen (Senior Product Analyst) as the primary owner. Engineering changes to tracked events require approval from the tracking plan owner via the event-change-request process in Jira. The Growth Engineering team is responsible for implementation.",
+    "difficulty": "simple"
+  },
+  {
+    "id": "q004",
+    "question": "What data source feeds the retention dashboard?",
+    "expected_answer": "The retention dashboard is sourced from the analytics.user_activity_daily table in BigQuery, which is populated by the daily_user_rollup Airflow DAG. Raw event data flows from Segment into the events.raw_events table, which is then aggregated into analytics.user_activity_daily. The dashboard reads from a materialized view analytics.retention_cohorts_mv that is refreshed every 6 hours.",
+    "difficulty": "medium"
+  },
+  {
+    "id": "q005",
+    "question": "What is the SLA for the ingestion pipeline?",
+    "expected_answer": "The ingestion pipeline has a 99.5% uptime SLA measured monthly. Document processing latency must be under 30 seconds for documents under 50 pages. Google Drive webhook events must be processed within 5 minutes of receipt. Failed ingestions are retried 3 times with exponential backoff before alerting the on-call engineer via PagerDuty.",
+    "difficulty": "medium"
+  },
+  {
+    "id": "q006",
+    "question": "How do we handle event schema migrations in the tracking plan?",
+    "expected_answer": "Event schema migrations follow a three-phase process: (1) Deprecation notice is added to the tracking plan with a sunset date at least 2 sprints out, (2) New event is instrumented alongside the old event for a parallel-tracking period of 2 weeks minimum, (3) Old event is removed after confirming all downstream dashboards and queries have been migrated. A migration checklist template exists in Confluence under Analytics > Tracking Plan > Migration Playbook.",
+    "difficulty": "complex"
+  },
+  {
+    "id": "q007",
+    "question": "What is MRR and how is it calculated?",
+    "expected_answer": "MRR (Monthly Recurring Revenue) is the sum of all active subscription amounts normalized to a monthly value. Annual subscriptions are divided by 12. Trial accounts are excluded until conversion. Calculation: SUM(plan_price_monthly) for all users WHERE subscription_status = 'active' AND is_trial = false. The source table is billing.subscriptions in PostgreSQL, and the metric is computed by the finance_metrics Airflow DAG daily.",
+    "difficulty": "medium"
+  },
+  {
+    "id": "q008",
+    "question": "What should I do if the Elasticsearch cluster goes red?",
+    "expected_answer": "If the Elasticsearch cluster status is red: (1) Check cluster health via GET _cluster/health to identify unassigned shards, (2) Run GET _cat/shards?v&h=index,shard,prirep,state,unassigned.reason to find the cause, (3) If disk space is the issue, free space by deleting old indices or expanding storage, (4) If a node is down, check node logs and restart the service, (5) If shards are stuck, try POST _cluster/reroute?retry_failed=true. Escalate to the Platform Engineering on-call if not resolved within 15 minutes. Runbook link: internal wiki > Engineering > Runbooks > Elasticsearch Recovery.",
+    "difficulty": "complex"
+  },
+  {
+    "id": "q009",
+    "question": "What events are tracked on the signup flow?",
+    "expected_answer": "The signup flow tracks the following events in order: signup_page_viewed (when user lands on /signup), signup_form_started (first form field interaction), signup_email_entered (email field completed), signup_password_entered (password field completed), signup_submitted (form submission), signup_email_verified (email verification link clicked), signup_completed (account fully created). Each event includes properties: user_anonymous_id, utm_source, utm_medium, utm_campaign, device_type, and browser.",
+    "difficulty": "medium"
+  },
+  {
+    "id": "q010",
+    "question": "Why might the conversion rate drop after a tracking plan change and how would you investigate?",
+    "expected_answer": "A conversion rate drop after a tracking plan change is often caused by event renaming, modified event properties, or changed trigger conditions that break the funnel definition. Investigation steps: (1) Check the tracking plan changelog for recent modifications to purchase/checkout events, (2) Compare raw event volumes before and after the change using the events.raw_events table, (3) Verify that the conversion rate query references the correct event names, (4) Check if the attribution window was changed, (5) Look for implementation bugs by comparing the event schema against the tracking plan spec. Use the analytics.event_volume_daily table to spot sudden volume drops which indicate broken instrumentation rather than real user behavior changes.",
+    "difficulty": "complex"
+  }
+]

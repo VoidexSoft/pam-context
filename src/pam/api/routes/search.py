@@ -1,0 +1,22 @@
+"""Search endpoint — direct knowledge search without agent."""
+
+from fastapi import APIRouter, Depends
+
+from pam.api.deps import get_embedder, get_search_service
+from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
+from pam.retrieval.hybrid_search import HybridSearchService
+from pam.retrieval.types import SearchQuery, SearchResult
+
+router = APIRouter()
+
+
+@router.post("/search", response_model=list[SearchResult])
+async def search_knowledge(
+    query: SearchQuery,
+    search_service: HybridSearchService = Depends(get_search_service),
+    embedder: OpenAIEmbedder = Depends(get_embedder),
+):
+    """Search the knowledge base directly (no agent reasoning)."""
+    query_embeddings = await embedder.embed_texts([query.query])
+    results = await search_service.search_from_query(query, query_embeddings[0])
+    return results

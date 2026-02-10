@@ -1,0 +1,214 @@
+"""Retrieval agent using a simple tool-use loop with the Anthropic SDK."""
+
+import json
+import time
+from dataclasses import dataclass, field
+
+import structlog
+from anthropic import AsyncAnthropic
+
+from pam.agent.tools import ALL_TOOLS
+from pam.common.config import settings
+from pam.common.logging import CostTracker
+from pam.ingestion.embedders.base import BaseEmbedder
+from pam.retrieval.hybrid_search import HybridSearchService
+from pam.retrieval.types import SearchResult
+
+logger = structlog.get_logger()
+
+SYSTEM_PROMPT = """You are a business knowledge assistant. You answer questions using ONLY information \
+retrieved from the business knowledge base via the search_knowledge tool.
+
+Rules:
+1. ALWAYS use the search_knowledge tool to find information before answering.
+2. Every factual claim MUST cite its source using this format: [Source: document_title > section](source_url)
+3. If the source_url is not available, use: [Source: document_title > section]
+4. If you cannot find relevant information, say so clearly — never make up facts.
+5. For complex questions, you may search multiple times with different queries.
+6. Synthesize information from multiple sources when relevant.
+7. Be concise and direct in your answers."""
+
+MAX_TOOL_ITERATIONS = 5
+
+
+@dataclass
+class Citation:
+    document_title: str | None
+    section_path: str | None
+    source_url: str | None
+    segment_id: str | None
+
+
+@dataclass
+class AgentResponse:
+    answer: str
+    citations: list[Citation] = field(default_factory=list)
+    token_usage: dict = field(default_factory=dict)
+    latency_ms: float = 0.0
+    tool_calls: int = 0
+
+
+class RetrievalAgent:
+    def __init__(
+        self,
+        search_service: HybridSearchService,
+        embedder: BaseEmbedder,
+        api_key: str | None = None,
+        model: str | None = None,
+        cost_tracker: CostTracker | None = None,
+    ) -> None:
+        self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
+        self.model = model or settings.agent_model
+        self.search = search_service
+        self.embedder = embedder
+        self.cost_tracker = cost_tracker or CostTracker()
+
+    async def answer(self, question: str, conversation_history: list | None = None) -> AgentResponse:
+        """Answer a question using the knowledge base.
+
+        Runs a tool-use loop: sends the question to Claude, executes any tool calls,
+        appends results, and repeats until Claude provides a final answer.
+        """
+        start = time.perf_counter()
+        messages = list(conversation_history or [])
+        messages.append({"role": "user", "content": question})
+
+        all_citations: list[Citation] = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+        tool_call_count = 0
+
+        for _ in range(MAX_TOOL_ITERATIONS):
+            call_start = time.perf_counter()
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                messages=messages,
+                tools=ALL_TOOLS,
+            )
+            call_latency = (time.perf_counter() - call_start) * 1000
+
+            # Track token usage
+            total_input_tokens += response.usage.input_tokens
+            total_output_tokens += response.usage.output_tokens
+            self.cost_tracker.log_llm_call(
+                self.model, response.usage.input_tokens, response.usage.output_tokens, call_latency
+            )
+
+            # Check if done (no more tool use)
+            if response.stop_reason == "end_turn":
+                answer_text = self._extract_text(response.content)
+                total_latency = (time.perf_counter() - start) * 1000
+
+                return AgentResponse(
+                    answer=answer_text,
+                    citations=all_citations,
+                    token_usage={
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "total_tokens": total_input_tokens + total_output_tokens,
+                    },
+                    latency_ms=round(total_latency, 1),
+                    tool_calls=tool_call_count,
+                )
+
+            # Process tool calls
+            if response.stop_reason == "tool_use":
+                # Append assistant message with full content (text + tool_use blocks)
+                messages.append({"role": "assistant", "content": response.content})
+
+                # Execute each tool call
+                tool_results = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        tool_call_count += 1
+                        result, citations = await self._execute_tool(block.name, block.input)
+                        all_citations.extend(citations)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": result,
+                            }
+                        )
+                        logger.info(
+                            "agent_tool_call",
+                            tool=block.name,
+                            input=block.input,
+                            result_length=len(result),
+                        )
+
+                messages.append({"role": "user", "content": tool_results})
+
+        # If we hit max iterations, return what we have
+        total_latency = (time.perf_counter() - start) * 1000
+        return AgentResponse(
+            answer="I was unable to fully answer your question within the allowed number of search steps. "
+            "Please try rephrasing or asking a more specific question.",
+            citations=all_citations,
+            token_usage={
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "total_tokens": total_input_tokens + total_output_tokens,
+            },
+            latency_ms=round(total_latency, 1),
+            tool_calls=tool_call_count,
+        )
+
+    async def _execute_tool(self, tool_name: str, tool_input: dict) -> tuple[str, list[Citation]]:
+        """Execute a tool call and return (result_text, citations)."""
+        if tool_name == "search_knowledge":
+            return await self._search_knowledge(tool_input)
+        return f"Unknown tool: {tool_name}", []
+
+    async def _search_knowledge(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Execute the search_knowledge tool."""
+        query = input_["query"]
+        source_type = input_.get("source_type")
+
+        # Embed the query
+        query_embeddings = await self.embedder.embed_texts([query])
+        query_embedding = query_embeddings[0]
+
+        # Search
+        results = await self.search.search(
+            query=query,
+            query_embedding=query_embedding,
+            top_k=10,
+            source_type=source_type,
+        )
+
+        if not results:
+            return "No relevant results found for this query.", []
+
+        # Format results for the LLM
+        citations = []
+        formatted_parts = []
+
+        for i, r in enumerate(results, 1):
+            citation = Citation(
+                document_title=r.document_title,
+                section_path=r.section_path,
+                source_url=r.source_url,
+                segment_id=str(r.segment_id),
+            )
+            citations.append(citation)
+
+            source_label = r.document_title or r.source_id or "Unknown"
+            if r.section_path:
+                source_label += f" > {r.section_path}"
+
+            url_part = f" ({r.source_url})" if r.source_url else ""
+            formatted_parts.append(f"[Result {i}] Source: {source_label}{url_part}\n{r.content}")
+
+        return "\n\n---\n\n".join(formatted_parts), citations
+
+    @staticmethod
+    def _extract_text(content: list) -> str:
+        """Extract text from Claude response content blocks."""
+        parts = []
+        for block in content:
+            if hasattr(block, "text"):
+                parts.append(block.text)
+        return "\n".join(parts)
