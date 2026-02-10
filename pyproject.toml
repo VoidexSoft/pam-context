@@ -61,6 +61,20 @@ markers = [
     "integration: marks tests requiring external services (ES, PG)",
 ]
 
+[tool.coverage.run]
+source = ["src/pam"]
+
+[tool.coverage.report]
+fail_under = 80
+omit = [
+    "*/__init__.py",
+]
+exclude_lines = [
+    "if TYPE_CHECKING:",
+    "def __repr__",
+    "@abstractmethod",
+]
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true

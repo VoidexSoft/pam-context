@@ -23,7 +23,9 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     documents: Mapped[list["Document"]] = relationship(back_populates="project")
 
@@ -42,11 +44,11 @@ class Document(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    __table_args__ = (
-        {"comment": "Source document registry"},
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    __table_args__ = ({"comment": "Source document registry"},)
 
     project: Mapped[Project | None] = relationship(back_populates="documents")
     segments: Mapped[list["Segment"]] = relationship(back_populates="document", cascade="all, delete-orphan")
@@ -65,7 +67,9 @@ class Segment(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     document: Mapped[Document] = relationship(back_populates="segments")
 

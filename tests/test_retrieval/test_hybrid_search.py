@@ -26,9 +26,7 @@ def _make_es_hit(segment_id=None, content="test content", score=1.0):
 
 class TestHybridSearch:
     async def test_search_with_results(self, mock_es_client):
-        mock_es_client.search = AsyncMock(
-            return_value={"hits": {"hits": [_make_es_hit(), _make_es_hit()]}}
-        )
+        mock_es_client.search = AsyncMock(return_value={"hits": {"hits": [_make_es_hit(), _make_es_hit()]}})
         service = HybridSearchService(mock_es_client, index_name="test_idx")
         results = await service.search(
             query="revenue",
@@ -56,10 +54,7 @@ class TestHybridSearch:
         # The standard retriever should include a filter
         standard = retrievers[0]["standard"]["query"]
         assert "bool" in standard
-        assert any(
-            f.get("term", {}).get("source_type") == "markdown"
-            for f in standard["bool"]["filter"]
-        )
+        assert any(f.get("term", {}).get("source_type") == "markdown" for f in standard["bool"]["filter"])
 
     async def test_search_with_project_filter(self, mock_es_client):
         mock_es_client.search = AsyncMock(return_value={"hits": {"hits": []}})
@@ -69,10 +64,7 @@ class TestHybridSearch:
         call_body = mock_es_client.search.call_args[1]["body"]
         retrievers = call_body["retriever"]["rrf"]["retrievers"]
         standard = retrievers[0]["standard"]["query"]
-        assert any(
-            f.get("term", {}).get("project") == "finance"
-            for f in standard["bool"]["filter"]
-        )
+        assert any(f.get("term", {}).get("project") == "finance" for f in standard["bool"]["filter"])
 
     async def test_search_respects_top_k(self, mock_es_client):
         mock_es_client.search = AsyncMock(return_value={"hits": {"hits": []}})
@@ -85,9 +77,7 @@ class TestHybridSearch:
 
 class TestSearchFromQuery:
     async def test_delegates_to_search(self, mock_es_client):
-        mock_es_client.search = AsyncMock(
-            return_value={"hits": {"hits": [_make_es_hit()]}}
-        )
+        mock_es_client.search = AsyncMock(return_value={"hits": {"hits": [_make_es_hit()]}})
         service = HybridSearchService(mock_es_client, index_name="test_idx")
         query = SearchQuery(query="revenue", top_k=5, source_type="markdown")
         results = await service.search_from_query(query, [0.1] * 1536)

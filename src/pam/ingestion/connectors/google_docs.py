@@ -47,11 +47,15 @@ class GoogleDocsConnector(BaseConnector):
 
         for folder_id in self.folder_ids:
             query = f"'{folder_id}' in parents and mimeType='{GOOGLE_DOC_MIME}' and trashed=false"
-            results = service.files().list(
-                q=query,
-                fields="files(id, name, owners, webViewLink, modifiedTime)",
-                pageSize=100,
-            ).execute()
+            results = (
+                service.files()
+                .list(
+                    q=query,
+                    fields="files(id, name, owners, webViewLink, modifiedTime)",
+                    pageSize=100,
+                )
+                .execute()
+            )
 
             for f in results.get("files", []):
                 owner = f.get("owners", [{}])[0].get("emailAddress") if f.get("owners") else None

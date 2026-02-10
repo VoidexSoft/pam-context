@@ -61,6 +61,7 @@ class TestDoclingParser:
     def test_temp_file_cleaned_up_on_success(self, mock_converter_cls):
         """Temp file should be deleted after successful parse."""
         import os
+
         temp_paths = []
 
         def capture_path(path):
@@ -86,6 +87,7 @@ class TestDoclingParser:
     def test_temp_file_cleaned_up_on_error(self, mock_converter_cls):
         """Temp file should be deleted even if parsing fails."""
         import os
+
         temp_paths = []
 
         def capture_and_fail(path):

@@ -40,8 +40,10 @@ class TestIngestDocument:
         """Full successful ingestion: fetch → parse → chunk → embed → store."""
         # Setup
         raw_doc = RawDocument(
-            content=b"# Test", content_type="text/markdown",
-            source_id="/test.md", title="Test",
+            content=b"# Test",
+            content_type="text/markdown",
+            source_id="/test.md",
+            title="Test",
         )
         mock_connector.fetch_document = AsyncMock(return_value=raw_doc)
         mock_connector.get_content_hash = AsyncMock(return_value="newhash")
@@ -85,8 +87,10 @@ class TestIngestDocument:
     ):
         """Should skip documents whose content hash hasn't changed."""
         raw_doc = RawDocument(
-            content=b"# Same", content_type="text/markdown",
-            source_id="/same.md", title="Same",
+            content=b"# Same",
+            content_type="text/markdown",
+            source_id="/same.md",
+            title="Same",
         )
         mock_connector.fetch_document = AsyncMock(return_value=raw_doc)
         mock_connector.get_content_hash = AsyncMock(return_value="samehash")

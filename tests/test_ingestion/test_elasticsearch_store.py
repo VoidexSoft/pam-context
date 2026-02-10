@@ -67,9 +67,7 @@ class TestBulkIndex:
         mock_es_client.bulk = AsyncMock(
             return_value={
                 "errors": True,
-                "items": [
-                    {"index": {"error": {"type": "mapper_parsing_exception", "reason": "bad"}}}
-                ],
+                "items": [{"index": {"error": {"type": "mapper_parsing_exception", "reason": "bad"}}}],
             }
         )
         segments = [

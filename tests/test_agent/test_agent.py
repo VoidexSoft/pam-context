@@ -36,9 +36,7 @@ class TestRetrievalAgent:
     async def test_simple_answer(self, mock_anthropic_cls):
         """Agent returns a direct answer without tool use."""
         mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(
-            return_value=_make_response([_make_text_block("The answer is 42.")])
-        )
+        mock_client.messages.create = AsyncMock(return_value=_make_response([_make_text_block("The answer is 42.")]))
         mock_anthropic_cls.return_value = mock_client
 
         mock_search = AsyncMock()

@@ -18,9 +18,7 @@ class TestIngestEndpoint:
 
         mock_pipeline = AsyncMock()
         mock_pipeline.ingest_all = AsyncMock(
-            return_value=[
-                IngestionResult(source_id=str(tmp_path / "doc.md"), title="doc", segments_created=5)
-            ]
+            return_value=[IngestionResult(source_id=str(tmp_path / "doc.md"), title="doc", segments_created=5)]
         )
         mock_pipeline_cls.return_value = mock_pipeline
 
