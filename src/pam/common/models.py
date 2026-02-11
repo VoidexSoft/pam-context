@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
@@ -85,6 +86,24 @@ class SyncLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class IngestionTask(Base):
+    __tablename__ = "ingestion_tasks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    folder_path: Mapped[str] = mapped_column(Text, nullable=False)
+    total_documents: Mapped[int] = mapped_column(Integer, default=0)
+    processed_documents: Mapped[int] = mapped_column(Integer, default=0)
+    succeeded: Mapped[int] = mapped_column(Integer, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    results: Mapped[list[Any]] = mapped_column(JSONB, default=list)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 # ── Pydantic Schemas ────────────────────────────────────────────────────
 
 
@@ -148,3 +167,27 @@ class RawDocument(BaseModel):
     title: str
     source_url: str | None = None
     owner: str | None = None
+
+
+class IngestionTaskResponse(BaseModel):
+    id: uuid.UUID
+    status: str
+    folder_path: str
+    total_documents: int
+    processed_documents: int
+    succeeded: int
+    skipped: int
+    failed: int
+    results: list[dict] = []
+    error: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class TaskCreatedResponse(BaseModel):
+    task_id: uuid.UUID
+    status: str = "pending"
+    message: str = "Ingestion task created"

@@ -47,6 +47,34 @@ export interface IngestResponse {
   failed: number;
 }
 
+export interface TaskCreatedResponse {
+  task_id: string;
+  status: string;
+  message: string;
+}
+
+export interface IngestionTask {
+  id: string;
+  status: string;
+  folder_path: string;
+  total_documents: number;
+  processed_documents: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  results: Array<{
+    source_id: string;
+    title: string;
+    segments_created: number;
+    skipped: boolean;
+    error: string | null;
+  }>;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 const BASE = "/api";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -82,9 +110,17 @@ export function listDocuments(): Promise<Document[]> {
   return request<Document[]>("/documents");
 }
 
-export function ingestFolder(path: string): Promise<IngestResponse> {
-  return request<IngestResponse>("/ingest/folder", {
+export function ingestFolder(path: string): Promise<TaskCreatedResponse> {
+  return request<TaskCreatedResponse>("/ingest/folder", {
     method: "POST",
     body: JSON.stringify({ path }),
   });
+}
+
+export function getTaskStatus(taskId: string): Promise<IngestionTask> {
+  return request<IngestionTask>(`/ingest/tasks/${taskId}`);
+}
+
+export function listTasks(limit: number = 20): Promise<IngestionTask[]> {
+  return request<IngestionTask[]>(`/ingest/tasks?limit=${limit}`);
 }

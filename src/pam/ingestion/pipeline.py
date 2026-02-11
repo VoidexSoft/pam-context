@@ -1,5 +1,6 @@
 """Ingestion pipeline orchestrator: connector → parser → chunker → embedder → stores."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 import structlog
@@ -33,6 +34,7 @@ class IngestionPipeline:
     es_store: ElasticsearchStore
     session: AsyncSession
     source_type: str = "markdown"
+    progress_callback: Callable[["IngestionResult"], Awaitable[None]] | None = None
 
     async def ingest_document(self, source_id: str) -> IngestionResult:
         """Ingest a single document through the full pipeline.
@@ -135,6 +137,8 @@ class IngestionPipeline:
         for doc_info in docs:
             result = await self.ingest_document(doc_info.source_id)
             results.append(result)
+            if self.progress_callback:
+                await self.progress_callback(result)
 
         succeeded = sum(1 for r in results if not r.error and not r.skipped)
         skipped = sum(1 for r in results if r.skipped)

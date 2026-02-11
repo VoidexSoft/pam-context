@@ -7,14 +7,18 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from sqlalchemy import update as sa_update
 
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
 from pam.api.routes import chat, documents, ingest, search
 from pam.common.config import settings
+from pam.common.database import async_session_factory
 from pam.common.logging import configure_logging
+from pam.common.models import IngestionTask
 
 logger = structlog.get_logger()
 
@@ -31,6 +35,15 @@ async def lifespan(app: FastAPI):
 
     es_store = ElasticsearchStore(app.state.es_client)
     await es_store.ensure_index()
+
+    # Clean up orphaned ingestion tasks from previous server runs
+    async with async_session_factory() as session:
+        await session.execute(
+            sa_update(IngestionTask)
+            .where(IngestionTask.status.in_(["pending", "running"]))
+            .values(status="failed", error="Server restarted", completed_at=func.now())
+        )
+        await session.commit()
 
     yield
 
