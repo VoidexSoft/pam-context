@@ -1,15 +1,22 @@
 """FastAPI application factory."""
 
+import structlog
 from contextlib import asynccontextmanager
 
 from elasticsearch import AsyncElasticsearch
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
 from pam.api.routes import chat, documents, ingest, search
 from pam.common.config import settings
 from pam.common.logging import configure_logging
+
+logger = structlog.get_logger()
 
 
 @asynccontextmanager
@@ -57,8 +64,39 @@ def create_app() -> FastAPI:
     app.include_router(ingest.router, prefix="/api", tags=["ingest"])
 
     @app.get("/api/health")
-    async def health():
-        return {"status": "ok"}
+    async def health(
+        es_client: AsyncElasticsearch = Depends(get_es_client),
+        db: AsyncSession = Depends(get_db),
+    ):
+        services: dict[str, str] = {}
+
+        # Check Elasticsearch
+        try:
+            if await es_client.ping():
+                services["elasticsearch"] = "up"
+            else:
+                services["elasticsearch"] = "down"
+        except Exception:
+            logger.warning("health_check_es_failed", exc_info=True)
+            services["elasticsearch"] = "down"
+
+        # Check PostgreSQL
+        try:
+            await db.execute(text("SELECT 1"))
+            services["postgres"] = "up"
+        except Exception:
+            logger.warning("health_check_pg_failed", exc_info=True)
+            services["postgres"] = "down"
+
+        all_up = all(v == "up" for v in services.values())
+        status_code = 200 if all_up else 503
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "status": "healthy" if all_up else "unhealthy",
+                "services": services,
+            },
+        )
 
     return app
 

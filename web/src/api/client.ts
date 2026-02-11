@@ -34,9 +34,17 @@ export interface Document {
 }
 
 export interface IngestResponse {
-  task_id: string;
-  status: string;
-  documents_queued: number;
+  results: Array<{
+    source_id: string;
+    title: string;
+    segments_created: number;
+    skipped: boolean;
+    error: string | null;
+  }>;
+  total: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
 }
 
 const BASE = "/api";

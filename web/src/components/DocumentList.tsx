@@ -31,7 +31,7 @@ function formatDate(dateStr: string | null): string {
 export default function DocumentList({ documents }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm text-left">
+      <table className="w-full min-w-[600px] text-sm text-left">
         <thead>
           <tr className="text-xs text-gray-500 uppercase tracking-wider">
             <th className="px-4 py-3 font-medium">Title</th>

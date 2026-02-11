@@ -16,7 +16,7 @@ export default function DocumentsPage() {
     try {
       const res = await ingestFolder(folderPath.trim());
       setIngestMsg(
-        `Queued ${res.documents_queued} document(s). Task: ${res.task_id}`
+        `Succeeded ${res.succeeded} of ${res.total} document(s).${res.failed ? ` Failed: ${res.failed}.` : ""}${res.skipped ? ` Skipped: ${res.skipped}.` : ""}`
       );
       setFolderPath("");
       setTimeout(() => refresh(), 2000);
@@ -34,13 +34,13 @@ export default function DocumentsPage() {
         <h2 className="text-base font-semibold text-gray-800">Documents</h2>
       </header>
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
+      <div className="flex-1 overflow-auto p-3 sm:p-6 space-y-6">
         {/* Ingest folder */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">
             Ingest a folder
           </h3>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               value={folderPath}
@@ -52,7 +52,7 @@ export default function DocumentsPage() {
             <button
               onClick={handleIngest}
               disabled={ingesting || !folderPath.trim()}
-              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
             >
               {ingesting ? "Ingesting..." : "Ingest"}
             </button>
