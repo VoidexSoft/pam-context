@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from pam.agent.agent import AgentResponse, RetrievalAgent
+from pam.api.auth import get_current_user
 from pam.api.deps import get_agent
+from pam.common.models import User
 
 router = APIRouter()
 
@@ -36,6 +38,7 @@ class ChatResponse(BaseModel):
 async def chat(
     request: ChatRequest,
     agent: RetrievalAgent = Depends(get_agent),
+    _user: User | None = Depends(get_current_user),
 ):
     """Send a message and get an AI-powered answer with citations."""
     kwargs: dict = {}
@@ -69,6 +72,7 @@ async def chat(
 async def chat_stream(
     request: ChatRequest,
     agent: RetrievalAgent = Depends(get_agent),
+    _user: User | None = Depends(get_current_user),
 ):
     """Stream a chat response as Server-Sent Events."""
     history = None

@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pam.api.auth import get_current_user
 from pam.api.deps import get_db
-from pam.common.models import Document, ExtractedEntity, IngestionTask, Segment
+from pam.common.models import Document, ExtractedEntity, IngestionTask, Segment, User
 from pam.ingestion.stores.postgres_store import PostgresStore
 
 router = APIRouter()
@@ -16,6 +17,7 @@ router = APIRouter()
 @router.get("/documents")
 async def list_documents(
     db: AsyncSession = Depends(get_db),
+    _user: User | None = Depends(get_current_user),
 ):
     """List all ingested documents with segment counts."""
     store = PostgresStore(db)
@@ -26,6 +28,7 @@ async def list_documents(
 async def get_segment(
     segment_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _user: User | None = Depends(get_current_user),
 ):
     """Get segment content and metadata for the source viewer."""
     result = await db.execute(
@@ -58,6 +61,7 @@ async def get_segment(
 @router.get("/stats")
 async def get_stats(
     db: AsyncSession = Depends(get_db),
+    _user: User | None = Depends(get_current_user),
 ):
     """Get system stats for admin dashboard."""
     # Document counts by status
