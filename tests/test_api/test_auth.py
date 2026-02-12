@@ -375,3 +375,55 @@ class TestAuthDisabledByDefault:
         response = await client.post("/api/search", json={"query": "test"})
         assert response.status_code != 401
         assert response.status_code != 403
+
+    async def test_documents_accessible_without_token(self, client, mock_api_db_session):
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        response = await client.get("/api/documents")
+        assert response.status_code != 401
+        assert response.status_code != 403
+
+    async def test_stats_accessible_without_token(self, client, mock_api_db_session):
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_result.scalar.return_value = 0
+        mock_result.scalars.return_value.all.return_value = []
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        response = await client.get("/api/stats")
+        assert response.status_code != 401
+        assert response.status_code != 403
+
+
+class TestAuthEnforcedWhenEnabled:
+    """When auth_required=True, endpoints must reject unauthenticated requests."""
+
+    async def test_chat_requires_auth(self, client):
+        with patch.object(settings, "auth_required", True):
+            response = await client.post("/api/chat", json={"message": "hello"})
+            assert response.status_code == 401
+
+    async def test_chat_stream_requires_auth(self, client):
+        with patch.object(settings, "auth_required", True):
+            response = await client.post("/api/chat/stream", json={"message": "hello"})
+            assert response.status_code == 401
+
+    async def test_search_requires_auth(self, client):
+        with patch.object(settings, "auth_required", True):
+            response = await client.post("/api/search", json={"query": "test"})
+            assert response.status_code == 401
+
+    async def test_documents_requires_auth(self, client):
+        with patch.object(settings, "auth_required", True):
+            response = await client.get("/api/documents")
+            assert response.status_code == 401
+
+    async def test_segments_requires_auth(self, client):
+        with patch.object(settings, "auth_required", True):
+            response = await client.get(f"/api/segments/{uuid.uuid4()}")
+            assert response.status_code == 401
+
+    async def test_stats_requires_auth(self, client):
+        with patch.object(settings, "auth_required", True):
+            response = await client.get("/api/stats")
+            assert response.status_code == 401
