@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pam.api.auth import create_access_token
+from pam.api.auth import create_access_token, get_current_user
 from pam.api.deps import get_db
 from pam.common.config import settings
 from pam.common.models import TokenResponse, User, UserResponse
@@ -101,10 +101,11 @@ async def dev_login(
 
 @router.get("/auth/me", response_model=UserResponse)
 async def get_me(
-    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user),
 ):
     """Get current user profile. Returns 401 if auth enabled and no valid token."""
-    # This is a simple endpoint; auth dependency is added at the router level if needed
     if not settings.auth_required:
         raise HTTPException(status_code=404, detail="Auth not enabled")
-    raise HTTPException(status_code=501, detail="Use /auth/google to authenticate first")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return UserResponse.model_validate(user)

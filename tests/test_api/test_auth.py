@@ -7,8 +7,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import jwt
 import pytest
 
-from pam.api.auth import create_access_token, decode_access_token, get_user_project_ids
+from fastapi import HTTPException
+
+from pam.api.auth import (
+    create_access_token,
+    decode_access_token,
+    get_current_user,
+    get_user_project_ids,
+    require_admin,
+    require_auth,
+)
 from pam.common.config import settings
+from pam.common.models import User
 
 
 class TestCreateAccessToken:
@@ -51,16 +61,12 @@ class TestDecodeAccessToken:
             "exp": datetime.now(timezone.utc) - timedelta(hours=24),
         }
         token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-        from fastapi import HTTPException
-
         with pytest.raises(HTTPException) as exc_info:
             decode_access_token(token)
         assert exc_info.value.status_code == 401
         assert "expired" in exc_info.value.detail.lower()
 
     def test_decode_invalid_token(self):
-        from fastapi import HTTPException
-
         with pytest.raises(HTTPException) as exc_info:
             decode_access_token("invalid.token.here")
         assert exc_info.value.status_code == 401
@@ -73,8 +79,6 @@ class TestDecodeAccessToken:
             "exp": datetime.now(timezone.utc) + timedelta(hours=24),
         }
         token = jwt.encode(payload, "wrong-secret-at-least-32-bytes!!", algorithm="HS256")
-        from fastapi import HTTPException
-
         with pytest.raises(HTTPException) as exc_info:
             decode_access_token(token)
         assert exc_info.value.status_code == 401
@@ -164,6 +168,199 @@ class TestDevLoginEndpoint:
         with patch.object(settings, "auth_required", True):
             response = await client.post("/api/auth/dev-login", json={"email": "dev@test.com"})
             assert response.status_code == 403
+
+
+class TestGetCurrentUser:
+    """Tests for the get_current_user dependency."""
+
+    async def test_returns_none_when_auth_disabled(self):
+        """When auth_required=False, get_current_user returns None."""
+        with patch.object(settings, "auth_required", False):
+            result = await get_current_user(db=AsyncMock(), credentials=None)
+            assert result is None
+
+    async def test_returns_user_with_valid_token(self, mock_api_db_session):
+        """Valid Bearer token resolves to the corresponding user."""
+        user_id = uuid.uuid4()
+        user = User(
+            id=user_id,
+            email="test@example.com",
+            name="Test",
+            is_active=True,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        user.project_roles = []
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+
+        token = create_access_token(user_id, "test@example.com")
+        creds = MagicMock()
+        creds.credentials = token
+
+        with patch.object(settings, "auth_required", True):
+            result = await get_current_user(db=mock_api_db_session, credentials=creds)
+            assert result is not None
+            assert result.email == "test@example.com"
+
+    async def test_raises_401_when_no_token_and_auth_required(self):
+        """Missing token raises 401 when auth is required."""
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user(db=AsyncMock(), credentials=None)
+            assert exc_info.value.status_code == 401
+
+    async def test_raises_401_for_expired_token(self):
+        """Expired token raises 401."""
+        payload = {
+            "sub": str(uuid.uuid4()),
+            "email": "test@example.com",
+            "iat": datetime.now(timezone.utc) - timedelta(hours=48),
+            "exp": datetime.now(timezone.utc) - timedelta(hours=24),
+        }
+        token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+        creds = MagicMock()
+        creds.credentials = token
+
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user(db=AsyncMock(), credentials=creds)
+            assert exc_info.value.status_code == 401
+
+    async def test_raises_401_for_inactive_user(self, mock_api_db_session):
+        """Inactive user raises 401 even with valid token."""
+        user_id = uuid.uuid4()
+        user = User(
+            id=user_id,
+            email="inactive@example.com",
+            name="Inactive",
+            is_active=False,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        user.project_roles = []
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+
+        token = create_access_token(user_id, "inactive@example.com")
+        creds = MagicMock()
+        creds.credentials = token
+
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_user(db=mock_api_db_session, credentials=creds)
+            assert exc_info.value.status_code == 401
+
+
+class TestRequireAuth:
+    """Tests for the require_auth dependency."""
+
+    async def test_raises_401_when_user_is_none_and_auth_enabled(self):
+        """When auth is enabled and user is None, raises 401."""
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await require_auth(user=None)
+            assert exc_info.value.status_code == 401
+
+    async def test_returns_user_when_valid(self):
+        """Valid user is passed through."""
+        user = MagicMock(spec=User)
+        with patch.object(settings, "auth_required", True):
+            result = await require_auth(user=user)
+            assert result is user
+
+    async def test_raises_403_when_auth_disabled_and_none(self):
+        """When auth is disabled, require_auth with None raises 403 (safety guard)."""
+        with patch.object(settings, "auth_required", False):
+            with pytest.raises(HTTPException) as exc_info:
+                await require_auth(user=None)
+            assert exc_info.value.status_code == 403
+
+
+class TestRequireAdmin:
+    """Tests for the require_admin dependency."""
+
+    async def test_returns_none_when_auth_disabled(self):
+        """When auth is disabled, require_admin returns None."""
+        with patch.object(settings, "auth_required", False):
+            result = await require_admin(user=None)
+            assert result is None
+
+    async def test_raises_401_when_no_user_and_auth_enabled(self):
+        """When auth is enabled and no user, raises 401."""
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await require_admin(user=None)
+            assert exc_info.value.status_code == 401
+
+    async def test_raises_403_for_non_admin_user(self):
+        """User without admin role gets 403."""
+        user = MagicMock(spec=User)
+        role = MagicMock()
+        role.role = "viewer"
+        user.project_roles = [role]
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await require_admin(user=user)
+            assert exc_info.value.status_code == 403
+
+    async def test_passes_for_admin_user(self):
+        """User with admin role passes through."""
+        user = MagicMock(spec=User)
+        role = MagicMock()
+        role.role = "admin"
+        user.project_roles = [role]
+        with patch.object(settings, "auth_required", True):
+            result = await require_admin(user=user)
+            assert result is user
+
+
+class TestAuthMeEndpoint:
+    """Tests for the /auth/me endpoint."""
+
+    async def test_returns_404_when_auth_disabled(self, client):
+        """When auth_required=False, /auth/me returns 404."""
+        response = await client.get("/api/auth/me")
+        assert response.status_code == 404
+
+    async def test_returns_user_when_authenticated(self, client, app, mock_api_db_session):
+        """With auth enabled and valid token, /auth/me returns user profile."""
+        user_id = uuid.uuid4()
+        now = datetime.now(timezone.utc)
+        user = User(
+            id=user_id,
+            email="me@example.com",
+            name="Me",
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        user.project_roles = []
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+
+        token = create_access_token(user_id, "me@example.com")
+
+        with patch.object(settings, "auth_required", True):
+            response = await client.get(
+                "/api/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["email"] == "me@example.com"
+
+    async def test_returns_401_without_token_when_auth_enabled(self, client):
+        """With auth enabled and no token, /auth/me returns 401."""
+        with patch.object(settings, "auth_required", True):
+            response = await client.get("/api/auth/me")
+            assert response.status_code == 401
 
 
 class TestAuthDisabledByDefault:
