@@ -81,13 +81,15 @@ class RetrievalAgent:
         self.cost_tracker = cost_tracker or CostTracker()
         self.db_session = db_session
         self.duckdb_service = duckdb_service
+        self._default_source_type: str | None = None
 
-    async def answer(self, question: str, conversation_history: list | None = None) -> AgentResponse:
+    async def answer(self, question: str, conversation_history: list | None = None, source_type: str | None = None) -> AgentResponse:
         """Answer a question using the knowledge base.
 
         Runs a tool-use loop: sends the question to Claude, executes any tool calls,
         appends results, and repeats until Claude provides a final answer.
         """
+        self._default_source_type = source_type
         start = time.perf_counter()
         messages = list(conversation_history or [])
         messages.append({"role": "user", "content": question})
@@ -176,7 +178,7 @@ class RetrievalAgent:
         )
 
     async def answer_streaming(
-        self, question: str, conversation_history: list | None = None
+        self, question: str, conversation_history: list | None = None, source_type: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream an answer as SSE events.
 
@@ -185,6 +187,7 @@ class RetrievalAgent:
         Phase B: final answer with token streaming.
         Phase C: citations and done event.
         """
+        self._default_source_type = source_type
         start = time.perf_counter()
         messages = list(conversation_history or [])
         messages.append({"role": "user", "content": question})
@@ -315,7 +318,7 @@ class RetrievalAgent:
     async def _search_knowledge(self, input_: dict) -> tuple[str, list[Citation]]:
         """Execute the search_knowledge tool."""
         query = input_["query"]
-        source_type = input_.get("source_type")
+        source_type = input_.get("source_type") or self._default_source_type
 
         # Embed the query
         query_embeddings = await self.embedder.embed_texts([query])

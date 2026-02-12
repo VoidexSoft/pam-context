@@ -1,5 +1,7 @@
 """Documents endpoint — list and view ingested documents."""
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +24,7 @@ async def list_documents(
 
 @router.get("/segments/{segment_id}")
 async def get_segment(
-    segment_id: str,
+    segment_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
     """Get segment content and metadata for the source viewer."""

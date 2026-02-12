@@ -85,16 +85,21 @@ class ElasticsearchStore:
             actions.append(doc)
 
         if actions:
+            total = len(actions) // 2
             response = await self.client.bulk(body=actions, refresh="wait_for")
             errors = response.get("errors", False)
             if errors:
+                failed_items = []
                 for item in response["items"]:
                     if "error" in item.get("index", {}):
+                        failed_items.append(item["index"]["error"])
                         logger.error("es_bulk_error", error=item["index"]["error"])
+                raise RuntimeError(
+                    f"ES bulk indexing failed: {len(failed_items)} of {total} documents failed"
+                )
 
-            indexed = len(actions) // 2
-            logger.info("es_bulk_index", index=self.index_name, count=indexed, errors=errors)
-            return indexed
+            logger.info("es_bulk_index", index=self.index_name, count=total, errors=errors)
+            return total
         return 0
 
     async def delete_by_document(self, document_id: uuid.UUID) -> int:

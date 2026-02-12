@@ -3,6 +3,8 @@
 import uuid
 from unittest.mock import AsyncMock
 
+import pytest
+
 from pam.common.models import KnowledgeSegment
 from pam.ingestion.stores.elasticsearch_store import ElasticsearchStore
 
@@ -81,9 +83,8 @@ class TestBulkIndex:
             )
         ]
         store = ElasticsearchStore(mock_es_client, index_name="test_index")
-        # Should not raise, just log errors
-        count = await store.bulk_index(segments)
-        assert count == 1
+        with pytest.raises(RuntimeError, match="ES bulk indexing failed: 1 of 1"):
+            await store.bulk_index(segments)
 
 
 class TestDeleteByDocument:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import structlog
 from elasticsearch import AsyncElasticsearch
 
@@ -33,6 +35,8 @@ class HybridSearchService:
         top_k: int = 10,
         source_type: str | None = None,
         project: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> list[SearchResult]:
         """Perform hybrid search using Elasticsearch RRF (Reciprocal Rank Fusion).
 
@@ -54,6 +58,13 @@ class HybridSearchService:
             filters.append({"term": {"source_type": source_type}})
         if project:
             filters.append({"term": {"project": project}})
+        if date_from or date_to:
+            date_range: dict[str, str] = {}
+            if date_from:
+                date_range["gte"] = date_from.isoformat()
+            if date_to:
+                date_range["lte"] = date_to.isoformat()
+            filters.append({"range": {"updated_at": date_range}})
 
         # Build RRF retriever query (ES 8.x)
         standard_query: dict = {"match": {"content": query}}
@@ -132,4 +143,6 @@ class HybridSearchService:
             top_k=search_query.top_k,
             source_type=search_query.source_type,
             project=search_query.project,
+            date_from=search_query.date_from,
+            date_to=search_query.date_to,
         )

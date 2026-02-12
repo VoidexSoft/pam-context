@@ -43,6 +43,8 @@ async def chat(
         kwargs["conversation_history"] = [
             {"role": m.role, "content": m.content} for m in request.conversation_history
         ]
+    if request.source_type:
+        kwargs["source_type"] = request.source_type
 
     result: AgentResponse = await agent.answer(request.message, **kwargs)
 
@@ -74,7 +76,7 @@ async def chat_stream(
         history = [{"role": m.role, "content": m.content} for m in request.conversation_history]
 
     async def event_generator():
-        async for chunk in agent.answer_streaming(request.message, conversation_history=history):
+        async for chunk in agent.answer_streaming(request.message, conversation_history=history, source_type=request.source_type):
             yield f"data: {json.dumps(chunk)}\n\n"
 
     return StreamingResponse(
