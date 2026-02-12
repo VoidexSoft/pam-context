@@ -1,7 +1,10 @@
 """Chat endpoint — conversational Q&A with the knowledge base."""
 
+import json
+
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 
 from pam.agent.agent import AgentResponse, RetrievalAgent
 from pam.api.deps import get_agent
@@ -57,4 +60,29 @@ async def chat(
         conversation_id=request.conversation_id,
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
+    )
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    request: ChatRequest,
+    agent: RetrievalAgent = Depends(get_agent),
+):
+    """Stream a chat response as Server-Sent Events."""
+    history = None
+    if request.conversation_history:
+        history = [{"role": m.role, "content": m.content} for m in request.conversation_history]
+
+    async def event_generator():
+        async for chunk in agent.answer_streaming(request.message, conversation_history=history):
+            yield f"data: {json.dumps(chunk)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -173,6 +174,129 @@ class RetrievalAgent:
             latency_ms=round(total_latency, 1),
             tool_calls=tool_call_count,
         )
+
+    async def answer_streaming(
+        self, question: str, conversation_history: list | None = None
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Stream an answer as SSE events.
+
+        Yields dicts with keys: type, content/data/message/metadata.
+        Phase A: tool-use loop (non-streaming), yields status events.
+        Phase B: final answer with token streaming.
+        Phase C: citations and done event.
+        """
+        start = time.perf_counter()
+        messages = list(conversation_history or [])
+        messages.append({"role": "user", "content": question})
+
+        all_citations: list[Citation] = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+        tool_call_count = 0
+
+        try:
+            # Phase A: Tool-use loop (non-streaming)
+            for _ in range(MAX_TOOL_ITERATIONS):
+                yield {"type": "status", "content": "Thinking..."}
+
+                response = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=SYSTEM_PROMPT,
+                    messages=messages,
+                    tools=ALL_TOOLS,
+                )
+                total_input_tokens += response.usage.input_tokens
+                total_output_tokens += response.usage.output_tokens
+
+                if response.stop_reason == "end_turn":
+                    # No tool calls needed — stream the text we already have
+                    answer_text = self._extract_text(response.content)
+                    for token in self._chunk_text(answer_text, 4):
+                        yield {"type": "token", "content": token}
+                    break
+
+                if response.stop_reason == "tool_use":
+                    messages.append({"role": "assistant", "content": response.content})
+                    tool_results = []
+                    for block in response.content:
+                        if block.type == "tool_use":
+                            tool_call_count += 1
+                            tool_name = block.name.replace("_", " ").title()
+                            yield {"type": "status", "content": f"Using {tool_name}..."}
+                            result, citations = await self._execute_tool(block.name, block.input)
+                            all_citations.extend(citations)
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": result,
+                            })
+                    messages.append({"role": "user", "content": tool_results})
+                    continue
+
+            else:
+                # Hit max iterations — do a final streaming call
+                pass
+
+            # Phase B: Final streaming call (if we went through tools)
+            if tool_call_count > 0:
+                yield {"type": "status", "content": "Generating answer..."}
+                async with self.client.messages.stream(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=SYSTEM_PROMPT,
+                    messages=messages,
+                ) as stream:
+                    async for text in stream.text_stream:
+                        yield {"type": "token", "content": text}
+                    final_message = await stream.get_final_message()
+                    total_input_tokens += final_message.usage.input_tokens
+                    total_output_tokens += final_message.usage.output_tokens
+
+            # Phase C: Citations and done
+            for c in all_citations:
+                yield {
+                    "type": "citation",
+                    "data": {
+                        "title": c.document_title,
+                        "source_url": c.source_url,
+                        "document_id": c.document_title,
+                        "segment_id": c.segment_id,
+                    },
+                }
+
+            total_latency = (time.perf_counter() - start) * 1000
+            self.cost_tracker.log_llm_call(
+                self.model, total_input_tokens, total_output_tokens, total_latency
+            )
+            yield {
+                "type": "done",
+                "metadata": {
+                    "token_usage": {
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "total_tokens": total_input_tokens + total_output_tokens,
+                    },
+                    "latency_ms": round(total_latency, 1),
+                    "tool_calls": tool_call_count,
+                },
+            }
+
+        except Exception as e:
+            logger.error("streaming_error", error=str(e))
+            yield {"type": "error", "message": str(e)}
+
+    @staticmethod
+    def _chunk_text(text: str, size: int = 4) -> list[str]:
+        """Split text into word-based chunks for simulated streaming."""
+        words = text.split(" ")
+        chunks = []
+        for i in range(0, len(words), size):
+            chunk = " ".join(words[i : i + size])
+            if i > 0:
+                chunk = " " + chunk
+            chunks.append(chunk)
+        return chunks
 
     async def _execute_tool(self, tool_name: str, tool_input: dict) -> tuple[str, list[Citation]]:
         """Execute a tool call and return (result_text, citations)."""

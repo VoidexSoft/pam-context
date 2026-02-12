@@ -119,6 +119,20 @@ export interface ConversationMessage {
   content: string;
 }
 
+export type StreamEventType = "status" | "token" | "citation" | "done" | "error";
+
+export interface StreamEvent {
+  type: StreamEventType;
+  content?: string;
+  data?: Citation;
+  message?: string;
+  metadata?: {
+    token_usage: Record<string, number>;
+    latency_ms: number;
+    tool_calls: number;
+  };
+}
+
 export interface TokenResponse {
   access_token: string;
   user: AuthUser;
@@ -226,4 +240,72 @@ export function devLogin(email: string, name: string): Promise<TokenResponse> {
 
 export function getAuthStatus(): Promise<{ auth_required: boolean }> {
   return request<{ auth_required: boolean }>("/auth/status");
+}
+
+export async function* streamChatMessage(
+  message: string,
+  conversationId?: string,
+  conversationHistory?: ConversationMessage[],
+  filters?: ChatFilters,
+  signal?: AbortSignal
+): AsyncGenerator<StreamEvent> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
+  const res = await fetch(`${BASE}/chat/stream`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId,
+      conversation_history: conversationHistory,
+      source_type: filters?.source_type,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API ${res.status}: ${body}`);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data: ")) continue;
+      try {
+        const event = JSON.parse(trimmed.slice(6)) as StreamEvent;
+        yield event;
+      } catch {
+        // Skip malformed events
+      }
+    }
+  }
+
+  // Process remaining buffer
+  if (buffer.trim().startsWith("data: ")) {
+    try {
+      const event = JSON.parse(buffer.trim().slice(6)) as StreamEvent;
+      yield event;
+    } catch {
+      // Skip
+    }
+  }
 }
