@@ -12,6 +12,7 @@ from elasticsearch import AsyncElasticsearch
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pam.common.cache import CacheService, get_redis
 from pam.common.database import async_session_factory
 from pam.common.models import IngestionTask
 from pam.ingestion.connectors.markdown import MarkdownConnector
@@ -156,6 +157,15 @@ async def run_ingestion_background(
                 .values(status="completed", completed_at=datetime.now(timezone.utc))
             )
             await status_session.commit()
+
+            # Invalidate search cache after successful ingestion
+            try:
+                redis_client = await get_redis()
+                cache = CacheService(redis_client)
+                cleared = await cache.invalidate_search()
+                logger.info("cache_invalidated_after_ingest", keys_cleared=cleared)
+            except Exception:
+                logger.warning("cache_invalidate_failed", exc_info=True)
 
         logger.info("task_completed", task_id=str(task_id))
 

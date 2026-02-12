@@ -22,6 +22,14 @@ dependencies = [
     # Google
     "google-api-python-client>=2.0",
     "google-auth-oauthlib>=1.0",
+    # Cache
+    "redis[hiredis]>=5.0",
+    # Analytics
+    "duckdb>=1.0",
+    # Auth
+    "pyjwt>=2.8",
+    # Reranking
+    "sentence-transformers>=3.0",
     # Utilities
     "python-dotenv>=1.0",
     "structlog>=24.0",

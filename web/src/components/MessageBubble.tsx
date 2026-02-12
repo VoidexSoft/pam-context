@@ -4,9 +4,10 @@ import CitationLink from "./CitationLink";
 
 interface Props {
   message: ChatMessage;
+  onViewSource?: (segmentId: string) => void;
 }
 
-export default function MessageBubble({ message }: Props) {
+export default function MessageBubble({ message, onViewSource }: Props) {
   const isUser = message.role === "user";
 
   return (
@@ -25,7 +26,7 @@ export default function MessageBubble({ message }: Props) {
         {message.citations && message.citations.length > 0 && (
           <div className="mt-2 pt-2 border-t border-gray-200/30 flex flex-wrap gap-1.5">
             {message.citations.map((citation, i) => (
-              <CitationLink key={i} citation={citation} />
+              <CitationLink key={i} citation={citation} onViewSource={onViewSource} />
             ))}
           </div>
         )}

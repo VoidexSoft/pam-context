@@ -1,8 +1,12 @@
+import { useState } from "react";
 import ChatInterface from "../components/ChatInterface";
+import SearchFilters from "../components/SearchFilters";
+import SourceViewer from "../components/SourceViewer";
 import { useChat } from "../hooks/useChat";
 
 export default function ChatPage() {
-  const { messages, loading, sendMessage, clearChat } = useChat();
+  const { messages, loading, sendMessage, clearChat, filters, setFilters } = useChat();
+  const [viewingSegmentId, setViewingSegmentId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col h-full">
@@ -15,10 +19,16 @@ export default function ChatPage() {
           New conversation
         </button>
       </header>
+      <SearchFilters filters={filters} onChange={setFilters} />
       <ChatInterface
         messages={messages}
         loading={loading}
         onSend={sendMessage}
+        onViewSource={setViewingSegmentId}
+      />
+      <SourceViewer
+        segmentId={viewingSegmentId}
+        onClose={() => setViewingSegmentId(null)}
       />
     </div>
   );

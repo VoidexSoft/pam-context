@@ -75,11 +75,88 @@ export interface IngestionTask {
   completed_at: string | null;
 }
 
+export interface SegmentDetail {
+  id: string;
+  content: string;
+  segment_type: string;
+  section_path: string | null;
+  position: number;
+  metadata: Record<string, unknown>;
+  document_id: string;
+  document_title: string | null;
+  source_url: string | null;
+  source_type: string | null;
+}
+
+export interface SystemStats {
+  documents: {
+    total: number;
+    by_status: Record<string, number>;
+  };
+  segments: number;
+  entities: {
+    total: number;
+    by_type: Record<string, number>;
+  };
+  recent_tasks: Array<{
+    id: string;
+    status: string;
+    folder_path: string;
+    total_documents: number;
+    succeeded: number;
+    failed: number;
+    created_at: string | null;
+    completed_at: string | null;
+  }>;
+}
+
+export interface ChatFilters {
+  source_type?: string;
+}
+
+export interface ConversationMessage {
+  role: string;
+  content: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  user: AuthUser;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+}
+
 const BASE = "/api";
 
+let authToken: string | null = localStorage.getItem("pam_token");
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) {
+    localStorage.setItem("pam_token", token);
+  } else {
+    localStorage.removeItem("pam_token");
+  }
+}
+
+export function getStoredToken(): string | null {
+  return authToken;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
   const res = await fetch(`${BASE}${url}`, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...init,
   });
   if (!res.ok) {
@@ -91,11 +168,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function sendMessage(
   message: string,
-  conversationId?: string
+  conversationId?: string,
+  conversationHistory?: ConversationMessage[],
+  filters?: ChatFilters
 ): Promise<ChatResponse> {
   return request<ChatResponse>("/chat", {
     method: "POST",
-    body: JSON.stringify({ message, conversation_id: conversationId }),
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId,
+      conversation_history: conversationHistory,
+      source_type: filters?.source_type,
+    }),
   });
 }
 
@@ -123,4 +207,23 @@ export function getTaskStatus(taskId: string): Promise<IngestionTask> {
 
 export function listTasks(limit: number = 20): Promise<IngestionTask[]> {
   return request<IngestionTask[]>(`/ingest/tasks?limit=${limit}`);
+}
+
+export function getSegment(segmentId: string): Promise<SegmentDetail> {
+  return request<SegmentDetail>(`/segments/${segmentId}`);
+}
+
+export function getStats(): Promise<SystemStats> {
+  return request<SystemStats>("/stats");
+}
+
+export function devLogin(email: string, name: string): Promise<TokenResponse> {
+  return request<TokenResponse>("/auth/dev-login", {
+    method: "POST",
+    body: JSON.stringify({ email, name }),
+  });
+}
+
+export function getAuthStatus(): Promise<{ auth_required: boolean }> {
+  return request<{ auth_required: boolean }>("/auth/status");
 }

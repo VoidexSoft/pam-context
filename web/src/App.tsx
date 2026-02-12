@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Routes, Route, NavLink } from "react-router-dom";
 import ChatPage from "./pages/ChatPage";
 import DocumentsPage from "./pages/DocumentsPage";
+import AdminDashboard from "./pages/AdminDashboard";
+import LoginPage from "./pages/LoginPage";
+import { useAuth } from "./hooks/useAuth";
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -36,6 +39,9 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           <NavLink to="/documents" className={linkClass} onClick={onClose}>
             Documents
           </NavLink>
+          <NavLink to="/admin" className={linkClass} onClick={onClose}>
+            Admin
+          </NavLink>
         </nav>
       </aside>
     </>
@@ -44,6 +50,15 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, authRequired, checked, login, logout } = useAuth();
+
+  // Wait for auth check before rendering
+  if (!checked) return null;
+
+  // If auth required and not logged in, show login
+  if (authRequired && !user) {
+    return <LoginPage onLogin={login} />;
+  }
 
   return (
     <div className="flex h-full">
@@ -61,11 +76,20 @@ export default function App() {
             </svg>
           </button>
           <span className="ml-3 text-sm font-semibold text-indigo-600">PAM Context</span>
+          {user && (
+            <button
+              onClick={logout}
+              className="ml-auto text-xs text-gray-400 hover:text-gray-600"
+            >
+              Sign out
+            </button>
+          )}
         </div>
         <main className="flex-1 flex flex-col overflow-hidden">
           <Routes>
             <Route path="/" element={<ChatPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/admin" element={<AdminDashboard />} />
           </Routes>
         </main>
       </div>

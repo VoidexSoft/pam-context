@@ -225,25 +225,27 @@ A working system that:
 
 ### 2.3 Reranking Pipeline
 
-- [ ] Integrate Cohere Rerank API (or self-hosted cross-encoder)
+- [ ] Self-hosted cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2` via sentence-transformers)
 - [ ] Add reranking step after RRF fusion
 - [ ] A/B test retrieval quality with and without reranking
-- [ ] Configurable reranking model per project
+- [ ] Configurable reranking model (swappable cross-encoder models)
 
 ### 2.4 Permission System
 
 - [ ] RBAC model: roles (viewer, editor, admin) per project
 - [ ] JWT authentication with Google OAuth2 SSO
 - [ ] Permission-scoped retrieval (filter segments by user's projects)
-- [ ] API middleware for auth enforcement
+- [ ] API middleware for auth enforcement (optional in dev mode via `AUTH_REQUIRED` flag)
 - [ ] Admin endpoints for user/project management
 
 ### 2.5 Enhanced Agent Tools
 
-- [ ] `query_database` tool — text-to-SQL for analytics databases
-  - [ ] BigQuery connector
-  - [ ] PostgreSQL analytics connector
-  - [ ] SQL generation with schema awareness
+- [ ] `query_database` tool — text-to-SQL for analytics data via DuckDB
+  - [ ] DuckDB embedded engine (self-hosted, zero infra, columnar analytics)
+  - [ ] **Parquet as preferred format** — compact, schema-embedded, columnar for fast DuckDB scans
+  - [ ] Also accepts CSV/JSON; auto-converts to Parquet on registration for query performance
+  - [ ] Data file registration (users point at files to make them queryable)
+  - [ ] Schema auto-detection + SQL generation with guardrails (read-only, row limits)
   - [ ] Result formatting and citation
 - [ ] `get_document_context` tool — fetch full document for deep reading
 - [ ] `get_change_history` tool — query sync_log for recent changes

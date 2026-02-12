@@ -1,8 +1,11 @@
 """Retrieval agent using a simple tool-use loop with the Anthropic SDK."""
 
+from __future__ import annotations
+
 import json
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import structlog
 from anthropic import AsyncAnthropic
@@ -14,13 +17,24 @@ from pam.ingestion.embedders.base import BaseEmbedder
 from pam.retrieval.hybrid_search import HybridSearchService
 from pam.retrieval.types import SearchResult
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from pam.agent.duckdb_service import DuckDBService
+
 logger = structlog.get_logger()
 
-SYSTEM_PROMPT = """You are a business knowledge assistant. You answer questions using ONLY information \
-retrieved from the business knowledge base via the search_knowledge tool.
+SYSTEM_PROMPT = """You are a business knowledge assistant. You answer questions using information \
+retrieved from the business knowledge base via the available tools.
+
+Available tools:
+- search_knowledge: Search documents for relevant text segments.
+- get_document_context: Fetch full document content for deep reading.
+- get_change_history: See recent document changes and sync history.
+- query_database: Run SQL queries on analytics data files (CSV/Parquet/JSON).
 
 Rules:
-1. ALWAYS use the search_knowledge tool to find information before answering.
+1. ALWAYS use tools to find information before answering.
 2. Every factual claim MUST cite its source using this format: [Source: document_title > section](source_url)
 3. If the source_url is not available, use: [Source: document_title > section]
 4. If you cannot find relevant information, say so clearly — never make up facts.
@@ -56,12 +70,16 @@ class RetrievalAgent:
         api_key: str | None = None,
         model: str | None = None,
         cost_tracker: CostTracker | None = None,
+        db_session: AsyncSession | None = None,
+        duckdb_service: DuckDBService | None = None,
     ) -> None:
         self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
         self.model = model or settings.agent_model
         self.search = search_service
         self.embedder = embedder
         self.cost_tracker = cost_tracker or CostTracker()
+        self.db_session = db_session
+        self.duckdb_service = duckdb_service
 
     async def answer(self, question: str, conversation_history: list | None = None) -> AgentResponse:
         """Answer a question using the knowledge base.
@@ -160,6 +178,14 @@ class RetrievalAgent:
         """Execute a tool call and return (result_text, citations)."""
         if tool_name == "search_knowledge":
             return await self._search_knowledge(tool_input)
+        if tool_name == "get_document_context":
+            return await self._get_document_context(tool_input)
+        if tool_name == "get_change_history":
+            return await self._get_change_history(tool_input)
+        if tool_name == "query_database":
+            return await self._query_database(tool_input)
+        if tool_name == "search_entities":
+            return await self._search_entities(tool_input)
         return f"Unknown tool: {tool_name}", []
 
     async def _search_knowledge(self, input_: dict) -> tuple[str, list[Citation]]:
@@ -203,6 +229,152 @@ class RetrievalAgent:
             formatted_parts.append(f"[Result {i}] Source: {source_label}{url_part}\n{r.content}")
 
         return "\n\n---\n\n".join(formatted_parts), citations
+
+    async def _get_document_context(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Fetch full document content by title or source_id."""
+        if self.db_session is None:
+            return "Database session not available.", []
+
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from pam.common.models import Document, Segment
+
+        title = input_.get("document_title")
+        source_id = input_.get("source_id")
+
+        if not title and not source_id:
+            return "Please provide either document_title or source_id.", []
+
+        query = select(Document).options(selectinload(Document.segments))
+        if title:
+            query = query.where(Document.title.ilike(f"%{title}%"))
+        elif source_id:
+            query = query.where(Document.source_id == source_id)
+
+        result = await self.db_session.execute(query)
+        doc = result.scalar_one_or_none()
+
+        if doc is None:
+            return f"Document not found: {title or source_id}", []
+
+        # Sort segments by position and concatenate
+        segments = sorted(doc.segments, key=lambda s: s.position)
+        full_content = "\n\n".join(s.content for s in segments)
+
+        citation = Citation(
+            document_title=doc.title,
+            section_path=None,
+            source_url=doc.source_url,
+            segment_id=None,
+        )
+
+        header = f"Document: {doc.title}\nSource: {doc.source_id}\nSegments: {len(segments)}\n\n"
+        return header + full_content, [citation]
+
+    async def _get_change_history(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Query sync_log for recent changes."""
+        if self.db_session is None:
+            return "Database session not available.", []
+
+        from sqlalchemy import select
+        from pam.common.models import Document, SyncLog
+
+        limit = input_.get("limit", 20)
+        title = input_.get("document_title")
+
+        query = select(SyncLog).order_by(SyncLog.created_at.desc()).limit(limit)
+
+        if title:
+            # Join with documents to filter by title
+            subq = select(Document.id).where(Document.title.ilike(f"%{title}%"))
+            query = query.where(SyncLog.document_id.in_(subq))
+
+        result = await self.db_session.execute(query)
+        logs = result.scalars().all()
+
+        if not logs:
+            return "No change history found.", []
+
+        parts = []
+        for log in logs:
+            parts.append(
+                f"- [{log.created_at}] {log.action}"
+                f" | segments_affected: {log.segments_affected}"
+                f" | details: {json.dumps(log.details) if log.details else 'N/A'}"
+            )
+
+        return f"Recent changes ({len(logs)} records):\n" + "\n".join(parts), []
+
+    async def _query_database(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Execute a DuckDB SQL query over registered data files."""
+        if self.duckdb_service is None:
+            return "DuckDB service not configured. Set DUCKDB_DATA_DIR.", []
+
+        if input_.get("list_tables"):
+            tables = self.duckdb_service.list_tables()
+            if not tables:
+                return "No data tables registered.", []
+            parts = []
+            for t in tables:
+                if "error" in t:
+                    parts.append(f"- {t['table']} ({t['file']}): ERROR - {t['error']}")
+                else:
+                    cols = ", ".join(f"{c['name']} ({c['type']})" for c in t["columns"])
+                    parts.append(f"- {t['table']} ({t['file']}, {t['row_count']} rows): {cols}")
+            return "Available tables:\n" + "\n".join(parts), []
+
+        sql = input_.get("sql")
+        if not sql:
+            return "Please provide either 'sql' query or set 'list_tables' to true.", []
+
+        result = self.duckdb_service.execute_query(sql)
+        if "error" in result:
+            return f"Query error: {result['error']}", []
+
+        # Format as table
+        columns = result["columns"]
+        rows = result["rows"]
+        header = " | ".join(columns)
+        separator = " | ".join("---" for _ in columns)
+        body = "\n".join(" | ".join(str(v) for v in row) for row in rows)
+        truncated_note = "\n(Results truncated)" if result.get("truncated") else ""
+
+        return f"{header}\n{separator}\n{body}{truncated_note}\n\n({result['row_count']} rows)", []
+
+    async def _search_entities(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Search for extracted business entities."""
+        if self.db_session is None:
+            return "Database session not available.", []
+
+        from sqlalchemy import select, cast, String
+        from pam.common.models import ExtractedEntity
+
+        entity_type = input_.get("entity_type")
+        search_term = input_.get("search_term")
+        limit = input_.get("limit", 10)
+
+        query = select(ExtractedEntity).order_by(ExtractedEntity.confidence.desc()).limit(limit)
+
+        if entity_type:
+            query = query.where(ExtractedEntity.entity_type == entity_type)
+        if search_term:
+            # Search in the JSONB entity_data — cast to text for ILIKE
+            query = query.where(cast(ExtractedEntity.entity_data, String).ilike(f"%{search_term}%"))
+
+        result = await self.db_session.execute(query)
+        entities = result.scalars().all()
+
+        if not entities:
+            return "No matching entities found.", []
+
+        parts = []
+        for e in entities:
+            data_str = json.dumps(e.entity_data, indent=2)
+            parts.append(
+                f"[{e.entity_type}] (confidence: {e.confidence:.1%})\n{data_str}"
+            )
+
+        return f"Found {len(entities)} entities:\n\n" + "\n\n---\n\n".join(parts), []
 
     @staticmethod
     def _extract_text(content: list) -> str:

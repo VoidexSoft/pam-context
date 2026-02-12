@@ -14,7 +14,8 @@ from sqlalchemy import update as sa_update
 
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
-from pam.api.routes import chat, documents, ingest, search
+from pam.api.routes import admin, auth, chat, documents, ingest, search
+from pam.common.cache import close_redis, get_redis, ping_redis
 from pam.common.config import settings
 from pam.common.database import async_session_factory
 from pam.common.logging import configure_logging
@@ -36,6 +37,14 @@ async def lifespan(app: FastAPI):
     es_store = ElasticsearchStore(app.state.es_client)
     await es_store.ensure_index()
 
+    # Initialize Redis
+    try:
+        app.state.redis_client = await get_redis()
+        logger.info("redis_connected", url=settings.redis_url)
+    except Exception:
+        logger.warning("redis_connect_failed", exc_info=True)
+        app.state.redis_client = None
+
     # Clean up orphaned ingestion tasks from previous server runs
     async with async_session_factory() as session:
         await session.execute(
@@ -48,6 +57,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    await close_redis()
     await app.state.es_client.close()
 
 
@@ -75,6 +85,8 @@ def create_app() -> FastAPI:
     app.include_router(search.router, prefix="/api", tags=["search"])
     app.include_router(documents.router, prefix="/api", tags=["documents"])
     app.include_router(ingest.router, prefix="/api", tags=["ingest"])
+    app.include_router(auth.router, prefix="/api", tags=["auth"])
+    app.include_router(admin.router, prefix="/api", tags=["admin"])
 
     @app.get("/api/health")
     async def health(
@@ -101,6 +113,16 @@ def create_app() -> FastAPI:
             logger.warning("health_check_pg_failed", exc_info=True)
             services["postgres"] = "down"
 
+        # Check Redis
+        try:
+            if await ping_redis():
+                services["redis"] = "up"
+            else:
+                services["redis"] = "down"
+        except Exception:
+            logger.warning("health_check_redis_failed", exc_info=True)
+            services["redis"] = "down"
+
         all_up = all(v == "up" for v in services.values())
         status_code = 200 if all_up else 503
         return JSONResponse(
@@ -108,6 +130,7 @@ def create_app() -> FastAPI:
             content={
                 "status": "healthy" if all_up else "unhealthy",
                 "services": services,
+                "auth_required": settings.auth_required,
             },
         )
 

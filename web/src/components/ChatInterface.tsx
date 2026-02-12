@@ -6,9 +6,10 @@ interface Props {
   messages: ChatMessage[];
   loading: boolean;
   onSend: (message: string) => void;
+  onViewSource?: (segmentId: string) => void;
 }
 
-export default function ChatInterface({ messages, loading, onSend }: Props) {
+export default function ChatInterface({ messages, loading, onSend, onViewSource }: Props) {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +42,7 @@ export default function ChatInterface({ messages, loading, onSend }: Props) {
           </div>
         )}
         {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} />
+          <MessageBubble key={i} message={msg} onViewSource={onViewSource} />
         ))}
         {loading && (
           <div className="flex items-center gap-2 text-sm text-gray-400">

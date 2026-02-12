@@ -2,11 +2,22 @@ import { Citation } from "../api/client";
 
 interface Props {
   citation: Citation;
+  onViewSource?: (segmentId: string) => void;
 }
 
-export default function CitationLink({ citation }: Props) {
+export default function CitationLink({ citation, onViewSource }: Props) {
+  function handleClick(e: React.MouseEvent) {
+    if (citation.segment_id && onViewSource) {
+      e.preventDefault();
+      onViewSource(citation.segment_id);
+    }
+  }
+
   const content = (
-    <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer">
+    <span
+      onClick={handleClick}
+      className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
+    >
       <svg
         className="h-3 w-3"
         fill="none"
@@ -24,7 +35,7 @@ export default function CitationLink({ citation }: Props) {
     </span>
   );
 
-  if (citation.source_url) {
+  if (citation.source_url && !citation.segment_id) {
     return (
       <a href={citation.source_url} target="_blank" rel="noopener noreferrer">
         {content}
