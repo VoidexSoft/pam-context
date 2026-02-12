@@ -14,8 +14,8 @@ interface Props {
 
 export default function SearchFilters({ filters, onChange }: Props) {
   return (
-    <div className="flex items-center gap-2 px-3 sm:px-6 py-2 border-b border-gray-100 bg-gray-50/50">
-      <span className="text-xs text-gray-400 shrink-0">Filter:</span>
+    <div className="flex items-start gap-2 px-3 sm:px-6 py-2 border-b border-gray-100 bg-gray-50/50">
+      <span className="text-xs text-gray-400 shrink-0 pt-1">Filter:</span>
       <div className="flex gap-1.5 flex-wrap">
         {SOURCE_TYPES.map((type) => {
           const isActive = (filters.source_type || "") === type.value;

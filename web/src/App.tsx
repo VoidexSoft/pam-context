@@ -6,9 +6,43 @@ import AdminDashboard from "./pages/AdminDashboard";
 import LoginPage from "./pages/LoginPage";
 import { useAuth } from "./hooks/useAuth";
 
+const NAV_ITEMS = [
+  {
+    to: "/",
+    label: "Chat",
+    end: true,
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+      </svg>
+    ),
+  },
+  {
+    to: "/documents",
+    label: "Documents",
+    end: false,
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+      </svg>
+    ),
+  },
+  {
+    to: "/admin",
+    label: "Admin",
+    end: false,
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" />
+      </svg>
+    ),
+  },
+];
+
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `block px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+    `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
       isActive
         ? "bg-indigo-100 text-indigo-700"
         : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
@@ -33,15 +67,18 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           <p className="text-xs text-gray-400 mt-0.5">Business Knowledge Layer</p>
         </div>
         <nav className="flex-1 p-3 space-y-1">
-          <NavLink to="/" className={linkClass} end onClick={onClose}>
-            Chat
-          </NavLink>
-          <NavLink to="/documents" className={linkClass} onClick={onClose}>
-            Documents
-          </NavLink>
-          <NavLink to="/admin" className={linkClass} onClick={onClose}>
-            Admin
-          </NavLink>
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={linkClass}
+              end={item.end}
+              onClick={onClose}
+            >
+              {item.icon}
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
       </aside>
     </>

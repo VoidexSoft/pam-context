@@ -26,6 +26,16 @@ export default function SourceViewer({ segmentId, onClose }: Props) {
       .finally(() => setLoading(false));
   }, [segmentId]);
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!segmentId) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [segmentId, onClose]);
+
   if (!segmentId) return null;
 
   return (

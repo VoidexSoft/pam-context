@@ -36,8 +36,19 @@ export default function AdminDashboard() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-sm text-red-500 bg-red-50 rounded-lg p-4">{error}</div>
+      <div className="flex flex-col h-full">
+        <header className="px-6 py-3 border-b border-gray-200 bg-white">
+          <h2 className="text-base font-semibold text-gray-800">Admin Dashboard</h2>
+        </header>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-sm text-gray-500">
+              {error.includes("500") || error.includes("fetch")
+                ? "Could not reach the API server. Is the backend running?"
+                : error}
+            </p>
+          </div>
+        </div>
       </div>
     );
   }

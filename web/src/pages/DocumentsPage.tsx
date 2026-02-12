@@ -122,11 +122,15 @@ export default function DocumentsPage() {
             </button>
           </div>
 
-          {error && (
-            <p className="px-4 py-3 text-sm text-red-600">{error}</p>
-          )}
-
-          {loading && documents.length === 0 ? (
+          {error ? (
+            <div className="px-4 py-6 text-center">
+              <p className="text-sm text-gray-500">
+                {error.includes("500") || error.includes("fetch")
+                  ? "Could not reach the API server. Is the backend running?"
+                  : error}
+              </p>
+            </div>
+          ) : loading && documents.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-gray-400">
               Loading...
             </p>
