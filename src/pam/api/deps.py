@@ -32,16 +32,32 @@ def get_cache_service(request: Request) -> CacheService | None:
     return CacheService(redis_client)
 
 
+_embedder: OpenAIEmbedder | None = None
+
+
 def get_embedder() -> OpenAIEmbedder:
-    return OpenAIEmbedder()
+    global _embedder
+    if _embedder is None:
+        _embedder = OpenAIEmbedder()
+    return _embedder
+
+
+_reranker: BaseReranker | None = None
+_reranker_initialized: bool = False
 
 
 def get_reranker() -> BaseReranker | None:
-    if not settings.rerank_enabled:
-        return None
-    from pam.retrieval.rerankers.cross_encoder import CrossEncoderReranker
+    global _reranker, _reranker_initialized
+    if not _reranker_initialized:
+        if settings.rerank_enabled:
+            from pam.retrieval.rerankers.cross_encoder import CrossEncoderReranker
 
-    return CrossEncoderReranker(model_name=settings.rerank_model)
+            _reranker = CrossEncoderReranker(model_name=settings.rerank_model)
+        _reranker_initialized = True
+    return _reranker
+
+
+_search_service: HybridSearchService | None = None
 
 
 def get_search_service(
@@ -49,15 +65,19 @@ def get_search_service(
     cache: CacheService | None = Depends(get_cache_service),
     reranker: BaseReranker | None = Depends(get_reranker),
 ) -> HybridSearchService:
-    if settings.use_haystack_retrieval:
-        from pam.retrieval.haystack_search import HaystackSearchService
+    global _search_service
+    if _search_service is None:
+        if settings.use_haystack_retrieval:
+            from pam.retrieval.haystack_search import HaystackSearchService
 
-        return HaystackSearchService(  # type: ignore[return-value]
-            cache=cache,
-            rerank_enabled=settings.rerank_enabled,
-            rerank_model=settings.rerank_model,
-        )
-    return HybridSearchService(es_client, cache=cache, reranker=reranker)
+            _search_service = HaystackSearchService(  # type: ignore[return-value]
+                cache=cache,
+                rerank_enabled=settings.rerank_enabled,
+                rerank_model=settings.rerank_model,
+            )
+        else:
+            _search_service = HybridSearchService(es_client, cache=cache, reranker=reranker)
+    return _search_service
 
 
 def get_duckdb_service():

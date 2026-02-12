@@ -52,18 +52,15 @@ class HaystackSearchService:
             )
         return self._document_store
 
-    def _build_pipeline(self, top_k: int) -> Pipeline:
+    def _build_pipeline(self) -> Pipeline:
         """Build a Haystack hybrid retrieval pipeline."""
         pipeline = Pipeline()
 
         bm25_retriever = ElasticsearchBM25Retriever(
             document_store=self.document_store,
-            top_k=top_k * 2,
         )
         embedding_retriever = ElasticsearchEmbeddingRetriever(
             document_store=self.document_store,
-            top_k=top_k * 2,
-            num_candidates=top_k * 10,
         )
         joiner = DocumentJoiner(
             join_mode="reciprocal_rank_fusion",
@@ -79,12 +76,19 @@ class HaystackSearchService:
         if self._rerank_enabled:
             ranker = TransformersSimilarityRanker(
                 model=self._rerank_model,
-                top_k=top_k,
             )
             pipeline.add_component("ranker", ranker)
             pipeline.connect("joiner.documents", "ranker.documents")
 
         return pipeline
+
+    @property
+    def pipeline(self) -> Pipeline:
+        if self._pipeline is None:
+            self._pipeline = self._build_pipeline()
+            if self._rerank_enabled:
+                self._pipeline.warm_up()
+        return self._pipeline
 
     def _build_filters(
         self,
@@ -119,12 +123,6 @@ class HaystackSearchService:
         filters: dict | None,
     ) -> list[SearchResult]:
         """Run the Haystack pipeline synchronously (called via run_in_executor)."""
-        pipeline = self._build_pipeline(top_k)
-
-        # Warm up ranker if present
-        if self._rerank_enabled:
-            pipeline.warm_up()
-
         run_data: dict = {
             "bm25_retriever": {"query": query, "top_k": top_k * 2},
             "embedding_retriever": {"query_embedding": query_embedding, "top_k": top_k * 2},
@@ -137,7 +135,7 @@ class HaystackSearchService:
         if self._rerank_enabled:
             run_data["ranker"] = {"query": query, "top_k": top_k}
 
-        result = pipeline.run(data=run_data)
+        result = self.pipeline.run(data=run_data)
 
         # Get documents from the last component
         output_key = "ranker" if self._rerank_enabled else "joiner"
