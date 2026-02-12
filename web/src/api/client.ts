@@ -165,13 +165,14 @@ export function getStoredToken(): string | null {
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) || {}),
   };
   if (authToken) {
     headers["Authorization"] = `Bearer ${authToken}`;
   }
   const res = await fetch(`${BASE}${url}`, {
-    headers,
     ...init,
+    headers,
   });
   if (!res.ok) {
     const body = await res.text();
