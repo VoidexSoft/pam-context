@@ -3,6 +3,8 @@
 import os
 from unittest.mock import patch
 
+import pytest
+
 from pam.common.config import Settings
 
 
@@ -56,3 +58,50 @@ class TestSettings:
         with patch.dict(os.environ, env, clear=False):
             s = Settings(_env_file=None)
             assert "http://localhost:3000" in s.cors_origins
+
+
+class TestJwtSecretValidation:
+    def test_insecure_secret_with_auth_required_raises(self):
+        """Should raise if auth_required=True and JWT secret is a known insecure value."""
+        s = Settings(
+            _env_file=None,
+            auth_required=True,
+            jwt_secret="dev-secret-change-in-production-32b",
+        )
+        with pytest.raises(ValueError, match="Insecure JWT secret"):
+            s.validate_jwt_secret()
+
+    def test_insecure_secret_without_auth_is_ok(self):
+        """Should not raise if auth_required=False even with insecure secret."""
+        s = Settings(
+            _env_file=None,
+            auth_required=False,
+            jwt_secret="dev-secret-change-in-production-32b",
+        )
+        s.validate_jwt_secret()  # Should not raise
+
+    def test_secure_secret_with_auth_is_ok(self):
+        """Should not raise if JWT secret is a custom strong value."""
+        s = Settings(
+            _env_file=None,
+            auth_required=True,
+            jwt_secret="a-very-strong-and-unique-secret-key-1234567890",
+        )
+        s.validate_jwt_secret()  # Should not raise
+
+    def test_short_secret_with_auth_required_raises(self):
+        """Should raise if auth_required=True and JWT secret is shorter than 32 chars."""
+        s = Settings(
+            _env_file=None,
+            auth_required=True,
+            jwt_secret="too-short-secret",
+        )
+        with pytest.raises(ValueError, match="at least 32 characters"):
+            s.validate_jwt_secret()
+
+    def test_other_insecure_defaults_also_blocked(self):
+        """Other known-insecure secrets should also be rejected."""
+        for secret in ("secret", "changeme", "password"):
+            s = Settings(_env_file=None, auth_required=True, jwt_secret=secret)
+            with pytest.raises(ValueError, match="Insecure JWT secret"):
+                s.validate_jwt_secret()

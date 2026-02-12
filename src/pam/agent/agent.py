@@ -13,6 +13,7 @@ from anthropic import AsyncAnthropic
 
 from pam.agent.tools import ALL_TOOLS
 from pam.common.config import settings
+from pam.common.utils import escape_like
 from pam.common.logging import CostTracker
 from pam.ingestion.embedders.base import BaseEmbedder
 from pam.retrieval.hybrid_search import HybridSearchService
@@ -287,7 +288,7 @@ class RetrievalAgent:
 
         except Exception as e:
             logger.error("streaming_error", error=str(e))
-            yield {"type": "error", "message": str(e)}
+            yield {"type": "error", "message": "An internal error occurred. Please try again."}
 
     @staticmethod
     def _chunk_text(text: str, size: int = 4) -> list[str]:
@@ -374,7 +375,7 @@ class RetrievalAgent:
 
         query = select(Document).options(selectinload(Document.segments))
         if title:
-            query = query.where(Document.title.ilike(f"%{title}%"))
+            query = query.where(Document.title.ilike(f"%{escape_like(title)}%"))
         elif source_id:
             query = query.where(Document.source_id == source_id)
 
@@ -413,7 +414,7 @@ class RetrievalAgent:
 
         if title:
             # Join with documents to filter by title
-            subq = select(Document.id).where(Document.title.ilike(f"%{title}%"))
+            subq = select(Document.id).where(Document.title.ilike(f"%{escape_like(title)}%"))
             query = query.where(SyncLog.document_id.in_(subq))
 
         result = await self.db_session.execute(query)
@@ -486,7 +487,7 @@ class RetrievalAgent:
             query = query.where(ExtractedEntity.entity_type == entity_type)
         if search_term:
             # Search in the JSONB entity_data — cast to text for ILIKE
-            query = query.where(cast(ExtractedEntity.entity_data, String).ilike(f"%{search_term}%"))
+            query = query.where(cast(ExtractedEntity.entity_data, String).ilike(f"%{escape_like(search_term)}%"))
 
         result = await self.db_session.execute(query)
         entities = result.scalars().all()

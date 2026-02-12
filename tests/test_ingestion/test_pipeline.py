@@ -1,7 +1,8 @@
 """Tests for IngestionPipeline — orchestration of the full ingestion flow."""
 
 import uuid
-from unittest.mock import AsyncMock, Mock, patch
+from collections import OrderedDict
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from pam.common.models import DocumentInfo, RawDocument
 from pam.ingestion.pipeline import IngestionPipeline
@@ -132,6 +133,100 @@ class TestIngestDocument:
         assert result.error == "fetch failed"
         assert result.segments_created == 0
         mock_db_session.rollback.assert_called_once()
+
+
+    @patch("pam.ingestion.pipeline.chunk_document")
+    @patch("pam.ingestion.pipeline.PostgresStore")
+    async def test_pg_commits_before_es_writes(
+        self,
+        mock_pg_cls,
+        mock_chunk_fn,
+        mock_connector,
+        mock_parser,
+        mock_embedder,
+        mock_es_store,
+        mock_db_session,
+    ):
+        """PG commit must happen before ES writes to prevent inconsistency."""
+        raw_doc = RawDocument(
+            content=b"# Test",
+            content_type="text/markdown",
+            source_id="/test.md",
+            title="Test",
+        )
+        mock_connector.fetch_document = AsyncMock(return_value=raw_doc)
+        mock_connector.get_content_hash = AsyncMock(return_value="newhash")
+
+        mock_pg = AsyncMock()
+        mock_pg.get_document_by_source = AsyncMock(return_value=None)
+        doc_id = uuid.uuid4()
+        mock_pg.upsert_document = AsyncMock(return_value=doc_id)
+        mock_pg.save_segments = AsyncMock(return_value=1)
+        mock_pg.log_sync = AsyncMock()
+        mock_pg_cls.return_value = mock_pg
+
+        mock_chunk = Mock(content="chunk", content_hash="h1", section_path=None, segment_type="text", position=0)
+        mock_chunk_fn.return_value = [mock_chunk]
+        mock_embedder.embed_texts_with_cache = AsyncMock(return_value=[[0.1] * 1536])
+
+        # Track call order
+        call_order = []
+        original_commit = mock_db_session.commit
+        mock_db_session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
+        mock_es_store.delete_by_document = AsyncMock(side_effect=lambda *a: call_order.append("es_delete"))
+        mock_es_store.bulk_index = AsyncMock(side_effect=lambda *a: call_order.append("es_index"))
+
+        pipeline = _make_pipeline(mock_connector, mock_parser, mock_embedder, mock_es_store, mock_db_session)
+        result = await pipeline.ingest_document("/test.md")
+
+        assert result.error is None
+        assert call_order.index("commit") < call_order.index("es_delete")
+        assert call_order.index("commit") < call_order.index("es_index")
+
+    @patch("pam.ingestion.pipeline.chunk_document")
+    @patch("pam.ingestion.pipeline.PostgresStore")
+    async def test_es_failure_after_pg_commit_does_not_crash(
+        self,
+        mock_pg_cls,
+        mock_chunk_fn,
+        mock_connector,
+        mock_parser,
+        mock_embedder,
+        mock_es_store,
+        mock_db_session,
+    ):
+        """ES write failure after PG commit should log but not raise."""
+        raw_doc = RawDocument(
+            content=b"# Test",
+            content_type="text/markdown",
+            source_id="/test.md",
+            title="Test",
+        )
+        mock_connector.fetch_document = AsyncMock(return_value=raw_doc)
+        mock_connector.get_content_hash = AsyncMock(return_value="newhash")
+
+        mock_pg = AsyncMock()
+        mock_pg.get_document_by_source = AsyncMock(return_value=None)
+        doc_id = uuid.uuid4()
+        mock_pg.upsert_document = AsyncMock(return_value=doc_id)
+        mock_pg.save_segments = AsyncMock(return_value=1)
+        mock_pg.log_sync = AsyncMock()
+        mock_pg_cls.return_value = mock_pg
+
+        mock_chunk = Mock(content="chunk", content_hash="h1", section_path=None, segment_type="text", position=0)
+        mock_chunk_fn.return_value = [mock_chunk]
+        mock_embedder.embed_texts_with_cache = AsyncMock(return_value=[[0.1] * 1536])
+
+        # ES fails after PG commit
+        mock_es_store.delete_by_document = AsyncMock(side_effect=RuntimeError("ES connection refused"))
+
+        pipeline = _make_pipeline(mock_connector, mock_parser, mock_embedder, mock_es_store, mock_db_session)
+        result = await pipeline.ingest_document("/test.md")
+
+        # Should succeed — PG is authoritative, ES failure is tolerated
+        assert result.error is None
+        assert result.segments_created == 1
+        mock_db_session.commit.assert_called_once()
 
 
 class TestIngestAll:

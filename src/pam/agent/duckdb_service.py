@@ -12,11 +12,19 @@ from pam.common.config import settings
 
 logger = structlog.get_logger()
 
-# SQL injection guard: only allow SELECT statements
+# SQL injection guard: block write operations and dangerous commands
 _FORBIDDEN_PATTERNS = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE|COPY)\b",
+    r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE"
+    r"|EXEC|EXECUTE|COPY|ATTACH|DETACH|PRAGMA|INSTALL|LOAD)\b",
     re.IGNORECASE,
 )
+
+
+def _contains_multiple_statements(sql: str) -> bool:
+    """Reject SQL containing semicolons (multi-statement chaining)."""
+    # Strip trailing whitespace/semicolons, then check for remaining semicolons
+    stripped = sql.strip().rstrip(";").strip()
+    return ";" in stripped
 
 
 class DuckDBService:
@@ -69,9 +77,13 @@ class DuckDBService:
         Returns:
             {"columns": [...], "rows": [...], "row_count": int, "truncated": bool}
         """
-        # Guard: reject non-SELECT queries
+        # Guard 1: reject forbidden keywords
         if _FORBIDDEN_PATTERNS.search(sql):
             return {"error": "Only SELECT queries are allowed. Write operations are forbidden."}
+
+        # Guard 2: reject multi-statement SQL (semicolon chaining)
+        if _contains_multiple_statements(sql):
+            return {"error": "Multi-statement queries are not allowed."}
 
         if not self._tables:
             self.register_files()
@@ -82,13 +94,20 @@ class DuckDBService:
         try:
             conn = duckdb.connect(":memory:")
 
-            # Register each file as a view
+            # Materialize each file as an in-memory table
             for name, path in self._tables.items():
                 rel = self._read_file(conn, path)
-                rel.create_view(name)
+                rel.create(name)
+
+            # Lock down: disable external access after data is loaded
+            conn.execute("SET enable_external_access = false")
+            conn.execute("SET lock_configuration = true")
+
+            # Strip trailing semicolons before wrapping
+            clean_sql = sql.strip().rstrip(";").strip()
 
             # Execute with row limit
-            limited_sql = f"SELECT * FROM ({sql}) AS _q LIMIT {self.max_rows + 1}"
+            limited_sql = f"SELECT * FROM ({clean_sql}) AS _q LIMIT {self.max_rows + 1}"
             result = conn.execute(limited_sql)
             columns = [desc[0] for desc in result.description]
             rows = result.fetchall()

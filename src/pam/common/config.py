@@ -2,6 +2,13 @@
 
 from pydantic_settings import BaseSettings
 
+_INSECURE_SECRETS = {
+    "dev-secret-change-in-production-32b",
+    "secret",
+    "changeme",
+    "password",
+}
+
 
 class Settings(BaseSettings):
     # PostgreSQL
@@ -57,6 +64,18 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    def validate_jwt_secret(self) -> None:
+        """Raise if auth is required but JWT secret is insecure."""
+        if self.auth_required and self.jwt_secret in _INSECURE_SECRETS:
+            raise ValueError(
+                "Insecure JWT secret detected with AUTH_REQUIRED=true. "
+                "Set JWT_SECRET to a strong, unique value (>= 32 characters)."
+            )
+        if self.auth_required and len(self.jwt_secret) < 32:
+            raise ValueError(
+                "JWT_SECRET must be at least 32 characters when AUTH_REQUIRED=true."
+            )
 
 
 settings = Settings()

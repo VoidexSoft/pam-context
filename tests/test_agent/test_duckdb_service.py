@@ -126,6 +126,52 @@ class TestSQLGuardrails:
         assert "error" in result
 
 
+    def test_blocks_attach(self, service):
+        result = service.execute_query("ATTACH '/tmp/evil.db'")
+        assert "error" in result
+
+    def test_blocks_pragma(self, service):
+        result = service.execute_query("PRAGMA version")
+        assert "error" in result
+
+    def test_blocks_install(self, service):
+        result = service.execute_query("INSTALL httpfs")
+        assert "error" in result
+
+    def test_blocks_load(self, service):
+        result = service.execute_query("LOAD httpfs")
+        assert "error" in result
+
+    def test_blocks_semicolon_chaining(self, service):
+        result = service.execute_query("SELECT 1; SELECT 2")
+        assert "error" in result
+        assert "Multi-statement" in result["error"]
+
+    def test_allows_trailing_semicolon(self, service):
+        result = service.execute_query("SELECT 1 as test;")
+        assert "error" not in result
+
+    def test_blocks_external_access_at_runtime(self, service):
+        """DuckDB's enable_external_access=false should block read_csv_auto etc."""
+        result = service.execute_query("SELECT * FROM read_csv_auto('/etc/passwd')")
+        assert "error" in result
+
+
+    def test_blocks_sql_comment_with_dangerous_suffix(self, service):
+        """SQL comments should not bypass multi-statement detection."""
+        result = service.execute_query("SELECT 1; --DROP TABLE sales")
+        assert "error" in result
+
+    def test_allows_cte_query(self, service):
+        """Common Table Expressions (WITH ... AS) are legitimate and should work."""
+        result = service.execute_query(
+            "WITH top_sales AS (SELECT * FROM sales WHERE revenue > 100000) "
+            "SELECT COUNT(*) as cnt FROM top_sales"
+        )
+        assert "error" not in result
+        assert result["row_count"] == 1
+
+
 class TestNoDataDir:
     def test_returns_error_without_data(self):
         svc = DuckDBService(data_dir="")

@@ -185,29 +185,43 @@ Serves as the **primary retrieval engine**, handling both vector similarity and 
 - **Hybrid search**: native support for combining vector + BM25 scores
 - **Filtering**: by project, owner, source_type, tags, date ranges
 
-Index mapping:
+Index mapping (Haystack-compatible — metadata nested under `meta`):
 ```json
 {
   "mappings": {
     "properties": {
       "content": { "type": "text", "analyzer": "standard" },
       "embedding": { "type": "dense_vector", "dims": 1536, "similarity": "cosine" },
-      "source_type": { "type": "keyword" },
-      "project": { "type": "keyword" },
-      "owner": { "type": "keyword" },
-      "tags": { "type": "keyword" },
-      "updated_at": { "type": "date" },
-      "segment_type": { "type": "keyword" }
+      "meta": {
+        "properties": {
+          "segment_id": { "type": "keyword" },
+          "document_id": { "type": "keyword" },
+          "source_type": { "type": "keyword" },
+          "source_id": { "type": "keyword" },
+          "source_url": { "type": "keyword" },
+          "document_title": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+          "section_path": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+          "segment_type": { "type": "keyword" },
+          "position": { "type": "integer" },
+          "project": { "type": "keyword" },
+          "owner": { "type": "keyword" },
+          "tags": { "type": "keyword" },
+          "updated_at": { "type": "date" }
+        }
+      }
     }
   }
 }
 ```
+
+> **Note**: The mapping nests metadata under `meta.*` for compatibility with [Haystack 2.x](https://haystack.deepset.ai/) `ElasticsearchDocumentStore`. `content` and `embedding` remain at the top level.
 
 **Why Elasticsearch over separate vector DB + BM25:**
 - Native hybrid search (no external fusion needed)
 - Mature, battle-tested at scale
 - One system to operate instead of two
 - Strong metadata filtering capabilities alongside vector search
+- Compatible with Haystack 2.x pipelines for standardized retrieval
 
 > **Note**: For teams wanting an even simpler Phase 1, pgvector + pg_trgm in PostgreSQL is a viable alternative that eliminates a service. Elasticsearch becomes clearly beneficial at scale (>5-10M vectors) or when advanced BM25 tuning is needed.
 
@@ -316,16 +330,32 @@ Response + Citations
 
 #### Hybrid Retrieval Pipeline
 
+Two interchangeable backends are available, selected via the `USE_HAYSTACK_RETRIEVAL` env var:
+
+**Legacy (default)** — custom async ES queries with manual RRF fusion:
 ```
+Query → ES kNN + ES BM25 → RRF fusion → optional cross-encoder rerank → Top-K
+```
+
+**Haystack 2.x** (`USE_HAYSTACK_RETRIEVAL=true`) — Haystack component pipeline:
+```
+Query → ElasticsearchEmbeddingRetriever + ElasticsearchBM25Retriever
+      → DocumentJoiner (RRF) → optional TransformersSimilarityRanker → Top-K
+```
+
+Both backends support the same filters (source_type, project, date_from, date_to) and produce identical `SearchResult` output. The Haystack backend uses `haystack_adapter.py` to convert between PAM types and Haystack `Document` objects.
+
+```
+Full pipeline:
 Query
   ↓
   ├── Vector search (Elasticsearch dense_vector)
   ├── BM25 search (Elasticsearch full-text)
-  └── Graph lookup (Neo4j — if entity/relationship query)
+  └── Graph lookup (Neo4j — if entity/relationship query, Phase 3)
   ↓
 Reciprocal Rank Fusion (RRF)
   ↓
-Reranking (Cohere Rerank or cross-encoder)
+Reranking (cross-encoder, optional)
   ↓
 Permission filtering
   ↓

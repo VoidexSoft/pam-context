@@ -139,10 +139,14 @@ CREATE TABLE sync_log (
 
 ### 1.6 Elasticsearch Setup
 
-- [x] Index template with vector + text fields
+- [x] Index template with vector + text fields (Haystack-compatible `meta.*` structure)
 - [x] Bulk indexing pipeline for segments
 - [x] Basic hybrid search (vector + BM25 + RRF)
 - [x] Filter by project, source_type, date
+- [x] Haystack 2.x integration — `HaystackSearchService` as drop-in alternative backend
+  - [x] `haystack-ai` + `elasticsearch-haystack` dependencies
+  - [x] Haystack adapter for PAM ↔ Haystack type conversions
+  - [x] Config toggle `USE_HAYSTACK_RETRIEVAL` (default: `false`)
 
 ### 1.7 Retrieval Agent (Basic)
 
@@ -190,6 +194,7 @@ A working system that:
 - Ingests Google Docs and Markdown files
 - Parses them with Docling into structured chunks (configurable chunk size)
 - Stores in Elasticsearch (vector + BM25) and PostgreSQL (metadata)
+- Two retrieval backends: custom async ES queries (default) or Haystack 2.x pipeline (toggle via config)
 - Answers questions with hybrid retrieval and citations
 - Basic web UI for interaction
 - Retrieval quality measured against curated evaluation set

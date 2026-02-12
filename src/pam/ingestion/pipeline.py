@@ -110,15 +110,25 @@ class IngestionPipeline:
 
             count = await pg_store.save_segments(doc_id, segments)
 
-            # 8. Write to Elasticsearch (delete old, index new)
-            await self.es_store.delete_by_document(doc_id)
-            await self.es_store.bulk_index(segments)
-
-            # 9. Log sync
+            # 8. Log sync
             action = "updated" if existing_doc else "created"
             await pg_store.log_sync(doc_id, action, count)
 
+            # 9. Commit PG first — PG is authoritative
             await self.session.commit()
+
+            # 10. Write to Elasticsearch (delete old, index new)
+            # If ES fails after PG commit, log error but don't fail — ES catches up on re-ingestion
+            try:
+                await self.es_store.delete_by_document(doc_id)
+                await self.es_store.bulk_index(segments)
+            except Exception as es_err:
+                logger.error(
+                    "pipeline_es_write_failed",
+                    source_id=source_id,
+                    doc_id=str(doc_id),
+                    error=str(es_err),
+                )
 
             logger.info("pipeline_complete", source_id=source_id, title=raw_doc.title, segments=count, action=action)
             return IngestionResult(source_id=source_id, title=raw_doc.title, segments_created=count)

@@ -16,10 +16,11 @@ This document details every technology choice, the rationale behind it, and alte
 | Parsing | Chunking | Docling HybridChunker | MIT |
 | Parsing | Entity extraction | **LangExtract** (Google) — Phase 2 | Apache 2.0 |
 | Parsing | Embeddings | OpenAI `text-embedding-3-large` (1536 dims via Matryoshka) | Proprietary API |
-| Storage | Vector + BM25 | **Elasticsearch** 8.x | SSPL / Elastic License |
+| Storage | Vector + BM25 | **Elasticsearch** 8.x (+ **Haystack 2.x** pipeline option) | SSPL / Elastic License + Apache 2.0 |
 | Storage | Catalog & metadata | **PostgreSQL** 16 | PostgreSQL License |
 | Storage | Knowledge graph | **Neo4j** 5.x Community + **Graphiti** | GPL (Community) / MIT |
 | Storage | Cache | **Redis** 7.x (Phase 2+; in-memory caching for Phase 1) | RSALv2 |
+| Retrieval | Pipeline framework | **Haystack** 2.x (`haystack-ai` + `elasticsearch-haystack`) | Apache 2.0 |
 | Orchestration | Agent framework | **Claude Agent SDK** or **LangGraph** (evaluate in Phase 1) | MIT |
 | Orchestration | Reranking | Cohere Rerank API or `cross-encoder/ms-marco-MiniLM-L-12-v2` | Proprietary / Apache 2.0 |
 | LLM | Primary model | **Claude** (Sonnet 4.5 / Opus 4.6) | Proprietary API |
@@ -62,6 +63,29 @@ This document details every technology choice, the rationale behind it, and alte
 | Pinecone + Elasticsearch | Best managed vector + best BM25 | Two vendors, higher cost |
 
 **Decision**: Elasticsearch provides vector + BM25 + filtering in one system. Avoids multi-system fusion complexity. For teams wanting even simpler Phase 1 ops, pgvector + pg_trgm is a viable stepping stone (migrate to ES when scaling demands it).
+
+### Haystack 2.x (Retrieval Pipeline)
+
+**Why Haystack as an optional retrieval backend:**
+
+Haystack 2.x provides a component-based pipeline framework for building retrieval systems. It integrates natively with Elasticsearch via `elasticsearch-haystack` and provides:
+
+- **`ElasticsearchBM25Retriever`** + **`ElasticsearchEmbeddingRetriever`** — pre-built components for BM25 and vector search
+- **`DocumentJoiner`** — built-in RRF (Reciprocal Rank Fusion) for combining retrieval results
+- **`TransformersSimilarityRanker`** — cross-encoder reranking as a pipeline component
+- **Standardized `Document` model** — consistent data format across the retrieval stack
+
+| Approach | Pros | Cons |
+|---|---|---|
+| **Custom ES queries (legacy)** | Full control, async-native, no extra deps | Manual RRF implementation, maintenance burden |
+| **Haystack 2.x (added)** | Standardized components, easy to swap retrievers/rankers, community ecosystem | Sync pipeline (requires `run_in_executor`), extra dependency |
+
+**Decision**: Both backends are available behind a config toggle (`USE_HAYSTACK_RETRIEVAL`). The legacy backend remains the default. Haystack provides a more composable pipeline for experimenting with different retrieval strategies. The ES index mapping was updated to nest metadata under `meta.*` for compatibility with both backends.
+
+**Key files**:
+- `src/pam/retrieval/haystack_search.py` — `HaystackSearchService` (drop-in replacement)
+- `src/pam/common/haystack_adapter.py` — Type conversions between PAM and Haystack models
+- `src/pam/api/deps.py` — Backend selection via config toggle
 
 ### Neo4j + Graphiti (Knowledge Graph)
 
@@ -188,6 +212,8 @@ langextract>=0.1
 
 # Storage clients
 elasticsearch>=8.0
+haystack-ai>=2.0
+elasticsearch-haystack>=1.0
 psycopg[binary]>=3.0
 neo4j>=5.0
 redis>=5.0
