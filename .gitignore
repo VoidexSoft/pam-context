@@ -39,3 +39,6 @@ test_docs/
 .coverage
 .pytest_cache/
 .ruff_cache/
+
+# Tool logs
+.playwright-mcp/

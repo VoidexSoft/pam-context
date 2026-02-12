@@ -49,6 +49,14 @@ def get_search_service(
     cache: CacheService | None = Depends(get_cache_service),
     reranker: BaseReranker | None = Depends(get_reranker),
 ) -> HybridSearchService:
+    if settings.use_haystack_retrieval:
+        from pam.retrieval.haystack_search import HaystackSearchService
+
+        return HaystackSearchService(  # type: ignore[return-value]
+            cache=cache,
+            rerank_enabled=settings.rerank_enabled,
+            rerank_model=settings.rerank_model,
+        )
     return HybridSearchService(es_client, cache=cache, reranker=reranker)
 
 

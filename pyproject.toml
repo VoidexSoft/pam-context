@@ -28,6 +28,9 @@ dependencies = [
     "duckdb>=1.0",
     # Auth
     "pyjwt>=2.8",
+    # Haystack (retrieval pipeline)
+    "haystack-ai>=2.9",
+    "elasticsearch-haystack>=2.0",
     # Reranking
     "sentence-transformers>=3.0",
     # Utilities

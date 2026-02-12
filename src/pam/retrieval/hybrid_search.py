@@ -1,4 +1,8 @@
-"""Hybrid search combining vector similarity and BM25 via Elasticsearch RRF."""
+"""Hybrid search combining vector similarity and BM25 via Elasticsearch RRF.
+
+Note: This is the legacy search service using raw ES queries. When
+settings.use_haystack_retrieval is True, HaystackSearchService is used instead.
+"""
 
 from __future__ import annotations
 
@@ -52,19 +56,19 @@ class HybridSearchService:
                 logger.info("hybrid_search_cache_hit", query_length=len(query))
                 return [SearchResult(**r) for r in cached]
 
-        # Build filter clauses
+        # Build filter clauses (metadata fields are nested under meta.*)
         filters = []
         if source_type:
-            filters.append({"term": {"source_type": source_type}})
+            filters.append({"term": {"meta.source_type": source_type}})
         if project:
-            filters.append({"term": {"project": project}})
+            filters.append({"term": {"meta.project": project}})
         if date_from or date_to:
             date_range: dict[str, str] = {}
             if date_from:
                 date_range["gte"] = date_from.isoformat()
             if date_to:
                 date_range["lte"] = date_to.isoformat()
-            filters.append({"range": {"updated_at": date_range}})
+            filters.append({"range": {"meta.updated_at": date_range}})
 
         # Build RRF retriever query (ES 8.x)
         standard_query: dict = {"match": {"content": query}}
@@ -108,16 +112,17 @@ class HybridSearchService:
         results = []
         for hit in response["hits"]["hits"]:
             src = hit["_source"]
+            meta = src.get("meta", {})
             results.append(
                 SearchResult(
-                    segment_id=src.get("segment_id", hit["_id"]),
+                    segment_id=meta.get("segment_id", hit["_id"]),
                     content=src.get("content", ""),
                     score=hit.get("_score", 0.0),
-                    source_url=src.get("source_url"),
-                    source_id=src.get("source_id"),
-                    section_path=src.get("section_path"),
-                    document_title=src.get("document_title"),
-                    segment_type=src.get("segment_type", "text"),
+                    source_url=meta.get("source_url"),
+                    source_id=meta.get("source_id"),
+                    section_path=meta.get("section_path"),
+                    document_title=meta.get("document_title"),
+                    segment_type=meta.get("segment_type", "text"),
                 )
             )
 

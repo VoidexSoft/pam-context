@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     redis_segment_ttl: int = 3600  # 1 hour for segment data
     redis_session_ttl: int = 86400  # 24 hours for conversation sessions
 
+    # Haystack
+    use_haystack_retrieval: bool = False  # Set True to use Haystack-based retrieval pipeline
+
     # Reranking
     rerank_enabled: bool = False  # Set True to enable cross-encoder reranking
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"

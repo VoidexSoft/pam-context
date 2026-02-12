@@ -13,13 +13,15 @@ def _make_es_hit(segment_id=None, content="test content", score=1.0):
         "_id": sid,
         "_score": score,
         "_source": {
-            "segment_id": sid,
             "content": content,
-            "source_url": "file:///test.md",
-            "source_id": "/test.md",
-            "section_path": "Intro",
-            "document_title": "Test Doc",
-            "segment_type": "text",
+            "meta": {
+                "segment_id": sid,
+                "source_url": "file:///test.md",
+                "source_id": "/test.md",
+                "section_path": "Intro",
+                "document_title": "Test Doc",
+                "segment_type": "text",
+            },
         },
     }
 
@@ -54,7 +56,7 @@ class TestHybridSearch:
         # The standard retriever should include a filter
         standard = retrievers[0]["standard"]["query"]
         assert "bool" in standard
-        assert any(f.get("term", {}).get("source_type") == "markdown" for f in standard["bool"]["filter"])
+        assert any(f.get("term", {}).get("meta.source_type") == "markdown" for f in standard["bool"]["filter"])
 
     async def test_search_with_project_filter(self, mock_es_client):
         mock_es_client.search = AsyncMock(return_value={"hits": {"hits": []}})
@@ -64,7 +66,7 @@ class TestHybridSearch:
         call_body = mock_es_client.search.call_args[1]["body"]
         retrievers = call_body["retriever"]["rrf"]["retrievers"]
         standard = retrievers[0]["standard"]["query"]
-        assert any(f.get("term", {}).get("project") == "finance" for f in standard["bool"]["filter"])
+        assert any(f.get("term", {}).get("meta.project") == "finance" for f in standard["bool"]["filter"])
 
     async def test_search_respects_top_k(self, mock_es_client):
         mock_es_client.search = AsyncMock(return_value={"hits": {"hits": []}})

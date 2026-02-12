@@ -10,11 +10,10 @@ from pam.common.models import KnowledgeSegment
 
 logger = structlog.get_logger()
 
+# Haystack-compatible mapping: content + embedding at top level, metadata under meta.*
 INDEX_MAPPING = {
     "mappings": {
         "properties": {
-            "segment_id": {"type": "keyword"},
-            "document_id": {"type": "keyword"},
             "content": {"type": "text", "analyzer": "standard"},
             "embedding": {
                 "type": "dense_vector",
@@ -22,17 +21,23 @@ INDEX_MAPPING = {
                 "index": True,
                 "similarity": "cosine",
             },
-            "source_type": {"type": "keyword"},
-            "source_id": {"type": "keyword"},
-            "source_url": {"type": "keyword"},
-            "document_title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-            "section_path": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-            "segment_type": {"type": "keyword"},
-            "position": {"type": "integer"},
-            "project": {"type": "keyword"},
-            "owner": {"type": "keyword"},
-            "tags": {"type": "keyword"},
-            "updated_at": {"type": "date"},
+            "meta": {
+                "properties": {
+                    "segment_id": {"type": "keyword"},
+                    "document_id": {"type": "keyword"},
+                    "source_type": {"type": "keyword"},
+                    "source_id": {"type": "keyword"},
+                    "source_url": {"type": "keyword"},
+                    "document_title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                    "section_path": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                    "segment_type": {"type": "keyword"},
+                    "position": {"type": "integer"},
+                    "project": {"type": "keyword"},
+                    "owner": {"type": "keyword"},
+                    "tags": {"type": "keyword"},
+                    "updated_at": {"type": "date"},
+                }
+            },
         }
     },
     "settings": {
@@ -57,7 +62,7 @@ class ElasticsearchStore:
             logger.info("elasticsearch_index_exists", index=self.index_name)
 
     async def bulk_index(self, segments: list[KnowledgeSegment]) -> int:
-        """Index segments with embeddings using bulk API."""
+        """Index segments with embeddings using bulk API (Haystack-compatible format)."""
         if not segments:
             return 0
 
@@ -69,17 +74,19 @@ class ElasticsearchStore:
 
             action = {"index": {"_index": self.index_name, "_id": str(seg.id)}}
             doc = {
-                "segment_id": str(seg.id),
-                "document_id": str(seg.document_id) if seg.document_id else None,
                 "content": seg.content,
                 "embedding": seg.embedding,
-                "source_type": seg.source_type,
-                "source_id": seg.source_id,
-                "source_url": seg.source_url,
-                "document_title": seg.document_title,
-                "section_path": seg.section_path,
-                "segment_type": seg.segment_type,
-                "position": seg.position,
+                "meta": {
+                    "segment_id": str(seg.id),
+                    "document_id": str(seg.document_id) if seg.document_id else None,
+                    "source_type": seg.source_type,
+                    "source_id": seg.source_id,
+                    "source_url": seg.source_url,
+                    "document_title": seg.document_title,
+                    "section_path": seg.section_path,
+                    "segment_type": seg.segment_type,
+                    "position": seg.position,
+                },
             }
             actions.append(action)
             actions.append(doc)
@@ -106,7 +113,7 @@ class ElasticsearchStore:
         """Delete all segments for a given document."""
         response = await self.client.delete_by_query(
             index=self.index_name,
-            body={"query": {"term": {"document_id": str(document_id)}}},
+            body={"query": {"term": {"meta.document_id": str(document_id)}}},
             refresh=True,
         )
         deleted = response.get("deleted", 0)
