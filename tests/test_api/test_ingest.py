@@ -7,10 +7,12 @@ from pam.common.models import IngestionTask
 
 
 class TestIngestEndpoint:
+    @patch("pam.api.routes.ingest.settings")
     @patch("pam.api.routes.ingest.spawn_ingestion_task")
     @patch("pam.api.routes.ingest.create_task")
-    async def test_ingest_returns_202(self, mock_create, mock_spawn, client, tmp_path):
+    async def test_ingest_returns_202(self, mock_create, mock_spawn, mock_settings, client, tmp_path):
         (tmp_path / "doc.md").write_text("# Test")
+        mock_settings.ingest_root = str(tmp_path)
 
         task_id = uuid.uuid4()
         mock_task = MagicMock(spec=IngestionTask)
@@ -33,6 +35,37 @@ class TestIngestEndpoint:
             json={"path": "/nonexistent/path"},
         )
         assert response.status_code == 400
+
+    @patch("pam.api.routes.ingest.settings")
+    async def test_ingest_root_not_configured(self, mock_settings, client, tmp_path):
+        mock_settings.ingest_root = ""
+        response = await client.post(
+            "/api/ingest/folder",
+            json={"path": str(tmp_path)},
+        )
+        assert response.status_code == 400
+        assert "not configured" in response.json()["detail"]
+
+    @patch("pam.api.routes.ingest.settings")
+    async def test_ingest_path_outside_root(self, mock_settings, client, tmp_path):
+        mock_settings.ingest_root = str(tmp_path / "allowed")
+        response = await client.post(
+            "/api/ingest/folder",
+            json={"path": "/etc"},
+        )
+        assert response.status_code == 403
+        assert "outside" in response.json()["detail"]
+
+    @patch("pam.api.routes.ingest.settings")
+    async def test_ingest_path_traversal_rejected(self, mock_settings, client, tmp_path):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        mock_settings.ingest_root = str(allowed)
+        response = await client.post(
+            "/api/ingest/folder",
+            json={"path": str(allowed / ".." / "other")},
+        )
+        assert response.status_code == 403
 
     @patch("pam.api.routes.ingest.get_task")
     async def test_get_task_found(self, mock_get_task, client):

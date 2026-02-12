@@ -47,6 +47,7 @@ class Settings(BaseSettings):
 
     # Ingestion
     chunk_size_tokens: int = 512
+    ingest_root: str = ""  # Required base directory for folder ingestion; empty = reject all
 
     # App
     log_level: str = "INFO"

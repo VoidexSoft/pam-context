@@ -8,8 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pam.api.auth import require_admin
 from pam.api.deps import get_db, get_embedder, get_es_client
-from pam.common.models import IngestionTaskResponse, TaskCreatedResponse
+from pam.common.config import settings
+from pam.common.models import IngestionTaskResponse, TaskCreatedResponse, User
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
 from pam.ingestion.task_manager import create_task, get_task, list_tasks, spawn_ingestion_task
 
@@ -26,9 +28,17 @@ async def ingest_folder(
     db: AsyncSession = Depends(get_db),
     es_client: AsyncElasticsearch = Depends(get_es_client),
     embedder: OpenAIEmbedder = Depends(get_embedder),
+    _admin: User | None = Depends(require_admin),
 ):
     """Start background ingestion of all markdown files from a local folder."""
-    folder = Path(request.path)
+    if not settings.ingest_root:
+        raise HTTPException(status_code=400, detail="Ingestion root not configured")
+
+    root = Path(settings.ingest_root).resolve()
+    folder = Path(request.path).resolve()
+    if not folder.is_relative_to(root):
+        raise HTTPException(status_code=403, detail="Path outside allowed ingestion root")
+
     if not folder.is_dir():
         raise HTTPException(status_code=400, detail=f"Directory not found: {request.path}")
 
