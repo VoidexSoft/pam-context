@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from pam.common.config import settings
 from pam.common.models import User, UserProjectRole
+from pam.api.deps import get_db
 
 logger = structlog.get_logger()
 
@@ -43,7 +44,7 @@ def decode_access_token(token: str) -> dict:
 
 
 async def _get_current_user_from_token(
-    request: Request,
+    db: AsyncSession,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> User | None:
     """Extract and validate user from Bearer token. Returns None if auth is disabled."""
@@ -58,10 +59,6 @@ async def _get_current_user_from_token(
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
-    # Fetch user from DB via the request's db session
-    from pam.api.deps import get_db
-
-    db: AsyncSession = request.state.db  # set by auth middleware or deps
     result = await db.execute(
         select(User)
         .options(selectinload(User.project_roles).selectinload(UserProjectRole.project))
@@ -75,13 +72,13 @@ async def _get_current_user_from_token(
 
 
 async def get_current_user(
-    request: Request,
+    db: AsyncSession = Depends(get_db),
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> User | None:
     """FastAPI dependency: returns current authenticated user, or None if auth disabled."""
     if not settings.auth_required:
         return None
-    return await _get_current_user_from_token(request, credentials)
+    return await _get_current_user_from_token(db, credentials)
 
 
 async def require_auth(
@@ -133,6 +130,19 @@ def require_role(required_role: str):
         )
 
     return _check_role
+
+
+async def require_admin(
+    user: Annotated[User | None, Depends(get_current_user)],
+) -> User | None:
+    """FastAPI dependency: requires admin role on any project. Returns None if auth disabled."""
+    if not settings.auth_required:
+        return None
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    if not any(pr.role == "admin" for pr in user.project_roles):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return user
 
 
 def get_user_project_ids(user: User | None) -> list[uuid.UUID] | None:

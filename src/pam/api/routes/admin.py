@@ -8,8 +8,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from pam.api.auth import require_admin
 from pam.api.deps import get_db
-from pam.common.config import settings
 from pam.common.models import (
     AssignRoleRequest,
     Project,
@@ -25,22 +25,13 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
-def _check_admin_or_dev():
-    """Inline check: either auth is disabled (dev mode) or caller is admin.
-    Full role-based enforcement is done via require_role in production."""
-    if not settings.auth_required:
-        return  # dev mode — allow all
-    # In production, these endpoints should be wrapped with require_role("admin")
-    # For now we rely on the auth middleware to at least ensure the user is authenticated
-
-
 @router.get("/admin/users", response_model=list[UserResponse])
 async def list_users(
     limit: int = Query(default=50, le=200),
     db: AsyncSession = Depends(get_db),
+    _admin: User | None = Depends(require_admin),
 ):
     """List all users."""
-    _check_admin_or_dev()
     result = await db.execute(select(User).order_by(User.created_at.desc()).limit(limit))
     return [UserResponse.model_validate(u) for u in result.scalars().all()]
 
@@ -49,9 +40,9 @@ async def list_users(
 async def get_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _admin: User | None = Depends(require_admin),
 ):
     """Get user details with project roles."""
-    _check_admin_or_dev()
     result = await db.execute(
         select(User)
         .options(selectinload(User.project_roles).selectinload(UserProjectRole.project))
@@ -76,9 +67,9 @@ async def get_user(
 async def assign_role(
     request: AssignRoleRequest,
     db: AsyncSession = Depends(get_db),
+    _admin: User | None = Depends(require_admin),
 ):
     """Assign a role to a user for a project."""
-    _check_admin_or_dev()
 
     # Validate user and project exist
     user = await db.get(User, request.user_id)
@@ -117,9 +108,9 @@ async def revoke_role(
     user_id: uuid.UUID,
     project_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _admin: User | None = Depends(require_admin),
 ):
     """Remove a user's role for a project."""
-    _check_admin_or_dev()
     await db.execute(
         delete(UserProjectRole).where(
             UserProjectRole.user_id == user_id,
@@ -133,9 +124,9 @@ async def revoke_role(
 async def deactivate_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _admin: User | None = Depends(require_admin),
 ):
     """Deactivate a user account."""
-    _check_admin_or_dev()
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
