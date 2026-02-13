@@ -1,10 +1,11 @@
 """Chat endpoint — conversational Q&A with the knowledge base."""
 
 import json
+from typing import Literal
 
-from pydantic import BaseModel
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from pam.agent.agent import AgentResponse, RetrievalAgent
 from pam.api.auth import get_current_user
@@ -15,7 +16,7 @@ router = APIRouter()
 
 
 class ConversationMessage(BaseModel):
-    role: str
+    role: Literal["user", "assistant"]
     content: str
 
 
@@ -80,7 +81,9 @@ async def chat_stream(
         history = [{"role": m.role, "content": m.content} for m in request.conversation_history]
 
     async def event_generator():
-        async for chunk in agent.answer_streaming(request.message, conversation_history=history, source_type=request.source_type):
+        async for chunk in agent.answer_streaming(
+            request.message, conversation_history=history, source_type=request.source_type,
+        ):
             yield f"data: {json.dumps(chunk)}\n\n"
 
     return StreamingResponse(

@@ -1,6 +1,9 @@
 """FastAPI dependency injection."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from elasticsearch import AsyncElasticsearch
 from fastapi import Depends, Request
@@ -22,7 +25,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 def get_es_client(request: Request) -> AsyncElasticsearch:
-    return request.app.state.es_client
+    client: AsyncElasticsearch = request.app.state.es_client
+    return client
 
 
 def get_cache_service(request: Request) -> CacheService | None:
@@ -57,37 +61,44 @@ def get_reranker() -> BaseReranker | None:
     return _reranker
 
 
-_search_service: HybridSearchService | None = None
+_search_service: Any = None
 
 
 def get_search_service(
-    es_client: AsyncElasticsearch = Depends(get_es_client),
-    cache: CacheService | None = Depends(get_cache_service),
-    reranker: BaseReranker | None = Depends(get_reranker),
+    request: Request,
 ) -> HybridSearchService:
     global _search_service
     if _search_service is None:
+        es_client = get_es_client(request)
+        cache = get_cache_service(request)
+        reranker = get_reranker()
         if settings.use_haystack_retrieval:
             from pam.retrieval.haystack_search import HaystackSearchService
 
-            _search_service = HaystackSearchService(  # type: ignore[return-value]
+            _search_service = HaystackSearchService(
                 cache=cache,
                 rerank_enabled=settings.rerank_enabled,
                 rerank_model=settings.rerank_model,
             )
         else:
             _search_service = HybridSearchService(es_client, cache=cache, reranker=reranker)
-    return _search_service
+    return _search_service  # type: ignore[no-any-return]
+
+
+_duckdb_service = None
+_duckdb_initialized: bool = False
 
 
 def get_duckdb_service():
-    from pam.agent.duckdb_service import DuckDBService
+    global _duckdb_service, _duckdb_initialized
+    if not _duckdb_initialized:
+        from pam.agent.duckdb_service import DuckDBService
 
-    if not settings.duckdb_data_dir:
-        return None
-    service = DuckDBService()
-    service.register_files()
-    return service
+        if settings.duckdb_data_dir:
+            _duckdb_service = DuckDBService()
+            _duckdb_service.register_files()
+        _duckdb_initialized = True
+    return _duckdb_service
 
 
 def get_agent(

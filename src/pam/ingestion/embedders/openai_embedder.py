@@ -1,6 +1,7 @@
 """OpenAI embedding implementation with batching, retry, and caching."""
 
 import time
+from collections import OrderedDict
 
 import structlog
 from openai import AsyncOpenAI
@@ -27,8 +28,9 @@ class OpenAIEmbedder(BaseEmbedder):
         self._model = model or settings.embedding_model
         self._dims = dims or settings.embedding_dims
         self._cost_tracker = cost_tracker
-        # In-memory cache: content_hash -> embedding vector
-        self._cache: dict[str, list[float]] = {}
+        # In-memory LRU cache: content_hash -> embedding vector
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._cache_max_size = 10_000
 
     @property
     def dimensions(self) -> int:
@@ -56,6 +58,7 @@ class OpenAIEmbedder(BaseEmbedder):
 
         for i, (text, hash_) in enumerate(zip(texts, content_hashes)):
             if hash_ in self._cache:
+                self._cache.move_to_end(hash_)
                 results[i] = self._cache[hash_]
             else:
                 texts_to_embed.append((i, text))
@@ -65,8 +68,10 @@ class OpenAIEmbedder(BaseEmbedder):
             embeddings = await self.embed_texts(list(batch_texts))
             for idx, embedding, (orig_idx, _) in zip(indices, embeddings, texts_to_embed):
                 results[idx] = embedding
-                # Cache by content hash
+                # Cache by content hash with LRU eviction
                 self._cache[content_hashes[idx]] = embedding
+                if len(self._cache) > self._cache_max_size:
+                    self._cache.popitem(last=False)
 
         cache_hits = len(texts) - len(texts_to_embed)
         if cache_hits > 0:

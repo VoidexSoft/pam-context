@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pam.api.auth import require_admin
+from pam.api.auth import get_current_user, require_admin
 from pam.api.deps import get_db, get_embedder, get_es_client
 from pam.common.config import settings
 from pam.common.models import IngestionTaskResponse, TaskCreatedResponse, User
@@ -52,6 +52,7 @@ async def ingest_folder(
 async def get_task_status(
     task_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    _user: User | None = Depends(get_current_user),
 ):
     """Get the status of an ingestion task."""
     task = await get_task(task_id, db)
@@ -64,6 +65,7 @@ async def get_task_status(
 async def list_task_statuses(
     limit: int = Query(default=20, le=100),
     db: AsyncSession = Depends(get_db),
+    _user: User | None = Depends(get_current_user),
 ):
     """List recent ingestion tasks."""
     tasks = await list_tasks(db, limit=limit)

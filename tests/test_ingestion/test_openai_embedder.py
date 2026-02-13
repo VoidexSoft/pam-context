@@ -113,3 +113,51 @@ class TestEmbedWithCache:
         assert len(result) == 2
         assert result[0] == [0.5] * 1536  # from cache
         mock_client.embeddings.create.assert_called_once()  # only for "new text"
+
+    @patch("pam.ingestion.embedders.openai_embedder.AsyncOpenAI")
+    async def test_lru_eviction(self, mock_client_cls):
+        """Cache evicts oldest entries when exceeding max size."""
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = AsyncMock(return_value=_make_embed_response(1))
+        mock_client_cls.return_value = mock_client
+
+        embedder = OpenAIEmbedder(api_key="key")
+        embedder._cache_max_size = 3  # small for testing
+
+        # Fill cache to capacity
+        for i in range(3):
+            await embedder.embed_texts_with_cache([f"text{i}"], [f"hash{i}"])
+
+        assert len(embedder._cache) == 3
+        assert "hash0" in embedder._cache
+
+        # Add one more — should evict hash0 (oldest)
+        await embedder.embed_texts_with_cache(["text3"], ["hash3"])
+
+        assert len(embedder._cache) == 3
+        assert "hash0" not in embedder._cache
+        assert "hash3" in embedder._cache
+
+    @patch("pam.ingestion.embedders.openai_embedder.AsyncOpenAI")
+    async def test_lru_access_refreshes_entry(self, mock_client_cls):
+        """Accessing a cached entry moves it to end, preventing eviction."""
+        mock_client = AsyncMock()
+        mock_client.embeddings.create = AsyncMock(return_value=_make_embed_response(1))
+        mock_client_cls.return_value = mock_client
+
+        embedder = OpenAIEmbedder(api_key="key")
+        embedder._cache_max_size = 3
+
+        # Fill cache: hash0, hash1, hash2
+        for i in range(3):
+            await embedder.embed_texts_with_cache([f"text{i}"], [f"hash{i}"])
+
+        # Access hash0 — moves it to end
+        await embedder.embed_texts_with_cache(["text0"], ["hash0"])
+
+        # Add hash3 — should evict hash1 (now oldest), not hash0
+        await embedder.embed_texts_with_cache(["text3"], ["hash3"])
+
+        assert "hash0" in embedder._cache  # refreshed, still present
+        assert "hash1" not in embedder._cache  # evicted
+        assert "hash3" in embedder._cache

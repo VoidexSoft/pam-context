@@ -9,6 +9,10 @@ class BaseEmbedder(ABC):
         """Embed a list of texts into vectors."""
         ...
 
+    async def embed_texts_with_cache(self, texts: list[str], content_hashes: list[str]) -> list[list[float]]:
+        """Embed texts, using cache for already-embedded content. Override for caching support."""
+        return await self.embed_texts(texts)
+
     @property
     @abstractmethod
     def dimensions(self) -> int:
