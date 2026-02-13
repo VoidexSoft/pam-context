@@ -56,6 +56,12 @@ jobs:
       - name: Test
         run: pytest --cov=src/pam --cov-fail-under=80 -m "not integration" tests/
 
+      - name: Validate eval framework
+        run: |
+          python -c "import json; json.load(open('eval/questions.json'))"
+          cd eval && python -c "from judges import score_answer"
+          cd eval && python -c "from run_eval import main"
+
   frontend:
     runs-on: ubuntu-latest
 
