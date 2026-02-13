@@ -60,7 +60,12 @@ class TestFetchDocument:
     async def test_fetch_nonexistent_file(self, temp_dir):
         connector = MarkdownConnector(temp_dir)
         with pytest.raises(FileNotFoundError):
-            await connector.fetch_document("/nonexistent/file.md")
+            await connector.fetch_document(str(temp_dir / "nonexistent.md"))
+
+    async def test_fetch_path_traversal_denied(self, temp_dir):
+        connector = MarkdownConnector(temp_dir)
+        with pytest.raises(ValueError, match="Path traversal denied"):
+            await connector.fetch_document("/etc/passwd")
 
 
 class TestContentHash:

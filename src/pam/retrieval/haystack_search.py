@@ -167,7 +167,7 @@ class HaystackSearchService:
         filters = self._build_filters(source_type, project, date_from, date_to)
 
         # Haystack pipelines are sync — run in executor to avoid blocking the event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         results = await loop.run_in_executor(
             None,
             self._run_pipeline_sync,

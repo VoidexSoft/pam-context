@@ -6,12 +6,12 @@ then converts each region into KnowledgeSegments.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 
 import structlog
 
-from pam.common.config import settings
 from pam.common.models import DocumentInfo, RawDocument
 from pam.ingestion.connectors.base import BaseConnector
 from pam.ingestion.connectors.sheets_region_detector import SheetRegion, detect_regions
@@ -41,7 +41,7 @@ class GoogleSheetsConnector(BaseConnector):
         """Lazy-init Google Drive API v3 client."""
         if self._service is None:
             from google.oauth2.credentials import Credentials
-            from googleapiclient.discovery import build
+            from googleapiclient.discovery import build  # type: ignore[import-untyped]
 
             creds = Credentials.from_authorized_user_file(self.credentials_path)
             self._service = build("drive", "v3", credentials=creds)
@@ -51,7 +51,7 @@ class GoogleSheetsConnector(BaseConnector):
         """Lazy-init Google Sheets API v4 client."""
         if self._sheets_service is None:
             from google.oauth2.credentials import Credentials
-            from googleapiclient.discovery import build
+            from googleapiclient.discovery import build  # type: ignore[import-untyped]
 
             creds = Credentials.from_authorized_user_file(self.credentials_path)
             self._sheets_service = build("sheets", "v4", credentials=creds)
@@ -59,12 +59,14 @@ class GoogleSheetsConnector(BaseConnector):
 
     async def list_documents(self) -> list[DocumentInfo]:
         """List spreadsheets from specified IDs or folder."""
+        loop = asyncio.get_running_loop()
         docs = []
 
         if self.spreadsheet_ids:
             sheets_svc = self._get_sheets_service()
             for sid in self.spreadsheet_ids:
-                meta = sheets_svc.spreadsheets().get(spreadsheetId=sid, fields="properties").execute()
+                request = sheets_svc.spreadsheets().get(spreadsheetId=sid, fields="properties")
+                meta = await loop.run_in_executor(None, request.execute)
                 props = meta["properties"]
                 docs.append(
                     DocumentInfo(
@@ -75,8 +77,12 @@ class GoogleSheetsConnector(BaseConnector):
                 )
         elif self.folder_id:
             drive = self._get_drive_service()
-            query = f"'{self.folder_id}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
-            results = drive.files().list(q=query, fields="files(id,name,webViewLink)").execute()
+            query = (
+                f"'{self.folder_id}' in parents and "
+                "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+            )
+            request = drive.files().list(q=query, fields="files(id,name,webViewLink)")
+            results = await loop.run_in_executor(None, request.execute)
             for f in results.get("files", []):
                 docs.append(
                     DocumentInfo(
@@ -91,13 +97,15 @@ class GoogleSheetsConnector(BaseConnector):
 
     async def fetch_document(self, source_id: str) -> RawDocument:
         """Fetch all tabs from a spreadsheet and return as JSON with detected regions."""
+        loop = asyncio.get_running_loop()
         sheets_svc = self._get_sheets_service()
 
         # Get spreadsheet metadata and all cell values
-        spreadsheet = sheets_svc.spreadsheets().get(
+        request = sheets_svc.spreadsheets().get(
             spreadsheetId=source_id,
             includeGridData=True,
-        ).execute()
+        )
+        spreadsheet = await loop.run_in_executor(None, request.execute)
 
         title = spreadsheet["properties"]["title"]
         tabs_data = {}

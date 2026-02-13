@@ -36,10 +36,10 @@ def chunk_document(doc: DoclingDocument, max_tokens: int | None = None) -> list[
 
     max_tokens = max_tokens or settings.chunk_size_tokens
 
-    chunker = HybridChunker(
-        tokenizer="sentence-transformers/all-MiniLM-L6-v2",
-        max_tokens=max_tokens,
-    )
+    chunker = HybridChunker.model_validate({
+        "tokenizer": "sentence-transformers/all-MiniLM-L6-v2",
+        "max_tokens": max_tokens,
+    })
 
     chunks = list(chunker.chunk(doc))
     results = []

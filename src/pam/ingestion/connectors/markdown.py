@@ -20,7 +20,6 @@ class MarkdownConnector(BaseConnector):
     async def list_documents(self) -> list[DocumentInfo]:
         docs = []
         for path in sorted(self.directory.rglob("*.md")):
-            stat = path.stat()
             docs.append(
                 DocumentInfo(
                     source_id=str(path),
@@ -33,7 +32,9 @@ class MarkdownConnector(BaseConnector):
         return docs
 
     async def fetch_document(self, source_id: str) -> RawDocument:
-        path = Path(source_id)
+        path = Path(source_id).resolve()
+        if not path.is_relative_to(self.directory):
+            raise ValueError(f"Path traversal denied: {source_id}")
         if not path.exists():
             raise FileNotFoundError(f"File not found: {source_id}")
 

@@ -1,5 +1,6 @@
 """Google Docs connector — exports Google Docs as DOCX via Drive API."""
 
+import asyncio
 import hashlib
 from pathlib import Path
 
@@ -31,7 +32,7 @@ class GoogleDocsConnector(BaseConnector):
             return self._service
 
         from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
+        from googleapiclient.discovery import build  # type: ignore[import-untyped]
 
         if self._credentials_path:
             creds = Credentials.from_authorized_user_file(str(self._credentials_path))
@@ -43,19 +44,17 @@ class GoogleDocsConnector(BaseConnector):
 
     async def list_documents(self) -> list[DocumentInfo]:
         service = self._get_service()
+        loop = asyncio.get_running_loop()
         docs = []
 
         for folder_id in self.folder_ids:
             query = f"'{folder_id}' in parents and mimeType='{GOOGLE_DOC_MIME}' and trashed=false"
-            results = (
-                service.files()
-                .list(
-                    q=query,
-                    fields="files(id, name, owners, webViewLink, modifiedTime)",
-                    pageSize=100,
-                )
-                .execute()
+            request = service.files().list(
+                q=query,
+                fields="files(id, name, owners, webViewLink, modifiedTime)",
+                pageSize=100,
             )
+            results = await loop.run_in_executor(None, request.execute)
 
             for f in results.get("files", []):
                 owner = f.get("owners", [{}])[0].get("emailAddress") if f.get("owners") else None
@@ -73,12 +72,15 @@ class GoogleDocsConnector(BaseConnector):
 
     async def fetch_document(self, source_id: str) -> RawDocument:
         service = self._get_service()
+        loop = asyncio.get_running_loop()
 
         # Get metadata
-        file_meta = service.files().get(fileId=source_id, fields="name, owners, webViewLink").execute()
+        meta_request = service.files().get(fileId=source_id, fields="name, owners, webViewLink")
+        file_meta = await loop.run_in_executor(None, meta_request.execute)
 
         # Export as DOCX
-        content = service.files().export(fileId=source_id, mimeType=DOCX_MIME).execute()
+        export_request = service.files().export(fileId=source_id, mimeType=DOCX_MIME)
+        content = await loop.run_in_executor(None, export_request.execute)
 
         owner = file_meta.get("owners", [{}])[0].get("emailAddress") if file_meta.get("owners") else None
         return RawDocument(
@@ -92,11 +94,15 @@ class GoogleDocsConnector(BaseConnector):
 
     async def get_content_hash(self, source_id: str) -> str:
         service = self._get_service()
+        loop = asyncio.get_running_loop()
+
         # Use Drive API md5Checksum for change detection
-        file_meta = service.files().get(fileId=source_id, fields="md5Checksum").execute()
-        md5 = file_meta.get("md5Checksum")
+        meta_request = service.files().get(fileId=source_id, fields="md5Checksum")
+        file_meta = await loop.run_in_executor(None, meta_request.execute)
+        md5: str | None = file_meta.get("md5Checksum")
         if md5:
             return md5
         # Fallback: export and hash (Google Docs don't have md5Checksum)
-        content = service.files().export(fileId=source_id, mimeType=DOCX_MIME).execute()
+        export_request = service.files().export(fileId=source_id, mimeType=DOCX_MIME)
+        content = await loop.run_in_executor(None, export_request.execute)
         return hashlib.sha256(content).hexdigest()
