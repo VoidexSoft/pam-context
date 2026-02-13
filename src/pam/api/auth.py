@@ -1,8 +1,8 @@
 """JWT token generation, validation, and auth dependencies."""
 
-from datetime import datetime, timezone, timedelta
-from typing import Annotated
 import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 import jwt
 import structlog
@@ -12,9 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from pam.api.deps import get_db
 from pam.common.config import settings
 from pam.common.models import User, UserProjectRole
-from pam.api.deps import get_db
 
 logger = structlog.get_logger()
 
@@ -23,7 +23,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 def create_access_token(user_id: uuid.UUID, email: str) -> str:
     """Create a signed JWT for the given user."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
         "email": email,

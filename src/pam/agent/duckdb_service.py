@@ -89,7 +89,10 @@ class DuckDBService:
             self.register_files()
 
         if not self._tables:
-            return {"error": "No data files registered. Set DUCKDB_DATA_DIR to a directory containing CSV/Parquet/JSON files."}
+            return {
+                "error": "No data files registered. "
+                "Set DUCKDB_DATA_DIR to a directory containing CSV/Parquet/JSON files."
+            }
 
         try:
             conn = duckdb.connect(":memory:")

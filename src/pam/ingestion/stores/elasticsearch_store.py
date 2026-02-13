@@ -66,7 +66,7 @@ class ElasticsearchStore:
         if not segments:
             return 0
 
-        actions = []
+        actions: list[dict] = []
         for seg in segments:
             if seg.embedding is None:
                 logger.warning("skip_segment_no_embedding", segment_id=str(seg.id))
@@ -116,6 +116,6 @@ class ElasticsearchStore:
             body={"query": {"term": {"meta.document_id": str(document_id)}}},
             refresh=True,
         )
-        deleted = response.get("deleted", 0)
+        deleted: int = response.get("deleted", 0)
         logger.info("es_delete_by_document", document_id=str(document_id), deleted=deleted)
         return deleted

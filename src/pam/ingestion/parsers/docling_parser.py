@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 import structlog
+from docling.datamodel.document import DoclingDocument
 from docling.document_converter import DocumentConverter
 
 from pam.common.models import RawDocument

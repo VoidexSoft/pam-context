@@ -34,8 +34,8 @@ async def google_login(
 ):
     """Exchange Google ID token for a PAM JWT access token."""
     try:
-        from google.oauth2 import id_token as google_id_token
         from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token as google_id_token
 
         idinfo = google_id_token.verify_oauth2_token(
             request.id_token,

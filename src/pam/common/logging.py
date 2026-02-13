@@ -31,7 +31,7 @@ def configure_logging(log_level: str = "INFO") -> None:
         processors=[
             structlog.contextvars.merge_contextvars,
             structlog.stdlib.add_log_level,
-            add_correlation_id,
+            add_correlation_id,  # type: ignore[list-item]
             structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.StackInfoRenderer(),
@@ -90,7 +90,7 @@ class CostTracker:
 
     @property
     def total_cost(self) -> float:
-        return sum(c.get("estimated_cost_usd", 0) for c in self.calls)
+        return float(sum(c.get("estimated_cost_usd", 0) for c in self.calls))
 
     @property
     def total_tokens(self) -> int:

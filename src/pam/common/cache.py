@@ -34,7 +34,7 @@ async def ping_redis() -> bool:
     """Check if Redis is reachable."""
     try:
         client = await get_redis()
-        return await client.ping()
+        return bool(await client.ping())  # type: ignore[misc]
     except Exception:
         return False
 
@@ -66,7 +66,8 @@ class CacheService:
         if raw is None:
             return None
         logger.debug("cache_hit", key=key)
-        return json.loads(raw)
+        result: list[dict[str, Any]] = json.loads(raw)
+        return result
 
     async def set_search_results(
         self,
@@ -84,7 +85,8 @@ class CacheService:
         """Invalidate all cached search results (e.g. after ingestion)."""
         keys = [k async for k in self.client.scan_iter(match="search:*")]
         if keys:
-            return await self.client.delete(*keys)
+            deleted: int = await self.client.delete(*keys)
+            return deleted
         return 0
 
     # ------------------------------------------------------------------
@@ -94,7 +96,8 @@ class CacheService:
         raw = await self.client.get(f"session:{session_id}")
         if raw is None:
             return None
-        return json.loads(raw)
+        messages: list[dict[str, Any]] = json.loads(raw)
+        return messages
 
     async def save_session(self, session_id: str, messages: list[dict[str, Any]]) -> None:
         await self.client.set(

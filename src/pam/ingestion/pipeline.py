@@ -1,7 +1,7 @@
 """Ingestion pipeline orchestrator: connector → parser → chunker → embedder → stores."""
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession

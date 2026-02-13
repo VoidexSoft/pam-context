@@ -1,16 +1,15 @@
 """FastAPI application factory."""
 
-import structlog
 from contextlib import asynccontextmanager
 
+import structlog
 from elasticsearch import AsyncElasticsearch
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from sqlalchemy import update as sa_update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware

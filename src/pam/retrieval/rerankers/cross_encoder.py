@@ -43,7 +43,7 @@ class CrossEncoderReranker(BaseReranker):
         pairs = [(query, r.content) for r in results]
 
         # Run inference in a thread to avoid blocking the event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         scores = await loop.run_in_executor(None, self._predict, pairs)
 
         # Attach scores and sort descending
@@ -70,4 +70,5 @@ class CrossEncoderReranker(BaseReranker):
     def _predict(self, pairs: list[tuple[str, str]]) -> list[float]:
         """Synchronous prediction (runs in executor)."""
         model = _load_model(self._model_name)
-        return model.predict(pairs).tolist()
+        scores: list[float] = model.predict(pairs).tolist()
+        return scores

@@ -1,7 +1,7 @@
 """PostgreSQL storage for documents, segments, and sync log."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import delete, func, select
@@ -36,9 +36,9 @@ class PostgresStore:
             source_url=source_url,
             owner=owner,
             project_id=project_id,
-            last_synced_at=datetime.now(timezone.utc),
+            last_synced_at=datetime.now(UTC),
         )
-        stmt = stmt.on_conflict_on_constraint("uq_documents_source").do_update(
+        stmt = stmt.on_conflict_on_constraint("uq_documents_source").do_update(  # type: ignore[attr-defined]
             set_={
                 "title": stmt.excluded.title,
                 "content_hash": stmt.excluded.content_hash,
@@ -50,7 +50,7 @@ class PostgresStore:
         )
         stmt = stmt.returning(Document.id)
         result = await self.session.execute(stmt)
-        doc_id = result.scalar_one()
+        doc_id: uuid.UUID = result.scalar_one()
         await self.session.flush()
 
         logger.info("upsert_document", document_id=str(doc_id), source_type=source_type, source_id=source_id)

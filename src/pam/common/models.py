@@ -5,10 +5,9 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
 
 # ── SQLAlchemy ORM ──────────────────────────────────────────────────────
 
@@ -105,6 +104,7 @@ class UserProjectRole(Base):
     project: Mapped["Project"] = relationship()
 
     __table_args__ = (
+        UniqueConstraint("user_id", "project_id", name="ix_user_project_roles_unique"),
         {"comment": "RBAC: user-project role assignments"},
     )
 

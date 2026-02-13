@@ -12,9 +12,6 @@ from pam.common.config import settings
 from pam.ingestion.extractors.schemas import (
     EXTRACTION_SCHEMAS,
     ExtractedEntityData,
-    EventTrackingSpec,
-    KPITarget,
-    MetricDefinition,
 )
 
 logger = structlog.get_logger()
@@ -90,7 +87,7 @@ class EntityExtractor:
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            raw_text = response.content[0].text.strip()
+            raw_text = response.content[0].text.strip()  # type: ignore[union-attr]
             # Extract JSON array from response
             entities_raw = json.loads(raw_text)
 
@@ -104,7 +101,8 @@ class EntityExtractor:
                     continue
 
                 # Validate against schema
-                schema_model = EXTRACTION_SCHEMAS[entity_type]["model"]
+                schema_entry = EXTRACTION_SCHEMAS[entity_type]
+                schema_model = schema_entry["model"]
                 try:
                     validated = schema_model(**raw.get("entity_data", {}))
                     results.append(

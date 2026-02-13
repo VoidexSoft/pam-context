@@ -1,7 +1,7 @@
 """Extraction schemas for structured business entities."""
 
 import uuid
-from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -43,7 +43,7 @@ class ExtractedEntityData(BaseModel):
 
 
 # Schema descriptions for LLM extraction prompts
-EXTRACTION_SCHEMAS = {
+EXTRACTION_SCHEMAS: dict[str, dict[str, Any]] = {
     "metric_definition": {
         "model": MetricDefinition,
         "description": "A business metric with its name, calculation formula, owner, and data source.",
@@ -56,7 +56,8 @@ EXTRACTION_SCHEMAS = {
         "model": EventTrackingSpec,
         "description": "An analytics event with its name, properties, and trigger condition.",
         "examples": [
-            "The signup_completed event fires when a user submits the registration form. Properties: user_id, signup_method, referral_source.",
+            "The signup_completed event fires when a user submits the registration form. "
+            "Properties: user_id, signup_method, referral_source.",
         ],
     },
     "kpi_target": {

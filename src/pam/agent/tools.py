@@ -1,6 +1,8 @@
 """Tool definitions for the retrieval agent."""
 
-SEARCH_KNOWLEDGE_TOOL = {
+from typing import Any
+
+SEARCH_KNOWLEDGE_TOOL: dict[str, Any] = {
     "name": "search_knowledge",
     "description": (
         "Search the business knowledge base for relevant information. "
@@ -121,7 +123,7 @@ SEARCH_ENTITIES_TOOL = {
     },
 }
 
-ALL_TOOLS = [
+ALL_TOOLS: list[dict[str, Any]] = [
     SEARCH_KNOWLEDGE_TOOL,
     GET_DOCUMENT_CONTEXT_TOOL,
     GET_CHANGE_HISTORY_TOOL,

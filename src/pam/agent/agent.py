@@ -6,18 +6,17 @@ import json
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 from anthropic import AsyncAnthropic
 
 from pam.agent.tools import ALL_TOOLS
 from pam.common.config import settings
-from pam.common.utils import escape_like
 from pam.common.logging import CostTracker
+from pam.common.utils import escape_like
 from pam.ingestion.embedders.base import BaseEmbedder
 from pam.retrieval.hybrid_search import HybridSearchService
-from pam.retrieval.types import SearchResult
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +83,9 @@ class RetrievalAgent:
         self.duckdb_service = duckdb_service
         self._default_source_type: str | None = None
 
-    async def answer(self, question: str, conversation_history: list | None = None, source_type: str | None = None) -> AgentResponse:
+    async def answer(
+        self, question: str, conversation_history: list | None = None, source_type: str | None = None,
+    ) -> AgentResponse:
         """Answer a question using the knowledge base.
 
         Runs a tool-use loop: sends the question to Claude, executes any tool calls,
@@ -107,7 +108,7 @@ class RetrievalAgent:
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 messages=messages,
-                tools=ALL_TOOLS,
+                tools=cast(Any, ALL_TOOLS),
             )
             call_latency = (time.perf_counter() - call_start) * 1000
 
@@ -208,7 +209,7 @@ class RetrievalAgent:
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
                     messages=messages,
-                    tools=ALL_TOOLS,
+                    tools=cast(Any, ALL_TOOLS),
                 )
                 total_input_tokens += response.usage.input_tokens
                 total_output_tokens += response.usage.output_tokens
@@ -287,7 +288,7 @@ class RetrievalAgent:
             }
 
         except Exception as e:
-            logger.error("streaming_error", error=str(e))
+            logger.exception("streaming_error", error=str(e))
             yield {"type": "error", "message": "An internal error occurred. Please try again."}
 
     @staticmethod
@@ -365,7 +366,8 @@ class RetrievalAgent:
 
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
-        from pam.common.models import Document, Segment
+
+        from pam.common.models import Document
 
         title = input_.get("document_title")
         source_id = input_.get("source_id")
@@ -405,6 +407,7 @@ class RetrievalAgent:
             return "Database session not available.", []
 
         from sqlalchemy import select
+
         from pam.common.models import Document, SyncLog
 
         limit = input_.get("limit", 20)
@@ -474,7 +477,8 @@ class RetrievalAgent:
         if self.db_session is None:
             return "Database session not available.", []
 
-        from sqlalchemy import select, cast, String
+        from sqlalchemy import String, cast, select
+
         from pam.common.models import ExtractedEntity
 
         entity_type = input_.get("entity_type")

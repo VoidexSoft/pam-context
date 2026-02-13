@@ -57,7 +57,7 @@ class HybridSearchService:
                 return [SearchResult(**r) for r in cached]
 
         # Build filter clauses (metadata fields are nested under meta.*)
-        filters = []
+        filters: list[dict] = []
         if source_type:
             filters.append({"term": {"meta.source_type": source_type}})
         if project:

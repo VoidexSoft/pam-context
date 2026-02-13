@@ -5,7 +5,7 @@ Uses PostgreSQL to track task state and asyncio.create_task() for background exe
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from elasticsearch import AsyncElasticsearch
@@ -79,7 +79,7 @@ async def run_ingestion_background(
             await status_session.execute(
                 update(IngestionTask)
                 .where(IngestionTask.id == task_id)
-                .values(status="running", started_at=datetime.now(timezone.utc))
+                .values(status="running", started_at=datetime.now(UTC))
             )
             await status_session.commit()
 
@@ -99,7 +99,7 @@ async def run_ingestion_background(
                 await status_session.execute(
                     update(IngestionTask)
                     .where(IngestionTask.id == task_id)
-                    .values(status="completed", completed_at=datetime.now(timezone.utc))
+                    .values(status="completed", completed_at=datetime.now(UTC))
                 )
                 await status_session.commit()
                 return
@@ -154,7 +154,7 @@ async def run_ingestion_background(
             await status_session.execute(
                 update(IngestionTask)
                 .where(IngestionTask.id == task_id)
-                .values(status="completed", completed_at=datetime.now(timezone.utc))
+                .values(status="completed", completed_at=datetime.now(UTC))
             )
             await status_session.commit()
 
@@ -179,7 +179,7 @@ async def run_ingestion_background(
                     .values(
                         status="failed",
                         error=str(e),
-                        completed_at=datetime.now(timezone.utc),
+                        completed_at=datetime.now(UTC),
                     )
                 )
                 await err_session.commit()
