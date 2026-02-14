@@ -14,7 +14,10 @@ from pam.common.cache import CacheService
 from pam.common.config import settings
 from pam.common.database import async_session_factory
 from pam.common.graph import GraphClient
+from pam.common.llm.base import BaseLLMClient
+from pam.common.llm.factory import create_llm_client
 from pam.common.logging import CostTracker
+from pam.ingestion.embedders.base import BaseEmbedder
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
 from pam.retrieval.hybrid_search import HybridSearchService
 from pam.retrieval.rerankers.base import BaseReranker
@@ -41,13 +44,28 @@ def get_cache_service(request: Request) -> CacheService | None:
     return CacheService(redis_client)
 
 
-_embedder: OpenAIEmbedder | None = None
+_llm_client: BaseLLMClient | None = None
 
 
-def get_embedder() -> OpenAIEmbedder:
+def get_llm_client() -> BaseLLMClient:
+    global _llm_client
+    if _llm_client is None:
+        _llm_client = create_llm_client()
+    return _llm_client
+
+
+_embedder: BaseEmbedder | None = None
+
+
+def get_embedder() -> BaseEmbedder:
     global _embedder
     if _embedder is None:
-        _embedder = OpenAIEmbedder()
+        if settings.embedding_provider == "ollama":
+            from pam.ingestion.embedders.ollama_embedder import OllamaEmbedder
+
+            _embedder = OllamaEmbedder()
+        else:
+            _embedder = OpenAIEmbedder()
     return _embedder
 
 
@@ -109,7 +127,7 @@ def get_duckdb_service():
 def get_agent(
     request: Request,
     search_service: HybridSearchService = Depends(get_search_service),
-    embedder: OpenAIEmbedder = Depends(get_embedder),
+    embedder: BaseEmbedder = Depends(get_embedder),
     db: AsyncSession = Depends(get_db),
 ) -> RetrievalAgent:
     graph_client = get_graph_client(request)

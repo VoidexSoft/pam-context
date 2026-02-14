@@ -9,6 +9,7 @@ import structlog
 from anthropic import AsyncAnthropic
 
 from pam.common.config import settings
+from pam.common.llm.base import BaseLLMClient
 from pam.graph.mapper import NodeData
 
 logger = structlog.get_logger(__name__)
@@ -69,8 +70,11 @@ class RelationshipExtractor:
         self,
         api_key: str | None = None,
         model: str | None = None,
+        llm_client: BaseLLMClient | None = None,
     ) -> None:
-        self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
+        self._llm_client = llm_client
+        if self._llm_client is None:
+            self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
         self.model = model or settings.agent_model
 
     async def extract_relationships(
@@ -139,13 +143,19 @@ class RelationshipExtractor:
         prompt = RELATIONSHIP_PROMPT.format(entities=entities_text)
 
         try:
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-            raw_text = response.content[0].text.strip()  # type: ignore[union-attr]
+            if self._llm_client:
+                llm_response = await self._llm_client.complete(
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=1024,
+                )
+                raw_text = llm_response.text.strip()
+            else:
+                response = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=1024,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                raw_text = response.content[0].text.strip()  # type: ignore[union-attr]
             raw_relationships = json.loads(raw_text)
 
             if not isinstance(raw_relationships, list):

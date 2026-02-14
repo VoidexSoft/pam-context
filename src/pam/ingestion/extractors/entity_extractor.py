@@ -9,6 +9,7 @@ import structlog
 from anthropic import AsyncAnthropic
 
 from pam.common.config import settings
+from pam.common.llm.base import BaseLLMClient
 from pam.ingestion.extractors.schemas import (
     EXTRACTION_SCHEMAS,
     ExtractedEntityData,
@@ -44,8 +45,12 @@ class EntityExtractor:
         self,
         api_key: str | None = None,
         model: str | None = None,
+        llm_client: BaseLLMClient | None = None,
     ) -> None:
-        self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
+        self._llm_client = llm_client
+        # Fallback to direct Anthropic client for backward compatibility
+        if self._llm_client is None:
+            self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
         self.model = model or settings.agent_model
 
     async def extract_from_text(
@@ -81,13 +86,19 @@ class EntityExtractor:
         )
 
         try:
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-            raw_text = response.content[0].text.strip()  # type: ignore[union-attr]
+            if self._llm_client:
+                llm_response = await self._llm_client.complete(
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=2048,
+                )
+                raw_text = llm_response.text.strip()
+            else:
+                response = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=2048,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                raw_text = response.content[0].text.strip()  # type: ignore[union-attr]
             # Extract JSON array from response
             entities_raw = json.loads(raw_text)
 

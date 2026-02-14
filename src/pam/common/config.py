@@ -27,6 +27,22 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     agent_model: str = "claude-sonnet-4-5-20250514"
 
+    # LLM provider abstraction
+    llm_provider: str = "anthropic"  # anthropic | openai | ollama
+    openai_llm_model: str = "gpt-4o"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3"
+    ollama_embedding_model: str = "nomic-embed-text"
+    ollama_embedding_dims: int = 768
+    embedding_provider: str = "openai"  # openai | ollama
+
+    # Multimodal processing
+    enable_multimodal: bool = False  # Feature flag, off by default
+    enable_image_processing: bool = True
+    enable_table_processing: bool = True
+    vision_model: str = ""  # Empty = use agent_model
+    multimodal_context_chars: int = 2000
+
     # Auth
     auth_required: bool = False  # Optional in dev mode; set True in production
     jwt_secret: str = "dev-secret-change-in-production-32b"
@@ -61,6 +77,10 @@ class Settings(BaseSettings):
     # DuckDB (analytics queries)
     duckdb_data_dir: str = ""  # Directory containing data files (CSV, Parquet, JSON)
     duckdb_max_rows: int = 1000  # Max rows returned per query
+
+    # Parser
+    parser: str = "docling"  # docling | mineru
+    mineru_method: str = "auto"  # auto | txt | ocr
 
     # Ingestion
     chunk_size_tokens: int = 512
