@@ -59,8 +59,8 @@ jobs:
       - name: Validate eval framework
         run: |
           python -c "import json; json.load(open('eval/questions.json'))"
-          cd eval && python -c "from judges import score_answer"
-          cd eval && python -c "from run_eval import main"
+          python -c "import sys; sys.path.insert(0, 'eval'); from judges import score_answer"
+          python -c "import sys; sys.path.insert(0, 'eval'); from run_eval import main"
 
   frontend:
     runs-on: ubuntu-latest
