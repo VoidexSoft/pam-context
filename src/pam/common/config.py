@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     redis_segment_ttl: int = 3600  # 1 hour for segment data
     redis_session_ttl: int = 86400  # 24 hours for conversation sessions
 
+    # Neo4j (knowledge graph)
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "neo4j_password"
+    neo4j_database: str = "neo4j"
+    graph_context_enabled: bool = True  # Inject graph context into search results
+
     # Haystack
     use_haystack_retrieval: bool = False  # Set True to use Haystack-based retrieval pipeline
 

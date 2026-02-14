@@ -145,6 +145,66 @@ export interface AuthUser {
   role: string;
 }
 
+// --- Graph Types ---
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  isCenter?: boolean;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  rel_type: string;
+  confidence?: number | null;
+}
+
+export interface SubgraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  center: string;
+}
+
+export interface GraphEntity {
+  name: string;
+  label: string;
+  rel_count: number;
+  version?: number;
+  entity_type?: string;
+}
+
+export interface GraphEntityDetail {
+  name: string;
+  label: string;
+  properties: Record<string, unknown>;
+  relationships: Array<{
+    rel_type: string;
+    target_name: string;
+    target_label: string;
+    confidence?: number | null;
+    valid_from?: string | null;
+    valid_to?: string | null;
+    direction: string;
+  }>;
+}
+
+export interface TimelineEntry {
+  rel_type: string;
+  target_name: string;
+  target_label: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  confidence?: number | null;
+}
+
+export interface TimelineResponse {
+  entity_name: string;
+  label: string;
+  version: number | null;
+  history: TimelineEntry[];
+}
+
 const BASE = "/api";
 
 let authToken: string | null = localStorage.getItem("pam_token");
@@ -241,6 +301,33 @@ export function devLogin(email: string, name: string): Promise<TokenResponse> {
 
 export function getAuthStatus(): Promise<{ auth_required: boolean }> {
   return request<{ auth_required: boolean }>("/auth/status");
+}
+
+// --- Graph API ---
+
+export function getGraphEntities(label?: string, limit = 50): Promise<GraphEntity[]> {
+  const params = new URLSearchParams();
+  if (label) params.set("label", label);
+  params.set("limit", String(limit));
+  return request<GraphEntity[]>(`/graph/entities?${params}`);
+}
+
+export function getGraphEntity(name: string): Promise<GraphEntityDetail> {
+  return request<GraphEntityDetail>(`/graph/entity/${encodeURIComponent(name)}`);
+}
+
+export function getSubgraph(entityName: string, depth = 2): Promise<SubgraphResponse> {
+  return request<SubgraphResponse>(
+    `/graph/subgraph?entity_name=${encodeURIComponent(entityName)}&depth=${depth}`
+  );
+}
+
+export function getTimeline(entityName: string, since?: string): Promise<TimelineResponse> {
+  const params = new URLSearchParams();
+  if (since) params.set("since", since);
+  return request<TimelineResponse>(
+    `/graph/timeline/${encodeURIComponent(entityName)}?${params}`
+  );
 }
 
 export async function* streamChatMessage(

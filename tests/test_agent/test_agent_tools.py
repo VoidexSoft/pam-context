@@ -133,7 +133,7 @@ class TestGetChangeHistory:
         )
 
         result_text, _ = await agent._get_change_history({})
-        assert "no change" in result_text.lower()
+        assert "no document change history" in result_text.lower()
 
 
 class TestQueryDatabase:

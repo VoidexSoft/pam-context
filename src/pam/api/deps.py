@@ -13,6 +13,7 @@ from pam.agent.agent import RetrievalAgent
 from pam.common.cache import CacheService
 from pam.common.config import settings
 from pam.common.database import async_session_factory
+from pam.common.graph import GraphClient
 from pam.common.logging import CostTracker
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
 from pam.retrieval.hybrid_search import HybridSearchService
@@ -27,6 +28,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 def get_es_client(request: Request) -> AsyncElasticsearch:
     client: AsyncElasticsearch = request.app.state.es_client
     return client
+
+
+def get_graph_client(request: Request) -> GraphClient | None:
+    return getattr(request.app.state, "graph_client", None)
 
 
 def get_cache_service(request: Request) -> CacheService | None:
@@ -102,14 +107,23 @@ def get_duckdb_service():
 
 
 def get_agent(
+    request: Request,
     search_service: HybridSearchService = Depends(get_search_service),
     embedder: OpenAIEmbedder = Depends(get_embedder),
     db: AsyncSession = Depends(get_db),
 ) -> RetrievalAgent:
+    graph_client = get_graph_client(request)
+    graph_query_svc = None
+    if graph_client:
+        from pam.graph.query_service import GraphQueryService
+
+        graph_query_svc = GraphQueryService(graph_client)
+
     return RetrievalAgent(
         search_service=search_service,
         embedder=embedder,
         cost_tracker=CostTracker(),
         db_session=db,
         duckdb_service=get_duckdb_service(),
+        graph_query_service=graph_query_svc,
     )

@@ -52,9 +52,10 @@ GET_DOCUMENT_CONTEXT_TOOL = {
 GET_CHANGE_HISTORY_TOOL = {
     "name": "get_change_history",
     "description": (
-        "Query the sync log to see recent changes to documents. "
+        "Query change history for documents and entities. "
         "Shows what was ingested, updated, or deleted and when. "
-        "Useful for answering questions like 'what changed recently?' or 'when was X last updated?'"
+        "Useful for 'what changed recently?', 'when was X last updated?', or 'what happened to metric Y?'. "
+        "Provide entity_name to also include knowledge graph entity history."
     ),
     "input_schema": {
         "type": "object",
@@ -62,6 +63,10 @@ GET_CHANGE_HISTORY_TOOL = {
             "document_title": {
                 "type": "string",
                 "description": "Optional: filter changes for a specific document title.",
+            },
+            "entity_name": {
+                "type": "string",
+                "description": "Optional: include knowledge graph history for this entity (e.g. 'DAU', 'MRR').",
             },
             "limit": {
                 "type": "integer",
@@ -123,10 +128,54 @@ SEARCH_ENTITIES_TOOL = {
     },
 }
 
+QUERY_GRAPH_TOOL = {
+    "name": "query_graph",
+    "description": (
+        "Query the knowledge graph to explore relationships between business entities. "
+        "Use this for questions about dependencies (what depends on X?), related entities, "
+        "and entity change history over time. Supports: 'dependencies', 'related', 'history' queries."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query_type": {
+                "type": "string",
+                "enum": ["dependencies", "related", "history", "cypher"],
+                "description": (
+                    "Type of graph query: "
+                    "'dependencies' — what depends on / is depended by an entity; "
+                    "'related' — all related entities within N hops; "
+                    "'history' — temporal changes for an entity; "
+                    "'cypher' — raw Cypher query (read-only)."
+                ),
+            },
+            "entity_name": {
+                "type": "string",
+                "description": "The name of the entity to query (for dependencies/related/history).",
+            },
+            "max_depth": {
+                "type": "integer",
+                "description": "Maximum traversal depth for 'related' queries. Default: 2.",
+                "default": 2,
+            },
+            "since": {
+                "type": "string",
+                "description": "ISO date to filter history from (for 'history' queries). Example: '2026-01-01'.",
+            },
+            "cypher": {
+                "type": "string",
+                "description": "Raw Cypher query (for 'cypher' query_type). Must be read-only.",
+            },
+        },
+        "required": ["query_type"],
+    },
+}
+
 ALL_TOOLS: list[dict[str, Any]] = [
     SEARCH_KNOWLEDGE_TOOL,
     GET_DOCUMENT_CONTEXT_TOOL,
     GET_CHANGE_HISTORY_TOOL,
     QUERY_DATABASE_TOOL,
     SEARCH_ENTITIES_TOOL,
+    QUERY_GRAPH_TOOL,
 ]

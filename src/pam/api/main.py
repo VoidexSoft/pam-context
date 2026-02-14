@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 import structlog
 from elasticsearch import AsyncElasticsearch
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, text
@@ -13,10 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
-from pam.api.routes import admin, auth, chat, documents, ingest, search
+from pam.api.routes import admin, auth, chat, documents, graph, ingest, search
 from pam.common.cache import close_redis, get_redis, ping_redis
 from pam.common.config import settings
 from pam.common.database import async_session_factory
+from pam.common.graph import GraphClient
 from pam.common.logging import configure_logging
 from pam.common.models import IngestionTask
 
@@ -45,6 +46,24 @@ async def lifespan(app: FastAPI):
         logger.warning("redis_connect_failed", exc_info=True)
         app.state.redis_client = None
 
+    # Initialize Neo4j
+    try:
+        graph_client = GraphClient(
+            uri=settings.neo4j_uri,
+            user=settings.neo4j_user,
+            password=settings.neo4j_password,
+            database=settings.neo4j_database,
+        )
+        await graph_client.connect()
+        app.state.graph_client = graph_client
+        # Initialize graph schema (idempotent)
+        from pam.graph.schema import initialize_schema
+        await initialize_schema(graph_client)
+        logger.info("neo4j_connected", uri=settings.neo4j_uri)
+    except Exception:
+        logger.warning("neo4j_connect_failed", exc_info=True)
+        app.state.graph_client = None
+
     # Clean up orphaned ingestion tasks from previous server runs
     async with async_session_factory() as session:
         await session.execute(
@@ -59,6 +78,9 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await close_redis()
     await app.state.es_client.close()
+    graph_client = getattr(app.state, "graph_client", None)
+    if graph_client:
+        await graph_client.close()
 
 
 def create_app() -> FastAPI:
@@ -87,9 +109,11 @@ def create_app() -> FastAPI:
     app.include_router(ingest.router, prefix="/api", tags=["ingest"])
     app.include_router(auth.router, prefix="/api", tags=["auth"])
     app.include_router(admin.router, prefix="/api", tags=["admin"])
+    app.include_router(graph.router, prefix="/api", tags=["graph"])
 
     @app.get("/api/health")
     async def health(
+        request: Request,
         es_client: AsyncElasticsearch = Depends(get_es_client),
         db: AsyncSession = Depends(get_db),
     ):
@@ -122,6 +146,20 @@ def create_app() -> FastAPI:
         except Exception:
             logger.warning("health_check_redis_failed", exc_info=True)
             services["redis"] = "down"
+
+        # Check Neo4j
+        graph = getattr(request.app.state, "graph_client", None)
+        if graph is not None:
+            try:
+                if await graph.health_check():
+                    services["neo4j"] = "up"
+                else:
+                    services["neo4j"] = "down"
+            except Exception:
+                logger.warning("health_check_neo4j_failed", exc_info=True)
+                services["neo4j"] = "down"
+        else:
+            services["neo4j"] = "down"
 
         all_up = all(v == "up" for v in services.values())
         status_code = 200 if all_up else 503

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from pam.agent.duckdb_service import DuckDBService
+    from pam.graph.query_service import GraphQueryService
 
 logger = structlog.get_logger()
 
@@ -33,6 +34,8 @@ Available tools:
 - get_document_context: Fetch full document content for deep reading.
 - get_change_history: See recent document changes and sync history.
 - query_database: Run SQL queries on analytics data files (CSV/Parquet/JSON).
+- search_entities: Look up structured business entities (metrics, events, KPIs).
+- query_graph: Explore entity relationships, dependencies, and change history in the knowledge graph.
 
 Rules:
 1. ALWAYS use tools to find information before answering.
@@ -41,7 +44,8 @@ Rules:
 4. If you cannot find relevant information, say so clearly — never make up facts.
 5. For complex questions, you may search multiple times with different queries.
 6. Synthesize information from multiple sources when relevant.
-7. Be concise and direct in your answers."""
+7. For relationship questions (what depends on X, what's related to Y), prefer query_graph.
+8. Be concise and direct in your answers."""
 
 MAX_TOOL_ITERATIONS = 5
 
@@ -73,6 +77,7 @@ class RetrievalAgent:
         cost_tracker: CostTracker | None = None,
         db_session: AsyncSession | None = None,
         duckdb_service: DuckDBService | None = None,
+        graph_query_service: GraphQueryService | None = None,
     ) -> None:
         self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
         self.model = model or settings.agent_model
@@ -81,6 +86,7 @@ class RetrievalAgent:
         self.cost_tracker = cost_tracker or CostTracker()
         self.db_session = db_session
         self.duckdb_service = duckdb_service
+        self.graph_query_service = graph_query_service
         self._default_source_type: str | None = None
 
     async def answer(
@@ -315,6 +321,8 @@ class RetrievalAgent:
             return await self._query_database(tool_input)
         if tool_name == "search_entities":
             return await self._search_entities(tool_input)
+        if tool_name == "query_graph":
+            return await self._query_graph(tool_input)
         return f"Unknown tool: {tool_name}", []
 
     async def _search_knowledge(self, input_: dict) -> tuple[str, list[Citation]]:
@@ -357,7 +365,15 @@ class RetrievalAgent:
             url_part = f" ({r.source_url})" if r.source_url else ""
             formatted_parts.append(f"[Result {i}] Source: {source_label}{url_part}\n{r.content}")
 
-        return "\n\n---\n\n".join(formatted_parts), citations
+        result_text = "\n\n---\n\n".join(formatted_parts)
+
+        # Graph context injection
+        if self.graph_query_service and settings.graph_context_enabled:
+            graph_context = await self._get_graph_context(query)
+            if graph_context:
+                result_text += f"\n\n---\n\n[Graph Context]\n{graph_context}"
+
+        return result_text, citations
 
     async def _get_document_context(self, input_: dict) -> tuple[str, list[Citation]]:
         """Fetch full document content by title or source_id."""
@@ -424,17 +440,36 @@ class RetrievalAgent:
         logs = result.scalars().all()
 
         if not logs:
-            return "No change history found.", []
+            doc_history = "No document change history found."
+        else:
+            parts = []
+            for log in logs:
+                parts.append(
+                    f"- [{log.created_at}] {log.action}"
+                    f" | segments_affected: {log.segments_affected}"
+                    f" | details: {json.dumps(log.details) if log.details else 'N/A'}"
+                )
+            doc_history = f"Document changes ({len(logs)} records):\n" + "\n".join(parts)
 
-        parts = []
-        for log in logs:
-            parts.append(
-                f"- [{log.created_at}] {log.action}"
-                f" | segments_affected: {log.segments_affected}"
-                f" | details: {json.dumps(log.details) if log.details else 'N/A'}"
-            )
+        # Enrich with graph entity history if available
+        entity_name = input_.get("entity_name")
+        if entity_name and self.graph_query_service:
+            try:
+                graph_history = await self.graph_query_service.get_entity_history(entity_name)
+                if graph_history:
+                    graph_parts = [f"\nEntity graph history for '{entity_name}':"]
+                    for r in graph_history:
+                        valid_to = f" → {r['valid_to']}" if r.get("valid_to") else " (current)"
+                        doc = f" [from: {r['document_title']}]" if r.get("document_title") else ""
+                        graph_parts.append(
+                            f"  - {r['rel_type']} → [{r['target_label']}] {r['target_name']} "
+                            f"({r['valid_from']}{valid_to}){doc}"
+                        )
+                    doc_history += "\n" + "\n".join(graph_parts)
+            except Exception:
+                logger.debug("graph_history_enrichment_failed", exc_info=True)
 
-        return f"Recent changes ({len(logs)} records):\n" + "\n".join(parts), []
+        return doc_history, []
 
     async def _query_database(self, input_: dict) -> tuple[str, list[Citation]]:
         """Execute a DuckDB SQL query over registered data files."""
@@ -507,6 +542,109 @@ class RetrievalAgent:
             )
 
         return f"Found {len(entities)} entities:\n\n" + "\n\n---\n\n".join(parts), []
+
+    async def _get_graph_context(self, query: str) -> str:
+        """Check if the search query mentions known graph entities and inject context."""
+        if not self.graph_query_service:
+            return ""
+
+        try:
+            # Simple heuristic: extract capitalized terms as potential entity names
+            words = query.split()
+            candidates = {w.strip("?.,!\"'") for w in words if len(w) > 2}
+
+            context_parts: list[str] = []
+            for name in candidates:
+                deps = await self.graph_query_service.find_dependencies(name)
+                if deps:
+                    dep_on = [d["name"] for d in deps if d["direction"] == "depends_on"]
+                    dep_by = [d["name"] for d in deps if d["direction"] == "depended_by"]
+                    parts = []
+                    if dep_on:
+                        parts.append(f"depends on: {', '.join(dep_on)}")
+                    if dep_by:
+                        parts.append(f"depended on by: {', '.join(dep_by)}")
+                    if parts:
+                        context_parts.append(f"'{name}': {'; '.join(parts)}")
+
+            return "\n".join(context_parts)
+        except Exception:
+            logger.debug("graph_context_injection_failed", exc_info=True)
+            return ""
+
+    async def _query_graph(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Execute a knowledge graph query."""
+        if self.graph_query_service is None:
+            return "Knowledge graph not available.", []
+
+        query_type = input_.get("query_type", "")
+        entity_name = input_.get("entity_name", "")
+
+        try:
+            if query_type == "dependencies":
+                if not entity_name:
+                    return "Please provide an entity_name for dependency queries.", []
+                results = await self.graph_query_service.find_dependencies(entity_name)
+                if not results:
+                    return f"No dependencies found for '{entity_name}'.", []
+                parts = [f"Dependencies for '{entity_name}':"]
+                for r in results:
+                    direction = "depends on" if r["direction"] == "depends_on" else "is depended on by"
+                    conf = f" (confidence: {r['confidence']:.0%})" if r.get("confidence") else ""
+                    parts.append(f"  - {entity_name} {direction} {r['name']}{conf}")
+                return "\n".join(parts), []
+
+            if query_type == "related":
+                if not entity_name:
+                    return "Please provide an entity_name for related queries.", []
+                max_depth = input_.get("max_depth", 2)
+                results = await self.graph_query_service.find_related(entity_name, max_depth)
+                if not results:
+                    return f"No related entities found for '{entity_name}'.", []
+                parts = [f"Entities related to '{entity_name}' (depth {max_depth}):"]
+                for r in results:
+                    conf = f" (confidence: {r['confidence']:.0%})" if r.get("confidence") else ""
+                    parts.append(
+                        f"  - [{r['from_label']}] {r['from_name']} "
+                        f"--{r['rel_type']}--> "
+                        f"[{r['to_label']}] {r['to_name']}{conf}"
+                    )
+                return "\n".join(parts), []
+
+            if query_type == "history":
+                if not entity_name:
+                    return "Please provide an entity_name for history queries.", []
+                since = input_.get("since")
+                results = await self.graph_query_service.get_entity_history(entity_name, since)
+                if not results:
+                    since_msg = f" since {since}" if since else ""
+                    return f"No history found for '{entity_name}'{since_msg}.", []
+                parts = [f"History for '{entity_name}':"]
+                for r in results:
+                    valid_to = f" → {r['valid_to']}" if r.get("valid_to") else " (current)"
+                    doc = f" [from: {r['document_title']}]" if r.get("document_title") else ""
+                    parts.append(
+                        f"  - {r['rel_type']} → [{r['target_label']}] {r['target_name']} "
+                        f"({r['valid_from']}{valid_to}){doc}"
+                    )
+                return "\n".join(parts), []
+
+            if query_type == "cypher":
+                cypher = input_.get("cypher", "")
+                if not cypher:
+                    return "Please provide a 'cypher' query.", []
+                results = await self.graph_query_service.execute_cypher(cypher)
+                if not results:
+                    return "Query returned no results.", []
+                return json.dumps(results, indent=2, default=str), []
+
+            return f"Unknown query_type: {query_type}. Use: dependencies, related, history, cypher.", []
+
+        except ValueError as e:
+            return f"Query error: {e}", []
+        except Exception:
+            logger.exception("query_graph_failed")
+            return "An error occurred while querying the knowledge graph.", []
 
     @staticmethod
     def _extract_text(content: list) -> str:

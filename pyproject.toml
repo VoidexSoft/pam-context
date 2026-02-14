@@ -31,6 +31,8 @@ dependencies = [
     # Haystack (retrieval pipeline)
     "haystack-ai>=2.9",
     "elasticsearch-haystack>=2.0",
+    # Graph
+    "neo4j>=5.0",
     # Reranking
     "sentence-transformers>=3.0",
     # Utilities

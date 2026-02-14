@@ -1,11 +1,14 @@
 """Ingestion pipeline orchestrator: connector → parser → chunker → embedder → stores."""
 
+from __future__ import annotations
+
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pam.common.graph import GraphClient
 from pam.common.models import KnowledgeSegment
 from pam.ingestion.chunkers.hybrid_chunker import chunk_document
 from pam.ingestion.connectors.base import BaseConnector
@@ -35,6 +38,7 @@ class IngestionPipeline:
     session: AsyncSession
     source_type: str = "markdown"
     progress_callback: Callable[["IngestionResult"], Awaitable[None]] | None = None
+    graph_client: GraphClient | None = None
 
     async def ingest_document(self, source_id: str) -> IngestionResult:
         """Ingest a single document through the full pipeline.
@@ -129,6 +133,20 @@ class IngestionPipeline:
                     doc_id=str(doc_id),
                     error=str(es_err),
                 )
+
+            # 11. Build knowledge graph (optional, non-blocking)
+            if self.graph_client:
+                try:
+                    from pam.graph.pipeline import GraphPipeline
+
+                    graph_pipeline = GraphPipeline(self.graph_client)
+                    await graph_pipeline.process_document(doc_id, raw_doc.title, self.session)
+                except Exception as graph_err:
+                    logger.warning(
+                        "pipeline_graph_build_failed",
+                        source_id=source_id,
+                        error=str(graph_err),
+                    )
 
             logger.info("pipeline_complete", source_id=source_id, title=raw_doc.title, segments=count, action=action)
             return IngestionResult(source_id=source_id, title=raw_doc.title, segments_created=count)
