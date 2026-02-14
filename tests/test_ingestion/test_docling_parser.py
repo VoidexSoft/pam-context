@@ -5,13 +5,23 @@ from unittest.mock import Mock, patch
 import pytest
 
 from pam.common.models import RawDocument
+from pam.ingestion.parsers.base import ParsedDocument
 from pam.ingestion.parsers.docling_parser import DoclingParser
+
+
+def _make_mock_docling_doc():
+    """Create a mock DoclingDocument with proper attributes for extraction."""
+    mock_doc = Mock()
+    mock_doc.pictures = []
+    mock_doc.tables = []
+    mock_doc.export_to_markdown.return_value = "# Mocked markdown"
+    return mock_doc
 
 
 class TestDoclingParser:
     @patch("pam.ingestion.parsers.docling_parser.DocumentConverter")
     def test_parse_markdown(self, mock_converter_cls):
-        mock_doc = Mock()
+        mock_doc = _make_mock_docling_doc()
         mock_result = Mock()
         mock_result.document = mock_doc
         mock_converter_cls.return_value.convert.return_value = mock_result
@@ -24,13 +34,16 @@ class TestDoclingParser:
             title="Test",
         )
         result = parser.parse(raw)
-        assert result is mock_doc
+        assert isinstance(result, ParsedDocument)
+        assert result._docling_doc is mock_doc
+        assert result.markdown_content == "# Mocked markdown"
         mock_converter_cls.return_value.convert.assert_called_once()
 
     @patch("pam.ingestion.parsers.docling_parser.DocumentConverter")
     def test_parse_docx(self, mock_converter_cls):
+        mock_doc = _make_mock_docling_doc()
         mock_result = Mock()
-        mock_result.document = Mock()
+        mock_result.document = mock_doc
         mock_converter_cls.return_value.convert.return_value = mock_result
 
         parser = DoclingParser()
@@ -41,7 +54,8 @@ class TestDoclingParser:
             title="Test",
         )
         result = parser.parse(raw)
-        assert result is mock_result.document
+        assert isinstance(result, ParsedDocument)
+        assert result._docling_doc is mock_doc
 
     @patch("pam.ingestion.parsers.docling_parser.DocumentConverter")
     def test_parse_error_propagates(self, mock_converter_cls):
@@ -67,7 +81,7 @@ class TestDoclingParser:
         def capture_path(path):
             temp_paths.append(path)
             mock_result = Mock()
-            mock_result.document = Mock()
+            mock_result.document = _make_mock_docling_doc()
             return mock_result
 
         mock_converter_cls.return_value.convert.side_effect = capture_path

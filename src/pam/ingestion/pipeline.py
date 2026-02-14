@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +13,8 @@ from pam.common.models import KnowledgeSegment
 from pam.ingestion.chunkers.hybrid_chunker import chunk_document
 from pam.ingestion.connectors.base import BaseConnector
 from pam.ingestion.embedders.base import BaseEmbedder
-from pam.ingestion.parsers.docling_parser import DoclingParser
+from pam.ingestion.parsers.base import BaseParser
+from pam.ingestion.processors.multimodal import MultimodalProcessor
 from pam.ingestion.stores.elasticsearch_store import ElasticsearchStore
 from pam.ingestion.stores.postgres_store import PostgresStore
 
@@ -32,13 +33,14 @@ class IngestionResult:
 @dataclass
 class IngestionPipeline:
     connector: BaseConnector
-    parser: DoclingParser
+    parser: BaseParser
     embedder: BaseEmbedder
     es_store: ElasticsearchStore
     session: AsyncSession
     source_type: str = "markdown"
-    progress_callback: Callable[["IngestionResult"], Awaitable[None]] | None = None
+    progress_callback: Callable[[IngestionResult], Awaitable[None]] | None = None
     graph_client: GraphClient | None = None
+    multimodal_processor: MultimodalProcessor | None = None
 
     async def ingest_document(self, source_id: str) -> IngestionResult:
         """Ingest a single document through the full pipeline.
@@ -67,14 +69,28 @@ class IngestionPipeline:
                 logger.info("pipeline_skip_unchanged", source_id=source_id)
                 return IngestionResult(source_id=source_id, title=raw_doc.title, segments_created=0, skipped=True)
 
-            # 3. Parse with Docling
-            docling_doc = self.parser.parse(raw_doc)
+            # 3. Parse
+            parsed_doc = self.parser.parse(raw_doc)
 
             # 4. Chunk
-            chunks = chunk_document(docling_doc)
+            chunks = chunk_document(parsed_doc)
             if not chunks:
                 logger.warning("pipeline_no_chunks", source_id=source_id)
                 return IngestionResult(source_id=source_id, title=raw_doc.title, segments_created=0)
+
+            # 4.5. Multimodal processing (optional)
+            if self.multimodal_processor:
+                try:
+                    # Use the docling doc for multimodal if available, otherwise the parsed doc
+                    mm_doc = parsed_doc._docling_doc if parsed_doc._docling_doc else parsed_doc
+                    mm_chunks = await self.multimodal_processor.process_document(mm_doc, chunks)
+                    chunks.extend(mm_chunks)
+                except Exception as mm_err:
+                    logger.warning(
+                        "pipeline_multimodal_failed",
+                        source_id=source_id,
+                        error=str(mm_err),
+                    )
 
             # 5. Embed
             texts = [c.content for c in chunks]

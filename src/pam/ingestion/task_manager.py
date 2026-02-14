@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pam.common.cache import CacheService, get_redis
+from pam.common.config import settings
 from pam.common.database import async_session_factory
 from pam.common.models import IngestionTask
 from pam.ingestion.connectors.markdown import MarkdownConnector
@@ -137,8 +138,33 @@ async def run_ingestion_background(
 
             # Run the pipeline with a separate DB session
             async with async_session_factory() as pipeline_session:
-                parser = DoclingParser()
+                # Create parser based on config
+                if settings.parser == "mineru":
+                    from pam.ingestion.parsers.mineru_parser import MineruParser
+                    parser = MineruParser()
+                else:
+                    parser = DoclingParser()
                 es_store = ElasticsearchStore(es_client)
+
+                # Create multimodal processor if enabled
+                multimodal_processor = None
+                if settings.enable_multimodal:
+                    from pam.common.llm.factory import create_llm_client
+                    from pam.ingestion.processors.multimodal import (
+                        MultimodalConfig,
+                        MultimodalProcessor,
+                    )
+
+                    llm_client = create_llm_client()
+                    multimodal_processor = MultimodalProcessor(
+                        llm_client=llm_client,
+                        config=MultimodalConfig(
+                            enable_image_processing=settings.enable_image_processing,
+                            enable_table_processing=settings.enable_table_processing,
+                            context_window_chars=settings.multimodal_context_chars,
+                        ),
+                    )
+
                 pipeline = IngestionPipeline(
                     connector=connector,
                     parser=parser,
@@ -147,6 +173,7 @@ async def run_ingestion_background(
                     session=pipeline_session,
                     source_type="markdown",
                     progress_callback=on_progress,
+                    multimodal_processor=multimodal_processor,
                 )
                 await pipeline.ingest_all()
 

@@ -6,7 +6,7 @@ import pytest
 
 from pam.ingestion.connectors.base import BaseConnector
 from pam.ingestion.embedders.base import BaseEmbedder
-from pam.ingestion.parsers.docling_parser import DoclingParser
+from pam.ingestion.parsers.base import BaseParser, ParsedDocument
 from pam.ingestion.stores.elasticsearch_store import ElasticsearchStore
 from pam.ingestion.stores.postgres_store import PostgresStore
 
@@ -23,9 +23,12 @@ def mock_connector():
 
 @pytest.fixture
 def mock_parser():
-    """Mock Docling parser."""
-    parser = MagicMock(spec=DoclingParser)
-    parser.parse = MagicMock(return_value=Mock())
+    """Mock document parser."""
+    parser = MagicMock(spec=BaseParser)
+    parser.parse = MagicMock(return_value=ParsedDocument(
+        markdown_content="# Test\n\nTest content.",
+        _docling_doc=Mock(),  # Preserve DoclingDocument for HybridChunker compatibility
+    ))
     return parser
 
 
