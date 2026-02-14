@@ -9,13 +9,17 @@ from pam.common.config import Settings
 
 
 class TestSettings:
+    @patch.dict(
+        os.environ,
+        {
+            "OPENAI_API_KEY": "test",
+            "ANTHROPIC_API_KEY": "test",
+        },
+        clear=True,
+    )
     def test_default_values(self):
         """Settings should have sensible defaults."""
-        s = Settings(
-            _env_file=None,
-            openai_api_key="test",
-            anthropic_api_key="test",
-        )
+        s = Settings(_env_file=None)
         assert s.database_url == "postgresql+psycopg://pam:pam@localhost:5432/pam_context"
         assert s.elasticsearch_url == "http://localhost:9200"
         assert s.elasticsearch_index == "pam_segments"
