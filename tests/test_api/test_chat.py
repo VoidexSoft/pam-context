@@ -1,6 +1,5 @@
 """Tests for POST /api/chat endpoint."""
 
-import json
 from unittest.mock import AsyncMock, Mock
 
 import pytest

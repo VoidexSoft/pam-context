@@ -13,7 +13,6 @@ from pam.ingestion.connectors.google_docs import (
     GoogleDocsConnector,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
@@ -119,14 +118,10 @@ class TestGetService:
                 "google": MagicMock(),
                 "google.oauth2": MagicMock(),
                 "google.oauth2.credentials": MagicMock(
-                    Credentials=MagicMock(
-                        from_authorized_user_file=MagicMock(return_value=fake_creds)
-                    )
+                    Credentials=MagicMock(from_authorized_user_file=MagicMock(return_value=fake_creds))
                 ),
                 "googleapiclient": MagicMock(),
-                "googleapiclient.discovery": MagicMock(
-                    build=MagicMock(return_value=fake_service)
-                ),
+                "googleapiclient.discovery": MagicMock(build=MagicMock(return_value=fake_service)),
             },
         ):
             conn = GoogleDocsConnector(credentials_path="/fake/creds.json", folder_ids=[])
@@ -139,17 +134,13 @@ class TestGetService:
 
 
 class TestListDocuments:
-    async def test_returns_docs_from_multiple_folders(
-        self, connector_multi, mock_service, patch_loop
-    ):
+    async def test_returns_docs_from_multiple_folders(self, connector_multi, mock_service, patch_loop):
         """Documents from two folders should be combined."""
         files_a = [_make_drive_file("a1", "Doc A1"), _make_drive_file("a2", "Doc A2")]
         files_b = [_make_drive_file("b1", "Doc B1")]
 
         list_req = MagicMock()
-        list_req.execute = MagicMock(
-            side_effect=[{"files": files_a}, {"files": files_b}]
-        )
+        list_req.execute = MagicMock(side_effect=[{"files": files_a}, {"files": files_b}])
         mock_service.list.return_value = list_req
         connector_multi._service = mock_service
 
@@ -170,9 +161,7 @@ class TestListDocuments:
         docs = await connector.list_documents()
         assert docs == []
 
-    async def test_handles_missing_owners_field(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_handles_missing_owners_field(self, connector, mock_service, patch_loop):
         """Files without an 'owners' key should have owner=None."""
         file_no_owner = _make_drive_file(owner_email=None)
         file_no_owner.pop("owners", None)
@@ -184,9 +173,7 @@ class TestListDocuments:
         assert len(docs) == 1
         assert docs[0].owner is None
 
-    async def test_handles_empty_owners_list(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_handles_empty_owners_list(self, connector, mock_service, patch_loop):
         """Files with an empty 'owners' list should have owner=None."""
         file_data = _make_drive_file()
         file_data["owners"] = []
@@ -209,9 +196,7 @@ class TestListDocuments:
         docs = await connector.list_documents()
         assert docs[0].source_url == url
 
-    async def test_correct_query_per_folder(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_correct_query_per_folder(self, connector, mock_service, patch_loop):
         """Verify the Drive query string includes folder ID and mime type."""
         mock_service.list.return_value = _mock_execute({"files": []})
         connector._service = mock_service
@@ -238,9 +223,7 @@ class TestListDocuments:
 
 
 class TestFetchDocument:
-    async def test_returns_raw_document_with_correct_fields(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_returns_raw_document_with_correct_fields(self, connector, mock_service, patch_loop):
         content_bytes = b"fake docx bytes"
         meta = _make_drive_file("doc42", "My Document")
 
@@ -258,9 +241,7 @@ class TestFetchDocument:
         assert doc.owner == "alice@example.com"
         assert doc.source_url == "https://docs.google.com/document/d/doc1"
 
-    async def test_handles_missing_owner(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_handles_missing_owner(self, connector, mock_service, patch_loop):
         meta = _make_drive_file(owner_email=None)
         meta.pop("owners", None)
 
@@ -271,9 +252,7 @@ class TestFetchDocument:
         doc = await connector.fetch_document("doc1")
         assert doc.owner is None
 
-    async def test_export_uses_docx_mime(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_export_uses_docx_mime(self, connector, mock_service, patch_loop):
         """Export should request DOCX mime type."""
         mock_service.get.return_value = _mock_execute(_make_drive_file())
         mock_service.export.return_value = _mock_execute(b"data")
@@ -281,43 +260,31 @@ class TestFetchDocument:
 
         await connector.fetch_document("doc1")
 
-        mock_service.export.assert_called_once_with(
-            fileId="doc1", mimeType=DOCX_MIME
-        )
+        mock_service.export.assert_called_once_with(fileId="doc1", mimeType=DOCX_MIME)
 
-    async def test_requests_correct_metadata_fields(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_requests_correct_metadata_fields(self, connector, mock_service, patch_loop):
         mock_service.get.return_value = _mock_execute(_make_drive_file())
         mock_service.export.return_value = _mock_execute(b"data")
         connector._service = mock_service
 
         await connector.fetch_document("doc1")
 
-        mock_service.get.assert_called_once_with(
-            fileId="doc1", fields="name, owners, webViewLink"
-        )
+        mock_service.get.assert_called_once_with(fileId="doc1", fields="name, owners, webViewLink")
 
 
 # ── get_content_hash tests ───────────────────────────────────────────
 
 
 class TestGetContentHash:
-    async def test_returns_md5_when_available(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_returns_md5_when_available(self, connector, mock_service, patch_loop):
         expected_md5 = "d41d8cd98f00b204e9800998ecf8427e"
-        mock_service.get.return_value = _mock_execute(
-            {"md5Checksum": expected_md5}
-        )
+        mock_service.get.return_value = _mock_execute({"md5Checksum": expected_md5})
         connector._service = mock_service
 
         result = await connector.get_content_hash("doc1")
         assert result == expected_md5
 
-    async def test_falls_back_to_sha256_when_no_md5(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_falls_back_to_sha256_when_no_md5(self, connector, mock_service, patch_loop):
         content = b"fake docx content for hashing"
         expected_hash = hashlib.sha256(content).hexdigest()
 
@@ -329,9 +296,7 @@ class TestGetContentHash:
         assert result == expected_hash
         assert len(result) == 64  # SHA-256 hex length
 
-    async def test_falls_back_when_md5_is_none(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_falls_back_when_md5_is_none(self, connector, mock_service, patch_loop):
         content = b"some bytes"
         expected_hash = hashlib.sha256(content).hexdigest()
 
@@ -342,22 +307,16 @@ class TestGetContentHash:
         result = await connector.get_content_hash("doc1")
         assert result == expected_hash
 
-    async def test_export_not_called_when_md5_present(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_export_not_called_when_md5_present(self, connector, mock_service, patch_loop):
         """When md5Checksum is available, no export should happen."""
-        mock_service.get.return_value = _mock_execute(
-            {"md5Checksum": "abc123"}
-        )
+        mock_service.get.return_value = _mock_execute({"md5Checksum": "abc123"})
         connector._service = mock_service
 
         await connector.get_content_hash("doc1")
 
         mock_service.export.assert_not_called()
 
-    async def test_sha256_fallback_exports_as_docx(
-        self, connector, mock_service, patch_loop
-    ):
+    async def test_sha256_fallback_exports_as_docx(self, connector, mock_service, patch_loop):
         """Fallback path should export with DOCX mime."""
         mock_service.get.return_value = _mock_execute({})
         mock_service.export.return_value = _mock_execute(b"bytes")
@@ -365,9 +324,7 @@ class TestGetContentHash:
 
         await connector.get_content_hash("doc1")
 
-        mock_service.export.assert_called_once_with(
-            fileId="doc1", mimeType=DOCX_MIME
-        )
+        mock_service.export.assert_called_once_with(fileId="doc1", mimeType=DOCX_MIME)
 
 
 # ── Constructor tests ─────────────────────────────────────────────────

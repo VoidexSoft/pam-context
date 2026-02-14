@@ -101,9 +101,7 @@ class ElasticsearchStore:
                     if "error" in item.get("index", {}):
                         failed_items.append(item["index"]["error"])
                         logger.error("es_bulk_error", error=item["index"]["error"])
-                raise RuntimeError(
-                    f"ES bulk indexing failed: {len(failed_items)} of {total} documents failed"
-                )
+                raise RuntimeError(f"ES bulk indexing failed: {len(failed_items)} of {total} documents failed")
 
             logger.info("es_bulk_index", index=self.index_name, count=total, errors=errors)
             return total

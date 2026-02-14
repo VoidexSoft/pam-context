@@ -39,14 +39,13 @@ async def create_task(folder_path: str, session: AsyncSession) -> IngestionTask:
 async def get_task(task_id: uuid.UUID, session: AsyncSession) -> IngestionTask | None:
     """Fetch an ingestion task by ID."""
     result = await session.execute(select(IngestionTask).where(IngestionTask.id == task_id))
-    return result.scalar_one_or_none()
+    task: IngestionTask | None = result.scalar_one_or_none()
+    return task
 
 
 async def list_tasks(session: AsyncSession, limit: int = 20) -> list[IngestionTask]:
     """List recent ingestion tasks, newest first."""
-    result = await session.execute(
-        select(IngestionTask).order_by(IngestionTask.created_at.desc()).limit(limit)
-    )
+    result = await session.execute(select(IngestionTask).order_by(IngestionTask.created_at.desc()).limit(limit))
     return list(result.scalars().all())
 
 
@@ -89,9 +88,7 @@ async def run_ingestion_background(
             total = len(docs)
 
             await status_session.execute(
-                update(IngestionTask)
-                .where(IngestionTask.id == task_id)
-                .values(total_documents=total)
+                update(IngestionTask).where(IngestionTask.id == task_id).values(total_documents=total)
             )
             await status_session.commit()
 

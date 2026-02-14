@@ -99,7 +99,8 @@ class PostgresStore:
         result = await self.session.execute(
             select(Document).where(Document.source_type == source_type, Document.source_id == source_id)
         )
-        return result.scalar_one_or_none()
+        doc: Document | None = result.scalar_one_or_none()
+        return doc
 
     async def list_documents(self) -> list[dict]:
         """List all documents with segment counts."""

@@ -2,18 +2,18 @@
 
 import json
 import uuid
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from pam.ingestion.extractors.entity_extractor import EntityExtractor
 from pam.ingestion.extractors.schemas import (
     EXTRACTION_SCHEMAS,
-    ExtractedEntityData,
     EventTrackingSpec,
+    ExtractedEntityData,
     KPITarget,
     MetricDefinition,
 )
-from pam.ingestion.extractors.entity_extractor import EntityExtractor
 
 
 class TestMetricDefinition:
@@ -106,13 +106,15 @@ class TestEntityExtractor:
 
     async def test_extract_metric(self, mock_anthropic):
         # Mock Claude response with a metric extraction
-        response_data = json.dumps([
-            {
-                "entity_type": "metric_definition",
-                "entity_data": {"name": "DAU", "formula": "COUNT(DISTINCT users)"},
-                "confidence": 0.9,
-            }
-        ])
+        response_data = json.dumps(
+            [
+                {
+                    "entity_type": "metric_definition",
+                    "entity_data": {"name": "DAU", "formula": "COUNT(DISTINCT users)"},
+                    "confidence": 0.9,
+                }
+            ]
+        )
         text_block = Mock()
         text_block.text = response_data
         response = Mock()
@@ -131,18 +133,20 @@ class TestEntityExtractor:
         assert results[0].confidence == 0.9
 
     async def test_extract_multiple_types(self, mock_anthropic):
-        response_data = json.dumps([
-            {
-                "entity_type": "metric_definition",
-                "entity_data": {"name": "Conversion Rate", "formula": "signups/visits"},
-                "confidence": 0.85,
-            },
-            {
-                "entity_type": "kpi_target",
-                "entity_data": {"metric": "Conversion Rate", "target_value": "3.5%", "period": "Q1"},
-                "confidence": 0.8,
-            },
-        ])
+        response_data = json.dumps(
+            [
+                {
+                    "entity_type": "metric_definition",
+                    "entity_data": {"name": "Conversion Rate", "formula": "signups/visits"},
+                    "confidence": 0.85,
+                },
+                {
+                    "entity_type": "kpi_target",
+                    "entity_data": {"metric": "Conversion Rate", "target_value": "3.5%", "period": "Q1"},
+                    "confidence": 0.8,
+                },
+            ]
+        )
         text_block = Mock()
         text_block.text = response_data
         response = Mock()
@@ -181,9 +185,7 @@ class TestEntityExtractor:
         assert results == []
 
     async def test_extract_unknown_entity_type(self, mock_anthropic):
-        response_data = json.dumps([
-            {"entity_type": "unknown_type", "entity_data": {"foo": "bar"}, "confidence": 0.5}
-        ])
+        response_data = json.dumps([{"entity_type": "unknown_type", "entity_data": {"foo": "bar"}, "confidence": 0.5}])
         text_block = Mock()
         text_block.text = response_data
         response = Mock()
@@ -200,9 +202,15 @@ class TestEntityExtractor:
 
     async def test_extract_with_segment_id(self, mock_anthropic):
         seg_id = uuid.uuid4()
-        response_data = json.dumps([
-            {"entity_type": "kpi_target", "entity_data": {"metric": "DAU", "target_value": "50000"}, "confidence": 0.9}
-        ])
+        response_data = json.dumps(
+            [
+                {
+                    "entity_type": "kpi_target",
+                    "entity_data": {"metric": "DAU", "target_value": "50000"},
+                    "confidence": 0.9,
+                }
+            ]
+        )
         text_block = Mock()
         text_block.text = response_data
         response = Mock()
@@ -219,9 +227,9 @@ class TestEntityExtractor:
         assert results[0].source_segment_id == seg_id
 
     async def test_batch_extraction(self, mock_anthropic):
-        response_data = json.dumps([
-            {"entity_type": "metric_definition", "entity_data": {"name": "DAU"}, "confidence": 0.9}
-        ])
+        response_data = json.dumps(
+            [{"entity_type": "metric_definition", "entity_data": {"name": "DAU"}, "confidence": 0.9}]
+        )
         text_block = Mock()
         text_block.text = response_data
         response = Mock()

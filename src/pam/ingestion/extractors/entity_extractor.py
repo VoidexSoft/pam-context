@@ -69,9 +69,7 @@ class EntityExtractor:
 
         types = entity_types or list(EXTRACTION_SCHEMAS.keys())
         schema_desc = "\n".join(
-            f"- {name}: {info['description']}"
-            for name, info in EXTRACTION_SCHEMAS.items()
-            if name in types
+            f"- {name}: {info['description']}" for name, info in EXTRACTION_SCHEMAS.items() if name in types
         )
 
         prompt = EXTRACTION_PROMPT.format(

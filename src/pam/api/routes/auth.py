@@ -18,11 +18,13 @@ router = APIRouter()
 
 class GoogleAuthRequest(BaseModel):
     """Exchange a Google OAuth2 ID token for a PAM access token."""
+
     id_token: str
 
 
 class DevLoginRequest(BaseModel):
     """Dev-only: login with just an email (no OAuth). Only works when auth_required=False."""
+
     email: str
     name: str = "Dev User"
 

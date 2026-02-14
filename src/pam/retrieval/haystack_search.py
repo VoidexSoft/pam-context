@@ -181,9 +181,7 @@ class HaystackSearchService:
 
         # Store in cache
         if self.cache and results:
-            await self.cache.set_search_results(
-                query, top_k, [r.model_dump() for r in results], source_type, project
-            )
+            await self.cache.set_search_results(query, top_k, [r.model_dump() for r in results], source_type, project)
 
         return results
 

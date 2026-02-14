@@ -157,10 +157,7 @@ class LocalSheetsConnector(BaseConnector):
         self.sheets = sheets
 
     async def list_documents(self) -> list[DocumentInfo]:
-        return [
-            DocumentInfo(source_id=sid, title=data["title"])
-            for sid, data in self.sheets.items()
-        ]
+        return [DocumentInfo(source_id=sid, title=data["title"]) for sid, data in self.sheets.items()]
 
     async def fetch_document(self, source_id: str) -> RawDocument:
         sheet_data = self.sheets[source_id]

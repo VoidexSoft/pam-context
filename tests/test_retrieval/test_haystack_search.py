@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,7 +11,6 @@ from haystack import Document
 
 from pam.retrieval.haystack_search import HaystackSearchService
 from pam.retrieval.types import SearchQuery, SearchResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
@@ -74,22 +73,22 @@ class TestBuildFilters:
 
     def test_date_from_filter(self):
         service = HaystackSearchService(es_url="http://localhost:9200")
-        dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         result = service._build_filters(date_from=dt)
 
         assert result == {"field": "meta.updated_at", "operator": ">=", "value": dt.isoformat()}
 
     def test_date_to_filter(self):
         service = HaystackSearchService(es_url="http://localhost:9200")
-        dt = datetime(2024, 6, 30, tzinfo=timezone.utc)
+        dt = datetime(2024, 6, 30, tzinfo=UTC)
         result = service._build_filters(date_to=dt)
 
         assert result == {"field": "meta.updated_at", "operator": "<=", "value": dt.isoformat()}
 
     def test_multiple_filters_combined_with_and(self):
         service = HaystackSearchService(es_url="http://localhost:9200")
-        dt_from = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        dt_to = datetime(2024, 12, 31, tzinfo=timezone.utc)
+        dt_from = datetime(2024, 1, 1, tzinfo=UTC)
+        dt_to = datetime(2024, 12, 31, tzinfo=UTC)
 
         result = service._build_filters(
             source_type="markdown",
@@ -388,9 +387,7 @@ class TestSearch:
             mock_loop = MagicMock()
             mock_loop_fn.return_value = mock_loop
             # Make run_in_executor call the function synchronously
-            mock_loop.run_in_executor = AsyncMock(
-                side_effect=lambda _, fn, *args: fn(*args)
-            )
+            mock_loop.run_in_executor = AsyncMock(side_effect=lambda _, fn, *args: fn(*args))
 
             results = await service.search("test query", [0.1] * 10, top_k=5)
 
@@ -414,9 +411,7 @@ class TestSearch:
         with patch("asyncio.get_running_loop") as mock_loop_fn:
             mock_loop = MagicMock()
             mock_loop_fn.return_value = mock_loop
-            mock_loop.run_in_executor = AsyncMock(
-                side_effect=lambda _, fn, *args: fn(*args)
-            )
+            mock_loop.run_in_executor = AsyncMock(side_effect=lambda _, fn, *args: fn(*args))
 
             results = await service.search("test query", [0.1] * 10)
 
@@ -435,9 +430,7 @@ class TestSearch:
         with patch("asyncio.get_running_loop") as mock_loop_fn:
             mock_loop = MagicMock()
             mock_loop_fn.return_value = mock_loop
-            mock_loop.run_in_executor = AsyncMock(
-                side_effect=lambda _, fn, *args: fn(*args)
-            )
+            mock_loop.run_in_executor = AsyncMock(side_effect=lambda _, fn, *args: fn(*args))
 
             results = await service.search("no results", [0.1] * 10)
 
@@ -454,15 +447,13 @@ class TestSearch:
         service = HaystackSearchService(es_url="http://localhost:9200", cache=mock_cache)
         service._pipeline = mock_pipeline
 
-        dt_from = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        dt_to = datetime(2024, 12, 31, tzinfo=timezone.utc)
+        dt_from = datetime(2024, 1, 1, tzinfo=UTC)
+        dt_to = datetime(2024, 12, 31, tzinfo=UTC)
 
         with patch("asyncio.get_running_loop") as mock_loop_fn:
             mock_loop = MagicMock()
             mock_loop_fn.return_value = mock_loop
-            mock_loop.run_in_executor = AsyncMock(
-                side_effect=lambda _, fn, *args: fn(*args)
-            )
+            mock_loop.run_in_executor = AsyncMock(side_effect=lambda _, fn, *args: fn(*args))
 
             await service.search(
                 "test",
@@ -528,9 +519,7 @@ class TestSearchFromQuery:
         with patch("asyncio.get_running_loop") as mock_loop_fn:
             mock_loop = MagicMock()
             mock_loop_fn.return_value = mock_loop
-            mock_loop.run_in_executor = AsyncMock(
-                side_effect=lambda _, fn, *args: fn(*args)
-            )
+            mock_loop.run_in_executor = AsyncMock(side_effect=lambda _, fn, *args: fn(*args))
 
             results = await service.search_from_query(query, [0.1] * 10)
 
@@ -549,15 +538,13 @@ class TestSearchFromQuery:
         service = HaystackSearchService(es_url="http://localhost:9200")
         service._pipeline = mock_pipeline
 
-        dt = datetime(2024, 6, 15, tzinfo=timezone.utc)
+        dt = datetime(2024, 6, 15, tzinfo=UTC)
         query = SearchQuery(query="test", date_from=dt, date_to=dt)
 
         with patch("asyncio.get_running_loop") as mock_loop_fn:
             mock_loop = MagicMock()
             mock_loop_fn.return_value = mock_loop
-            mock_loop.run_in_executor = AsyncMock(
-                side_effect=lambda _, fn, *args: fn(*args)
-            )
+            mock_loop.run_in_executor = AsyncMock(side_effect=lambda _, fn, *args: fn(*args))
 
             await service.search_from_query(query, [0.1] * 10)
 

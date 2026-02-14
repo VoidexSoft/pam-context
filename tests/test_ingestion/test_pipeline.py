@@ -1,8 +1,7 @@
 """Tests for IngestionPipeline — orchestration of the full ingestion flow."""
 
 import uuid
-from collections import OrderedDict
-from unittest.mock import AsyncMock, Mock, call, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from pam.common.models import DocumentInfo, RawDocument
 from pam.ingestion.pipeline import IngestionPipeline
@@ -134,7 +133,6 @@ class TestIngestDocument:
         assert result.segments_created == 0
         mock_db_session.rollback.assert_called_once()
 
-
     @patch("pam.ingestion.pipeline.chunk_document")
     @patch("pam.ingestion.pipeline.PostgresStore")
     async def test_pg_commits_before_es_writes(
@@ -171,7 +169,6 @@ class TestIngestDocument:
 
         # Track call order
         call_order = []
-        original_commit = mock_db_session.commit
         mock_db_session.commit = AsyncMock(side_effect=lambda: call_order.append("commit"))
         mock_es_store.delete_by_document = AsyncMock(side_effect=lambda *a: call_order.append("es_delete"))
         mock_es_store.bulk_index = AsyncMock(side_effect=lambda *a: call_order.append("es_index"))

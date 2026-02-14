@@ -1,7 +1,8 @@
 """Tests for ingest endpoints — POST /api/ingest/folder, GET /api/ingest/tasks."""
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC
+from unittest.mock import MagicMock, patch
 
 from pam.common.models import IngestionTask
 
@@ -69,7 +70,7 @@ class TestIngestEndpoint:
 
     @patch("pam.api.routes.ingest.get_task")
     async def test_get_task_found(self, mock_get_task, client):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         task_id = uuid.uuid4()
         mock_task = MagicMock(spec=IngestionTask)
@@ -83,8 +84,8 @@ class TestIngestEndpoint:
         mock_task.failed = 0
         mock_task.results = []
         mock_task.error = None
-        mock_task.created_at = datetime.now(timezone.utc)
-        mock_task.started_at = datetime.now(timezone.utc)
+        mock_task.created_at = datetime.now(UTC)
+        mock_task.started_at = datetime.now(UTC)
         mock_task.completed_at = None
         mock_get_task.return_value = mock_task
 

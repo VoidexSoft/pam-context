@@ -73,9 +73,7 @@ class Settings(BaseSettings):
                 "Set JWT_SECRET to a strong, unique value (>= 32 characters)."
             )
         if self.auth_required and len(self.jwt_secret) < 32:
-            raise ValueError(
-                "JWT_SECRET must be at least 32 characters when AUTH_REQUIRED=true."
-            )
+            raise ValueError("JWT_SECRET must be at least 32 characters when AUTH_REQUIRED=true.")
 
 
 settings = Settings()

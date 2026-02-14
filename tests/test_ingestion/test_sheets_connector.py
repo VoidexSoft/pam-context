@@ -1,22 +1,19 @@
 """Tests for Google Sheets region detection and connector."""
 
 import json
-import uuid
 
 import pytest
 
-from pam.ingestion.connectors.sheets_region_detector import (
-    SheetRegion,
-    detect_regions,
-    _is_blank_row,
-    _split_into_blocks,
-    _is_config_block,
-    _is_table_block,
-    _is_notes_block,
-)
 from pam.ingestion.connectors.google_sheets import LocalSheetsConnector
+from pam.ingestion.connectors.sheets_region_detector import (
+    _is_blank_row,
+    _is_config_block,
+    _is_notes_block,
+    _is_table_block,
+    _split_into_blocks,
+    detect_regions,
+)
 from tests.fixtures.sheets.mock_sheets import ALL_FIXTURES
-
 
 # ── Region Detection Tests ─────────────────────────────────────────────
 

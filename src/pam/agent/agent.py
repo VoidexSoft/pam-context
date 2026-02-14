@@ -84,7 +84,10 @@ class RetrievalAgent:
         self._default_source_type: str | None = None
 
     async def answer(
-        self, question: str, conversation_history: list | None = None, source_type: str | None = None,
+        self,
+        question: str,
+        conversation_history: list | None = None,
+        source_type: str | None = None,
     ) -> AgentResponse:
         """Answer a question using the knowledge base.
 
@@ -180,7 +183,10 @@ class RetrievalAgent:
         )
 
     async def answer_streaming(
-        self, question: str, conversation_history: list | None = None, source_type: str | None = None,
+        self,
+        question: str,
+        conversation_history: list | None = None,
+        source_type: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream an answer as SSE events.
 
@@ -231,11 +237,13 @@ class RetrievalAgent:
                             yield {"type": "status", "content": f"Using {tool_name}..."}
                             result, citations = await self._execute_tool(block.name, block.input)
                             all_citations.extend(citations)
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": result,
-                            })
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": block.id,
+                                    "content": result,
+                                }
+                            )
                     messages.append({"role": "user", "content": tool_results})
                     continue
 
@@ -271,9 +279,7 @@ class RetrievalAgent:
                 }
 
             total_latency = (time.perf_counter() - start) * 1000
-            self.cost_tracker.log_llm_call(
-                self.model, total_input_tokens, total_output_tokens, total_latency
-            )
+            self.cost_tracker.log_llm_call(self.model, total_input_tokens, total_output_tokens, total_latency)
             yield {
                 "type": "done",
                 "metadata": {
@@ -502,9 +508,7 @@ class RetrievalAgent:
         parts = []
         for e in entities:
             data_str = json.dumps(e.entity_data, indent=2)
-            parts.append(
-                f"[{e.entity_type}] (confidence: {e.confidence:.1%})\n{data_str}"
-            )
+            parts.append(f"[{e.entity_type}] (confidence: {e.confidence:.1%})\n{data_str}")
 
         return f"Found {len(entities)} entities:\n\n" + "\n\n---\n\n".join(parts), []
 

@@ -39,4 +39,6 @@ class TestRequestLoggingMiddleware:
         # Verify the middleware did not inject extra top-level keys.
         # The health endpoint returns status + service/auth info.
         allowed_keys = {"status", "services", "auth_required", "checks", "version", "uptime", "timestamp"}
-        assert set(data.keys()).issubset(allowed_keys), f"Unexpected keys in response: {set(data.keys()) - allowed_keys}"
+        assert set(data.keys()).issubset(allowed_keys), (
+            f"Unexpected keys in response: {set(data.keys()) - allowed_keys}"
+        )

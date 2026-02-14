@@ -1,12 +1,10 @@
 """Tests for admin routes — user and role management."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from pam.common.models import Project, User, UserProjectRole
+from pam.common.models import Project, User
 
 
 class TestListUsers:
@@ -16,8 +14,8 @@ class TestListUsers:
             email="user@test.com",
             name="Test User",
             is_active=True,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         mock_result = MagicMock()
         mock_scalars = MagicMock()

@@ -2,7 +2,6 @@
 
 import csv
 import json
-from pathlib import Path
 
 import pytest
 
@@ -24,11 +23,15 @@ def data_dir(tmp_path):
 
     # JSON file
     json_path = tmp_path / "users.json"
-    json_path.write_text(json.dumps([
-        {"name": "Alice", "age": 30, "city": "NYC"},
-        {"name": "Bob", "age": 25, "city": "LA"},
-        {"name": "Charlie", "age": 35, "city": "NYC"},
-    ]))
+    json_path.write_text(
+        json.dumps(
+            [
+                {"name": "Alice", "age": 30, "city": "NYC"},
+                {"name": "Bob", "age": 25, "city": "LA"},
+                {"name": "Charlie", "age": 35, "city": "NYC"},
+            ]
+        )
+    )
 
     return tmp_path
 
@@ -82,9 +85,7 @@ class TestExecuteQuery:
         assert result["row_count"] == 2
 
     def test_cross_table_query(self, service):
-        result = service.execute_query(
-            "SELECT COUNT(*) as cnt FROM sales UNION ALL SELECT COUNT(*) FROM users"
-        )
+        result = service.execute_query("SELECT COUNT(*) as cnt FROM sales UNION ALL SELECT COUNT(*) FROM users")
         assert result["row_count"] == 2
 
     def test_row_limit(self, data_dir):
@@ -125,7 +126,6 @@ class TestSQLGuardrails:
         result = service.execute_query("CREATE TABLE evil (id INT)")
         assert "error" in result
 
-
     def test_blocks_attach(self, service):
         result = service.execute_query("ATTACH '/tmp/evil.db'")
         assert "error" in result
@@ -156,7 +156,6 @@ class TestSQLGuardrails:
         result = service.execute_query("SELECT * FROM read_csv_auto('/etc/passwd')")
         assert "error" in result
 
-
     def test_blocks_sql_comment_with_dangerous_suffix(self, service):
         """SQL comments should not bypass multi-statement detection."""
         result = service.execute_query("SELECT 1; --DROP TABLE sales")
@@ -165,8 +164,7 @@ class TestSQLGuardrails:
     def test_allows_cte_query(self, service):
         """Common Table Expressions (WITH ... AS) are legitimate and should work."""
         result = service.execute_query(
-            "WITH top_sales AS (SELECT * FROM sales WHERE revenue > 100000) "
-            "SELECT COUNT(*) as cnt FROM top_sales"
+            "WITH top_sales AS (SELECT * FROM sales WHERE revenue > 100000) SELECT COUNT(*) as cnt FROM top_sales"
         )
         assert "error" not in result
         assert result["row_count"] == 1

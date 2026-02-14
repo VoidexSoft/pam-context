@@ -31,17 +31,13 @@ async def get_segment(
     _user: User | None = Depends(get_current_user),
 ):
     """Get segment content and metadata for the source viewer."""
-    result = await db.execute(
-        select(Segment).where(Segment.id == segment_id)
-    )
+    result = await db.execute(select(Segment).where(Segment.id == segment_id))
     segment = result.scalar_one_or_none()
     if not segment:
         raise HTTPException(status_code=404, detail="Segment not found")
 
     # Get parent document for title and source URL
-    doc_result = await db.execute(
-        select(Document).where(Document.id == segment.document_id)
-    )
+    doc_result = await db.execute(select(Document).where(Document.id == segment.document_id))
     doc = doc_result.scalar_one_or_none()
 
     return {
@@ -65,9 +61,7 @@ async def get_stats(
 ):
     """Get system stats for admin dashboard."""
     # Document counts by status
-    doc_result = await db.execute(
-        select(Document.status, func.count()).group_by(Document.status)
-    )
+    doc_result = await db.execute(select(Document.status, func.count()).group_by(Document.status))
     doc_counts = {row[0]: row[1] for row in doc_result.all()}
 
     # Total segments
@@ -84,9 +78,7 @@ async def get_stats(
         entity_counts = {}
 
     # Recent ingestion tasks
-    task_result = await db.execute(
-        select(IngestionTask).order_by(IngestionTask.created_at.desc()).limit(10)
-    )
+    task_result = await db.execute(select(IngestionTask).order_by(IngestionTask.created_at.desc()).limit(10))
     recent_tasks = task_result.scalars().all()
 
     return {

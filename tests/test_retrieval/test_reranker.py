@@ -51,6 +51,7 @@ class TestCrossEncoderReranker:
         mock_model = MagicMock()
         # Scores: low=0.1, high=0.95, medium=0.5
         import numpy as np
+
         mock_model.predict.return_value = np.array([0.1, 0.95, 0.5])
 
         with patch("pam.retrieval.rerankers.cross_encoder._load_model", return_value=mock_model):
@@ -73,6 +74,7 @@ class TestCrossEncoderReranker:
 
         mock_model = MagicMock()
         import numpy as np
+
         mock_model.predict.return_value = np.array([0.8, 0.3, 0.6])
 
         with patch("pam.retrieval.rerankers.cross_encoder._load_model", return_value=mock_model):
@@ -98,6 +100,7 @@ class TestCrossEncoderReranker:
 
         mock_model = MagicMock()
         import numpy as np
+
         mock_model.predict.return_value = np.array([0.9])
 
         with patch("pam.retrieval.rerankers.cross_encoder._load_model", return_value=mock_model):
@@ -120,6 +123,7 @@ class TestCrossEncoderReranker:
 
         mock_model = MagicMock()
         import numpy as np
+
         mock_model.predict.return_value = np.array([0.5, 0.5])
 
         with patch("pam.retrieval.rerankers.cross_encoder._load_model", return_value=mock_model):

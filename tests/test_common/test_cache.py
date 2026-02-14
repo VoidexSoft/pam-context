@@ -2,9 +2,9 @@
 
 import json
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, patch
 
 from pam.common.cache import CacheService, _make_search_key
 
@@ -81,13 +81,13 @@ class TestCacheServiceSearchResults:
                 yield key
 
         mock_redis.scan_iter = fake_scan_iter
-        deleted = await cache.invalidate_search()
+        await cache.invalidate_search()
         mock_redis.delete.assert_called_once_with("search:abc", "search:def")
 
     async def test_invalidate_search_no_keys(self, cache, mock_redis):
         async def fake_scan_iter(match=None):
             return
-            yield  # noqa: make it an async generator
+            yield  # noqa: F841 - make it an async generator
 
         mock_redis.scan_iter = fake_scan_iter
         deleted = await cache.invalidate_search()
@@ -141,9 +141,11 @@ class TestPingRedis:
 
         with patch("pam.common.cache.get_redis", return_value=mock_client):
             from pam.common.cache import ping_redis
+
             assert await ping_redis() is True
 
     async def test_ping_failure(self):
         with patch("pam.common.cache.get_redis", side_effect=ConnectionError("refused")):
             from pam.common.cache import ping_redis
+
             assert await ping_redis() is False

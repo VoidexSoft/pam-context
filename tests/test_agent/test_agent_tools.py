@@ -1,8 +1,6 @@
 """Tests for the enhanced agent tools (document context, change history, query database)."""
 
-import json
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -91,13 +89,13 @@ class TestGetChangeHistory:
         from pam.common.models import SyncLog
 
         log1 = MagicMock(spec=SyncLog)
-        log1.created_at = datetime(2025, 1, 15, tzinfo=timezone.utc)
+        log1.created_at = datetime(2025, 1, 15, tzinfo=UTC)
         log1.action = "ingest"
         log1.segments_affected = 5
         log1.details = {"source": "test.md"}
 
         log2 = MagicMock(spec=SyncLog)
-        log2.created_at = datetime(2025, 1, 14, tzinfo=timezone.utc)
+        log2.created_at = datetime(2025, 1, 14, tzinfo=UTC)
         log2.action = "update"
         log2.segments_affected = 3
         log2.details = {}

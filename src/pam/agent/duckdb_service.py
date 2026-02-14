@@ -59,12 +59,14 @@ class DuckDBService:
                 rel = self._read_file(conn, path)
                 columns = [{"name": col, "type": str(dtype)} for col, dtype in zip(rel.columns, rel.dtypes)]
                 row_count = rel.count("*").fetchone()[0]
-                result.append({
-                    "table": name,
-                    "file": str(path.name),
-                    "columns": columns,
-                    "row_count": row_count,
-                })
+                result.append(
+                    {
+                        "table": name,
+                        "file": str(path.name),
+                        "columns": columns,
+                        "row_count": row_count,
+                    }
+                )
                 conn.close()
             except Exception as e:
                 result.append({"table": name, "file": str(path.name), "error": str(e)})

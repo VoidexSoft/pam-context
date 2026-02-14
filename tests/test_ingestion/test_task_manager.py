@@ -1,10 +1,7 @@
 """Tests for background ingestion task manager."""
 
 import uuid
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 from pam.common.models import IngestionTask
 from pam.ingestion.pipeline import IngestionResult

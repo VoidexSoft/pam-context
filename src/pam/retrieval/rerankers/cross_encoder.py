@@ -52,9 +52,7 @@ class CrossEncoderReranker(BaseReranker):
 
         reranked = []
         for result, score in scored:
-            reranked.append(
-                result.model_copy(update={"score": float(score)})
-            )
+            reranked.append(result.model_copy(update={"score": float(score)}))
 
         if top_k is not None:
             reranked = reranked[:top_k]

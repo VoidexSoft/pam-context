@@ -10,7 +10,6 @@ from haystack import Document
 from pam.common.haystack_adapter import haystack_doc_to_search_result, segment_to_haystack_doc
 from pam.common.models import KnowledgeSegment
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -220,9 +219,7 @@ class TestHaystackDocToSearchResult:
 
 
 class TestRoundTrip:
-    def test_segment_to_doc_to_result_preserves_data(
-        self, full_segment: KnowledgeSegment, segment_id: uuid.UUID
-    ):
+    def test_segment_to_doc_to_result_preserves_data(self, full_segment: KnowledgeSegment, segment_id: uuid.UUID):
         """segment -> haystack doc -> search result should preserve key fields."""
         doc = segment_to_haystack_doc(full_segment)
         doc.score = 0.92  # Simulate a score assigned by retrieval
@@ -238,9 +235,7 @@ class TestRoundTrip:
         assert result.document_title == full_segment.document_title
         assert result.segment_type == full_segment.segment_type
 
-    def test_round_trip_with_minimal_segment(
-        self, minimal_segment: KnowledgeSegment, segment_id: uuid.UUID
-    ):
+    def test_round_trip_with_minimal_segment(self, minimal_segment: KnowledgeSegment, segment_id: uuid.UUID):
         doc = segment_to_haystack_doc(minimal_segment)
         doc.score = 0.5
 

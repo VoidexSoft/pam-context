@@ -92,11 +92,13 @@ async def assign_role(
     if existing:
         existing.role = request.role
     else:
-        db.add(UserProjectRole(
-            user_id=request.user_id,
-            project_id=request.project_id,
-            role=request.role,
-        ))
+        db.add(
+            UserProjectRole(
+                user_id=request.user_id,
+                project_id=request.project_id,
+                role=request.role,
+            )
+        )
 
     await db.commit()
     logger.info("role_assigned", user_id=str(request.user_id), project_id=str(request.project_id), role=request.role)

@@ -1,12 +1,11 @@
 """Tests for JWT auth, token creation/validation, and auth dependencies."""
 
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
 import pytest
-
 from fastapi import HTTPException
 
 from pam.api.auth import (
@@ -41,8 +40,8 @@ class TestCreateAccessToken:
         user_id = uuid.uuid4()
         token = create_access_token(user_id, "test@example.com")
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-        iat = datetime.fromtimestamp(payload["iat"], tz=timezone.utc)
+        exp = datetime.fromtimestamp(payload["exp"], tz=UTC)
+        iat = datetime.fromtimestamp(payload["iat"], tz=UTC)
         assert (exp - iat).total_seconds() == settings.jwt_expiry_hours * 3600
 
 
@@ -57,8 +56,8 @@ class TestDecodeAccessToken:
         payload = {
             "sub": str(uuid.uuid4()),
             "email": "test@example.com",
-            "iat": datetime.now(timezone.utc) - timedelta(hours=48),
-            "exp": datetime.now(timezone.utc) - timedelta(hours=24),
+            "iat": datetime.now(UTC) - timedelta(hours=48),
+            "exp": datetime.now(UTC) - timedelta(hours=24),
         }
         token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
         with pytest.raises(HTTPException) as exc_info:
@@ -75,8 +74,8 @@ class TestDecodeAccessToken:
         payload = {
             "sub": str(uuid.uuid4()),
             "email": "test@example.com",
-            "iat": datetime.now(timezone.utc),
-            "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(hours=24),
         }
         token = jwt.encode(payload, "wrong-secret-at-least-32-bytes!!", algorithm="HS256")
         with pytest.raises(HTTPException) as exc_info:
@@ -112,10 +111,9 @@ class TestGetUserProjectIds:
 class TestDevLoginEndpoint:
     async def test_dev_login_creates_user(self, client, mock_api_db_session):
         """Dev login should work when auth_required=False."""
-        from pam.common.models import User
 
         user_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Mock: no existing user found
         mock_result = MagicMock()
@@ -150,8 +148,8 @@ class TestDevLoginEndpoint:
             email="dev@test.com",
             name="Dev User",
             is_active=True,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
         mock_result = MagicMock()
@@ -187,8 +185,8 @@ class TestGetCurrentUser:
             email="test@example.com",
             name="Test",
             is_active=True,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         user.project_roles = []
 
@@ -217,8 +215,8 @@ class TestGetCurrentUser:
         payload = {
             "sub": str(uuid.uuid4()),
             "email": "test@example.com",
-            "iat": datetime.now(timezone.utc) - timedelta(hours=48),
-            "exp": datetime.now(timezone.utc) - timedelta(hours=24),
+            "iat": datetime.now(UTC) - timedelta(hours=48),
+            "exp": datetime.now(UTC) - timedelta(hours=24),
         }
         token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
         creds = MagicMock()
@@ -237,8 +235,8 @@ class TestGetCurrentUser:
             email="inactive@example.com",
             name="Inactive",
             is_active=False,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         user.project_roles = []
 
@@ -330,7 +328,7 @@ class TestAuthMeEndpoint:
     async def test_returns_user_when_authenticated(self, client, app, mock_api_db_session):
         """With auth enabled and valid token, /auth/me returns user profile."""
         user_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         user = User(
             id=user_id,
             email="me@example.com",
