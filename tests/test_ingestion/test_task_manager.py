@@ -68,13 +68,12 @@ class TestListTasks:
 
 
 class TestRunIngestionBackground:
-    @patch("pam.ingestion.task_manager.async_session_factory")
     @patch("pam.ingestion.task_manager.MarkdownConnector")
     @patch("pam.ingestion.task_manager.DoclingParser")
     @patch("pam.ingestion.task_manager.ElasticsearchStore")
     @patch("pam.ingestion.task_manager.IngestionPipeline")
     async def test_successful_run(
-        self, mock_pipeline_cls, mock_es_cls, mock_parser_cls, mock_connector_cls, mock_session_factory
+        self, mock_pipeline_cls, mock_es_cls, mock_parser_cls, mock_connector_cls
     ):
         task_id = uuid.uuid4()
 
@@ -113,7 +112,7 @@ class TestRunIngestionBackground:
                 return status_cm
             return pipeline_cm
 
-        mock_session_factory.side_effect = session_factory_side_effect
+        mock_session_factory = MagicMock(side_effect=session_factory_side_effect)
 
         # Mock connector
         mock_connector = AsyncMock()
@@ -132,14 +131,13 @@ class TestRunIngestionBackground:
         es_client = AsyncMock()
         embedder = AsyncMock()
 
-        await run_ingestion_background(task_id, "/tmp/docs", es_client, embedder)
+        await run_ingestion_background(task_id, "/tmp/docs", es_client, embedder, mock_session_factory)
 
         # Verify pipeline was created and run
         mock_pipeline_cls.assert_called_once()
         mock_pipeline.ingest_all.assert_called_once()
 
-    @patch("pam.ingestion.task_manager.async_session_factory")
-    async def test_error_marks_task_failed(self, mock_session_factory):
+    async def test_error_marks_task_failed(self):
         task_id = uuid.uuid4()
 
         # First session (status) raises an error during setup
@@ -168,13 +166,13 @@ class TestRunIngestionBackground:
                 return status_cm
             return err_cm
 
-        mock_session_factory.side_effect = session_factory_side_effect
+        mock_session_factory = MagicMock(side_effect=session_factory_side_effect)
 
         es_client = AsyncMock()
         embedder = AsyncMock()
 
         # Should not raise — error is caught and task marked failed
-        await run_ingestion_background(task_id, "/tmp/docs", es_client, embedder)
+        await run_ingestion_background(task_id, "/tmp/docs", es_client, embedder, mock_session_factory)
 
         # Error session should have been used to update status
         err_session.execute.assert_called()
@@ -188,12 +186,13 @@ class TestSpawnIngestionTask:
         task_id = uuid.uuid4()
         es_client = AsyncMock()
         embedder = AsyncMock()
+        mock_session_factory = MagicMock()
 
         # Clean up any leftover state
         _running_tasks.pop(task_id, None)
 
         try:
-            spawn_ingestion_task(task_id, "/tmp/test_docs", es_client, embedder)
+            spawn_ingestion_task(task_id, "/tmp/test_docs", es_client, embedder, mock_session_factory)
 
             # Verify it was added to _running_tasks
             assert task_id in _running_tasks

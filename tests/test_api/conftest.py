@@ -1,6 +1,6 @@
 """API test fixtures — TestClient with dependency overrides."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -67,6 +67,12 @@ def app(mock_agent, mock_search_service, mock_api_embedder, mock_api_db_session,
     application.dependency_overrides[get_embedder] = lambda: mock_api_embedder
     application.dependency_overrides[get_db] = lambda: mock_api_db_session
     application.dependency_overrides[get_es_client] = lambda: mock_api_es_client
+
+    # Set app.state attributes used by routes/health that read directly from app.state
+    application.state.session_factory = MagicMock()
+    application.state.cache_service = None
+    application.state.redis_client = None
+
     return application
 
 

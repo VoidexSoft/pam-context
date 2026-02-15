@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 
 from elasticsearch import AsyncElasticsearch
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,8 @@ class IngestFolderRequest(BaseModel):
 
 @router.post("/ingest/folder", response_model=TaskCreatedResponse, status_code=202)
 async def ingest_folder(
-    request: IngestFolderRequest,
+    request: Request,
+    body: IngestFolderRequest,
     db: AsyncSession = Depends(get_db),
     es_client: AsyncElasticsearch = Depends(get_es_client),
     embedder: OpenAIEmbedder = Depends(get_embedder),
@@ -35,15 +36,22 @@ async def ingest_folder(
         raise HTTPException(status_code=400, detail="Ingestion root not configured")
 
     root = Path(settings.ingest_root).resolve()
-    folder = Path(request.path).resolve()
+    folder = Path(body.path).resolve()
     if not folder.is_relative_to(root):
         raise HTTPException(status_code=403, detail="Path outside allowed ingestion root")
 
     if not folder.is_dir():
-        raise HTTPException(status_code=400, detail=f"Directory not found: {request.path}")
+        raise HTTPException(status_code=400, detail=f"Directory not found: {body.path}")
 
-    task = await create_task(request.path, db)
-    spawn_ingestion_task(task.id, request.path, es_client, embedder)
+    task = await create_task(body.path, db)
+    spawn_ingestion_task(
+        task.id,
+        body.path,
+        es_client,
+        embedder,
+        session_factory=request.app.state.session_factory,
+        cache_service=request.app.state.cache_service,
+    )
 
     return TaskCreatedResponse(task_id=task.id)
 

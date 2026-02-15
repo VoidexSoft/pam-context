@@ -12,12 +12,11 @@ import structlog
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.expression import cast, literal
 
 from pam.common.cache import CacheService
 from pam.common.config import settings
-from pam.common.database import async_session_factory
 from pam.common.models import IngestionTask
 from pam.ingestion.connectors.markdown import MarkdownConnector
 from pam.ingestion.embedders.base import BaseEmbedder
@@ -58,10 +57,12 @@ def spawn_ingestion_task(
     folder_path: str,
     es_client: AsyncElasticsearch,
     embedder: BaseEmbedder,
+    session_factory: async_sessionmaker,
+    cache_service: CacheService | None = None,
 ) -> None:
     """Spawn a background asyncio task for ingestion."""
     asyncio_task = asyncio.create_task(
-        run_ingestion_background(task_id, folder_path, es_client, embedder),
+        run_ingestion_background(task_id, folder_path, es_client, embedder, session_factory, cache_service),
         name=f"ingest-{task_id}",
     )
     _running_tasks[task_id] = asyncio_task
@@ -73,11 +74,13 @@ async def run_ingestion_background(
     folder_path: str,
     es_client: AsyncElasticsearch,
     embedder: BaseEmbedder,
+    session_factory: async_sessionmaker,
+    cache_service: CacheService | None = None,
 ) -> None:
     """Background coroutine that runs the ingestion pipeline and updates task state."""
     try:
         # Use a dedicated session for task status updates
-        async with async_session_factory() as status_session:
+        async with session_factory() as status_session:
             # Mark task as running
             await status_session.execute(
                 update(IngestionTask)
@@ -139,7 +142,7 @@ async def run_ingestion_background(
                 await status_session.commit()
 
             # Run the pipeline with a separate DB session
-            async with async_session_factory() as pipeline_session:
+            async with session_factory() as pipeline_session:
                 parser = DoclingParser()
                 es_store = ElasticsearchStore(
                     es_client,
@@ -165,14 +168,20 @@ async def run_ingestion_background(
             )
             await status_session.commit()
 
-            # Cache invalidation deferred to Task 2 (cache_service parameter injection)
+            # Invalidate search cache after successful ingestion
+            if cache_service:
+                try:
+                    cleared = await cache_service.invalidate_search()
+                    logger.info("cache_invalidated_after_ingest", keys_cleared=cleared)
+                except Exception:
+                    logger.warning("cache_invalidate_failed", exc_info=True)
 
         logger.info("task_completed", task_id=str(task_id))
 
     except asyncio.CancelledError:
         logger.warning("task_cancelled", task_id=str(task_id))
         try:
-            async with async_session_factory() as err_session:
+            async with session_factory() as err_session:
                 await err_session.execute(
                     update(IngestionTask)
                     .where(IngestionTask.id == task_id)
@@ -189,7 +198,7 @@ async def run_ingestion_background(
     except Exception as e:
         logger.exception("task_failed", task_id=str(task_id))
         try:
-            async with async_session_factory() as err_session:
+            async with session_factory() as err_session:
                 await err_session.execute(
                     update(IngestionTask)
                     .where(IngestionTask.id == task_id)
@@ -207,13 +216,13 @@ async def run_ingestion_background(
         _running_tasks.pop(task_id, None)
 
 
-async def recover_stale_tasks() -> int:
+async def recover_stale_tasks(session_factory: async_sessionmaker) -> int:
     """Mark any 'running' tasks as 'failed' on startup.
 
     Tasks stuck in 'running' state indicate a previous crash or unclean shutdown.
     This should be called once during application startup.
     """
-    async with async_session_factory() as session:
+    async with session_factory() as session:
         result = await session.execute(
             update(IngestionTask)
             .where(IngestionTask.status == "running")
