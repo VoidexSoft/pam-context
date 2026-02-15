@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -40,7 +40,7 @@ class Document(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     owner: Mapped[str | None] = mapped_column(String(200))
     project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
-    content_hash: Mapped[str | None] = mapped_column(String(64))
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -61,7 +61,9 @@ class Segment(Base):
     __tablename__ = "segments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"))
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     segment_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -108,6 +110,7 @@ class UserProjectRole(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "project_id", name="ix_user_project_roles_unique"),
+        CheckConstraint("role IN ('viewer', 'editor', 'admin')", name="ck_user_project_roles_role"),
         {"comment": "RBAC: user-project role assignments"},
     )
 

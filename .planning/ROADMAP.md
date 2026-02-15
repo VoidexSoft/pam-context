@@ -44,10 +44,10 @@ Plans:
   2. Inserting a UserProjectRole with an invalid role value (not viewer/editor/admin) is rejected by a CHECK constraint
   3. Alembic migration applies without locking tables (uses CREATE INDEX CONCURRENTLY)
   4. AssignRoleRequest.role uses Literal["viewer", "editor", "admin"] and rejects invalid values at the Pydantic layer
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md — Add indexes, CHECK constraint, Literal role validation, and test isolation fix
 
 ### Phase 3: API + Agent Hardening
 **Goal**: API endpoints return validated responses with proper OpenAPI schemas, SSE streaming handles errors gracefully, and agent tools have correct schemas
