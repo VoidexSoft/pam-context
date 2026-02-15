@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
@@ -286,4 +286,4 @@ class TokenResponse(BaseModel):
 class AssignRoleRequest(BaseModel):
     user_id: uuid.UUID
     project_id: uuid.UUID
-    role: str = Field(pattern=r"^(viewer|editor|admin)$")
+    role: Literal["viewer", "editor", "admin"]

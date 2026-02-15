@@ -43,7 +43,7 @@ class TestSettings:
             "OPENAI_API_KEY": "sk-test",
             "ANTHROPIC_API_KEY": "ant-test",
         }
-        with patch.dict(os.environ, env, clear=False):
+        with patch.dict(os.environ, env, clear=True):
             s = Settings(_env_file=None)
             assert s.database_url == "postgresql+psycopg://other:other@db:5432/other"
             assert s.elasticsearch_url == "http://es:9200"
@@ -60,7 +60,7 @@ class TestSettings:
             "OPENAI_API_KEY": "test",
             "ANTHROPIC_API_KEY": "test",
         }
-        with patch.dict(os.environ, env, clear=False):
+        with patch.dict(os.environ, env, clear=True):
             s = Settings(_env_file=None)
             assert "http://localhost:3000" in s.cors_origins
 
