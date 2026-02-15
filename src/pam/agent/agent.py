@@ -12,7 +12,6 @@ import structlog
 from anthropic import AsyncAnthropic
 
 from pam.agent.tools import ALL_TOOLS
-from pam.common.config import settings
 from pam.common.logging import CostTracker
 from pam.common.utils import escape_like
 from pam.ingestion.embedders.base import BaseEmbedder
@@ -69,14 +68,14 @@ class RetrievalAgent:
         self,
         search_service: HybridSearchService,
         embedder: BaseEmbedder,
-        api_key: str | None = None,
-        model: str | None = None,
+        api_key: str,
+        model: str,
         cost_tracker: CostTracker | None = None,
         db_session: AsyncSession | None = None,
         duckdb_service: DuckDBService | None = None,
     ) -> None:
-        self.client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
-        self.model = model or settings.agent_model
+        self.client = AsyncAnthropic(api_key=api_key)
+        self.model = model
         self.search = search_service
         self.embedder = embedder
         self.cost_tracker = cost_tracker or CostTracker()

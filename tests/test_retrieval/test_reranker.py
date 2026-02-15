@@ -165,7 +165,7 @@ class TestHybridSearchWithReranker:
             }
         )
 
-        service = HybridSearchService(mock_es_client, reranker=mock_reranker)
+        service = HybridSearchService(mock_es_client, index_name="test_idx", reranker=mock_reranker)
         results = await service.search("test", [0.1] * 1536)
 
         mock_reranker.rerank.assert_called_once()
@@ -195,7 +195,7 @@ class TestHybridSearchWithReranker:
             }
         )
 
-        service = HybridSearchService(mock_es_client, reranker=None)
+        service = HybridSearchService(mock_es_client, index_name="test_idx", reranker=None)
         results = await service.search("test", [0.1] * 1536)
 
         assert len(results) == 1
@@ -208,7 +208,7 @@ class TestHybridSearchWithReranker:
 
         mock_es_client.search = AsyncMock(return_value={"hits": {"hits": []}})
 
-        service = HybridSearchService(mock_es_client, reranker=mock_reranker)
+        service = HybridSearchService(mock_es_client, index_name="test_idx", reranker=mock_reranker)
         results = await service.search("test", [0.1] * 1536)
 
         mock_reranker.rerank.assert_not_called()

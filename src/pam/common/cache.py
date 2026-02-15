@@ -74,8 +74,8 @@ class CacheService:
     def __init__(
         self,
         client: redis.Redis,
-        search_ttl: int | None = None,
-        session_ttl: int | None = None,
+        search_ttl: int,
+        session_ttl: int,
     ) -> None:
         self.client = client
         self._search_ttl = search_ttl
@@ -83,11 +83,11 @@ class CacheService:
 
     @property
     def search_ttl(self) -> int:
-        return self._search_ttl if self._search_ttl is not None else settings.redis_search_ttl
+        return self._search_ttl
 
     @property
     def session_ttl(self) -> int:
-        return self._session_ttl if self._session_ttl is not None else settings.redis_session_ttl
+        return self._session_ttl
 
     # ------------------------------------------------------------------
     # Search result caching

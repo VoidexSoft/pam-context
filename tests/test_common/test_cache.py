@@ -77,16 +77,8 @@ class TestMakeSearchKey:
 
 
 class TestCacheServiceTTLInjection:
-    def test_defaults_to_settings(self):
-        """TTL should fall back to settings when not explicitly provided."""
-        client = AsyncMock()
-        cache = CacheService(client)
-        # Should read from settings (not raise)
-        assert isinstance(cache.search_ttl, int)
-        assert isinstance(cache.session_ttl, int)
-
-    def test_explicit_ttl_overrides_settings(self):
-        """Explicit TTL params should override settings values."""
+    def test_explicit_ttl_values(self):
+        """Explicit TTL params should be stored directly."""
         client = AsyncMock()
         cache = CacheService(client, search_ttl=42, session_ttl=99)
         assert cache.search_ttl == 42
@@ -95,7 +87,7 @@ class TestCacheServiceTTLInjection:
     async def test_set_search_results_uses_custom_ttl(self):
         """set_search_results should use the injected search_ttl."""
         client = AsyncMock()
-        cache = CacheService(client, search_ttl=60)
+        cache = CacheService(client, search_ttl=60, session_ttl=120)
         await cache.set_search_results("q", 5, [{"x": 1}])
         call_kwargs = client.set.call_args
         assert call_kwargs[1]["ex"] == 60 or call_kwargs.kwargs.get("ex") == 60
@@ -103,7 +95,7 @@ class TestCacheServiceTTLInjection:
     async def test_save_session_uses_custom_ttl(self):
         """save_session should use the injected session_ttl."""
         client = AsyncMock()
-        cache = CacheService(client, session_ttl=120)
+        cache = CacheService(client, search_ttl=60, session_ttl=120)
         await cache.save_session("s1", [{"role": "user", "content": "hi"}])
         call_kwargs = client.set.call_args
         assert call_kwargs[1]["ex"] == 120 or call_kwargs.kwargs.get("ex") == 120
@@ -121,7 +113,7 @@ class TestCacheServiceSearchResults:
 
     @pytest.fixture
     def cache(self, mock_redis):
-        return CacheService(mock_redis)
+        return CacheService(mock_redis, search_ttl=900, session_ttl=86400)
 
     async def test_get_cache_miss(self, cache, mock_redis):
         result = await cache.get_search_results("test query", 10)
@@ -197,7 +189,7 @@ class TestCacheServiceSessions:
 
     @pytest.fixture
     def cache(self, mock_redis):
-        return CacheService(mock_redis)
+        return CacheService(mock_redis, search_ttl=900, session_ttl=86400)
 
     async def test_get_session_miss(self, cache):
         result = await cache.get_session("nonexistent")

@@ -257,9 +257,12 @@ class TestHybridSearchDateRangeFilter:
         dt_to = datetime(2024, 12, 31, tzinfo=UTC)
 
         await service.search(
-            "test", [0.1] * 1536,
-            source_type="markdown", project="finance",
-            date_from=dt_from, date_to=dt_to,
+            "test",
+            [0.1] * 1536,
+            source_type="markdown",
+            project="finance",
+            date_from=dt_from,
+            date_to=dt_to,
         )
 
         call_body = mock_es_client.search.call_args[1]["body"]
@@ -300,9 +303,7 @@ class TestHybridSearchCache:
 
     async def test_cache_miss_runs_search_and_caches(self, mock_es_client, mock_cache: AsyncMock):
         mock_cache.get_search_results.return_value = None
-        mock_es_client.search = AsyncMock(
-            return_value={"hits": {"hits": [_make_es_hit(segment_id=SEGMENT_ID)]}}
-        )
+        mock_es_client.search = AsyncMock(return_value={"hits": {"hits": [_make_es_hit(segment_id=SEGMENT_ID)]}})
 
         service = HybridSearchService(mock_es_client, index_name="test_idx", cache=mock_cache)
         results = await service.search("test query", [0.1] * 1536, top_k=5)
@@ -331,9 +332,7 @@ class TestHybridSearchCache:
     async def test_cache_receives_json_serializable_data(self, mock_es_client, mock_cache: AsyncMock):
         """Verify model_dump(mode='json') produces str UUIDs, not UUID objects."""
         mock_cache.get_search_results.return_value = None
-        mock_es_client.search = AsyncMock(
-            return_value={"hits": {"hits": [_make_es_hit(segment_id=SEGMENT_ID)]}}
-        )
+        mock_es_client.search = AsyncMock(return_value={"hits": {"hits": [_make_es_hit(segment_id=SEGMENT_ID)]}})
 
         service = HybridSearchService(mock_es_client, index_name="test_idx", cache=mock_cache)
         await service.search("test", [0.1] * 1536, top_k=5)

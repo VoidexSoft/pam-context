@@ -8,8 +8,6 @@ from pathlib import Path
 import duckdb
 import structlog
 
-from pam.common.config import settings
-
 logger = structlog.get_logger()
 
 # SQL injection guard: block write operations and dangerous commands
@@ -30,26 +28,39 @@ def _contains_multiple_statements(sql: str) -> bool:
 class DuckDBService:
     """Manages DuckDB connections and runs guarded SQL queries over registered data files."""
 
-    def __init__(self, data_dir: str | None = None, max_rows: int | None = None) -> None:
-        self.data_dir = Path(data_dir or settings.duckdb_data_dir) if (data_dir or settings.duckdb_data_dir) else None
-        self.max_rows = max_rows or settings.duckdb_max_rows
+    def __init__(self, data_dir: str, max_rows: int) -> None:
+        self.data_dir = Path(data_dir) if data_dir else None
+        self.max_rows = max_rows
         self._tables: dict[str, Path] = {}
+        self._last_scan_mtime: float = 0.0
+
+    def _needs_refresh(self) -> bool:
+        """Check if data_dir has changed since the last scan."""
+        if self.data_dir is None or not self.data_dir.is_dir():
+            return False
+        try:
+            current_mtime = self.data_dir.stat().st_mtime
+            return current_mtime > self._last_scan_mtime
+        except OSError:
+            return False
 
     def register_files(self) -> None:
         """Scan data_dir for CSV, Parquet, and JSON files and register them as tables."""
         if self.data_dir is None or not self.data_dir.is_dir():
             return
 
+        self._tables.clear()
         for ext in ("*.csv", "*.parquet", "*.json"):
             for path in self.data_dir.glob(ext):
                 table_name = path.stem.lower().replace("-", "_").replace(" ", "_")
                 self._tables[table_name] = path
 
+        self._last_scan_mtime = self.data_dir.stat().st_mtime
         logger.info("duckdb_tables_registered", count=len(self._tables), tables=list(self._tables.keys()))
 
     def list_tables(self) -> list[dict]:
         """List all registered tables with their schemas."""
-        if not self._tables:
+        if not self._tables or self._needs_refresh():
             self.register_files()
 
         result = []
@@ -93,7 +104,7 @@ class DuckDBService:
         if _contains_multiple_statements(sql):
             return {"error": "Multi-statement queries are not allowed."}
 
-        if not self._tables:
+        if not self._tables or self._needs_refresh():
             self.register_files()
 
         if not self._tables:

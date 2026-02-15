@@ -40,7 +40,7 @@ class TestChunkDocument:
         ]
         mock_chunker_cls.model_validate.return_value.chunk.return_value = mock_chunks
 
-        results = chunk_document(Mock())
+        results = chunk_document(Mock(), max_tokens=256)
         assert len(results) == 2
         assert results[0].content == "Valid content"
         assert results[1].content == "Also valid"
@@ -51,7 +51,7 @@ class TestChunkDocument:
         chunks = [Mock(text=f"Chunk {i}", meta=None) for i in range(3)]
         mock_chunker_cls.model_validate.return_value.chunk.return_value = chunks
 
-        results = chunk_document(Mock())
+        results = chunk_document(Mock(), max_tokens=256)
         assert [r.position for r in results] == [0, 1, 2]
 
     @patch(PATCH_TARGET)
@@ -65,17 +65,16 @@ class TestChunkDocument:
         chunk = Mock(text="Table data", meta=meta)
         mock_chunker_cls.model_validate.return_value.chunk.return_value = [chunk]
 
-        results = chunk_document(Mock())
+        results = chunk_document(Mock(), max_tokens=256)
         assert results[0].segment_type == "table"
 
     @patch(PATCH_TARGET)
-    def test_uses_settings_default_tokens(self, mock_chunker_cls):
-        """When max_tokens is None, should use settings.chunk_size_tokens."""
+    def test_uses_explicit_max_tokens(self, mock_chunker_cls):
+        """max_tokens is passed through to HybridChunker."""
         mock_chunker_cls.model_validate.return_value.chunk.return_value = []
-        chunk_document(Mock(), max_tokens=None)
-        # Verify HybridChunker.model_validate was called with default from settings
+        chunk_document(Mock(), max_tokens=512)
         call_args = mock_chunker_cls.model_validate.call_args[0][0]
-        assert "max_tokens" in call_args
+        assert call_args["max_tokens"] == 512
 
 
 class TestExtractSectionPath:

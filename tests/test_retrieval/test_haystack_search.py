@@ -55,38 +55,62 @@ def mock_cache() -> AsyncMock:
 
 class TestBuildFilters:
     def test_no_filters_returns_none(self):
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         result = service._build_filters()
         assert result is None
 
     def test_single_source_type_filter(self):
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         result = service._build_filters(source_type="markdown")
 
         assert result == {"field": "meta.source_type", "operator": "==", "value": "markdown"}
 
     def test_single_project_filter(self):
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         result = service._build_filters(project="finance")
 
         assert result == {"field": "meta.project", "operator": "==", "value": "finance"}
 
     def test_date_from_filter(self):
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         dt = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
         result = service._build_filters(date_from=dt)
 
         assert result == {"field": "meta.updated_at", "operator": ">=", "value": dt.isoformat()}
 
     def test_date_to_filter(self):
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         dt = datetime(2024, 6, 30, tzinfo=UTC)
         result = service._build_filters(date_to=dt)
 
         assert result == {"field": "meta.updated_at", "operator": "<=", "value": dt.isoformat()}
 
     def test_multiple_filters_combined_with_and(self):
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         dt_from = datetime(2024, 1, 1, tzinfo=UTC)
         dt_to = datetime(2024, 12, 31, tzinfo=UTC)
 
@@ -106,7 +130,11 @@ class TestBuildFilters:
         assert conditions[3] == {"field": "meta.updated_at", "operator": "<=", "value": dt_to.isoformat()}
 
     def test_two_filters_combined_with_and(self):
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         result = service._build_filters(source_type="confluence", project="eng")
 
         assert result["operator"] == "AND"
@@ -125,7 +153,11 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": docs}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         results = service._run_pipeline_sync(
@@ -151,7 +183,12 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"ranker": {"documents": docs}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200", rerank_enabled=True)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            rerank_enabled=True,
+        )
         service._pipeline = mock_pipeline
 
         results = service._run_pipeline_sync(
@@ -171,7 +208,11 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": []}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         filters = {"field": "meta.source_type", "operator": "==", "value": "markdown"}
@@ -185,7 +226,11 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": []}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         service._run_pipeline_sync("q", [0.1], 5, None)
@@ -199,7 +244,11 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": docs}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         results = service._run_pipeline_sync("q", [0.1], 3, None)
@@ -209,7 +258,11 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": []}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         results = service._run_pipeline_sync("q", [0.1], 5, None)
@@ -219,7 +272,11 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {}
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         results = service._run_pipeline_sync("q", [0.1], 5, None)
@@ -230,7 +287,11 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.side_effect = RuntimeError("ES connection lost")
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         results = service._run_pipeline_sync("q", [0.1], 5, None)
@@ -240,7 +301,11 @@ class TestRunPipelineSync:
         mock_pipeline = MagicMock()
         mock_pipeline.run.side_effect = ConnectionError("Connection refused")
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         results = service._run_pipeline_sync("q", [0.1], 5, None)
@@ -262,7 +327,11 @@ class TestPipelineProperty:
         mock_pipeline_instance = MagicMock()
         mock_pipeline_cls.return_value = mock_pipeline_instance
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         assert service._pipeline is None
 
         # First access builds the pipeline
@@ -286,7 +355,12 @@ class TestPipelineProperty:
         mock_pipeline_instance = MagicMock()
         mock_pipeline_cls.return_value = mock_pipeline_instance
 
-        service = HaystackSearchService(es_url="http://localhost:9200", rerank_enabled=True)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            rerank_enabled=True,
+        )
         _ = service.pipeline
 
         mock_pipeline_instance.warm_up.assert_called_once()
@@ -300,7 +374,12 @@ class TestPipelineProperty:
         mock_pipeline_instance = MagicMock()
         mock_pipeline_cls.return_value = mock_pipeline_instance
 
-        service = HaystackSearchService(es_url="http://localhost:9200", rerank_enabled=False)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            rerank_enabled=False,
+        )
         _ = service.pipeline
 
         mock_pipeline_instance.warm_up.assert_not_called()
@@ -317,7 +396,12 @@ class TestPipelineProperty:
         mock_ranker = MagicMock()
         mock_ranker_cls.return_value = mock_ranker
 
-        service = HaystackSearchService(es_url="http://localhost:9200", rerank_enabled=True)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            rerank_enabled=True,
+        )
         _ = service.pipeline
 
         # Verify ranker was added
@@ -342,7 +426,9 @@ class TestDocumentStoreProperty:
         mock_ds = MagicMock()
         mock_ds_cls.return_value = mock_ds
 
-        service = HaystackSearchService(es_url="http://es:9200", index_name="my_index")
+        service = HaystackSearchService(
+            es_url="http://es:9200", index_name="my_index", rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2"
+        )
         assert service._document_store is None
 
         store = service.document_store
@@ -381,7 +467,12 @@ class TestSearch:
         ]
         mock_cache.get_search_results.return_value = cached_data
 
-        service = HaystackSearchService(es_url="http://localhost:9200", cache=mock_cache)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            cache=mock_cache,
+        )
         # Inject a mock pipeline so we can verify it was NOT called
         service._pipeline = MagicMock()
 
@@ -401,7 +492,12 @@ class TestSearch:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": docs}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200", cache=mock_cache)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            cache=mock_cache,
+        )
         service._pipeline = mock_pipeline
 
         with patch("asyncio.get_running_loop") as mock_loop_fn:
@@ -426,7 +522,12 @@ class TestSearch:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": docs}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200", cache=None)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            cache=None,
+        )
         service._pipeline = mock_pipeline
 
         with patch("asyncio.get_running_loop") as mock_loop_fn:
@@ -445,7 +546,12 @@ class TestSearch:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": []}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200", cache=mock_cache)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            cache=mock_cache,
+        )
         service._pipeline = mock_pipeline
 
         with patch("asyncio.get_running_loop") as mock_loop_fn:
@@ -465,7 +571,12 @@ class TestSearch:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": []}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200", cache=mock_cache)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            cache=mock_cache,
+        )
         service._pipeline = mock_pipeline
 
         dt_from = datetime(2024, 1, 1, tzinfo=UTC)
@@ -499,7 +610,12 @@ class TestSearch:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": []}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200", cache=mock_cache)
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            cache=mock_cache,
+        )
         service._pipeline = mock_pipeline
 
         with patch("asyncio.get_running_loop") as mock_loop_fn:
@@ -527,7 +643,11 @@ class TestSearchFromQuery:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": docs}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         query = SearchQuery(
@@ -556,7 +676,11 @@ class TestSearchFromQuery:
         mock_pipeline = MagicMock()
         mock_pipeline.run.return_value = {"joiner": {"documents": []}}
 
-        service = HaystackSearchService(es_url="http://localhost:9200")
+        service = HaystackSearchService(
+            es_url="http://localhost:9200",
+            index_name="pam_segments",
+            rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
         service._pipeline = mock_pipeline
 
         dt = datetime(2024, 6, 15, tzinfo=UTC)

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pam.common.config import settings
 from pam.common.models import KnowledgeSegment
 from pam.ingestion.chunkers.hybrid_chunker import chunk_document
 from pam.ingestion.connectors.base import BaseConnector
@@ -68,7 +69,7 @@ class IngestionPipeline:
             docling_doc = self.parser.parse(raw_doc)
 
             # 4. Chunk
-            chunks = chunk_document(docling_doc)
+            chunks = chunk_document(docling_doc, max_tokens=settings.chunk_size_tokens)
             if not chunks:
                 logger.warning("pipeline_no_chunks", source_id=source_id)
                 return IngestionResult(source_id=source_id, title=raw_doc.title, segments_created=0)

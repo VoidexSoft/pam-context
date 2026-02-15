@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import cast, literal
 
 from pam.common.cache import CacheService, get_redis
+from pam.common.config import settings
 from pam.common.database import async_session_factory
 from pam.common.models import IngestionTask
 from pam.ingestion.connectors.markdown import MarkdownConnector
@@ -140,7 +141,11 @@ async def run_ingestion_background(
             # Run the pipeline with a separate DB session
             async with async_session_factory() as pipeline_session:
                 parser = DoclingParser()
-                es_store = ElasticsearchStore(es_client)
+                es_store = ElasticsearchStore(
+                    es_client,
+                    index_name=settings.elasticsearch_index,
+                    embedding_dims=settings.embedding_dims,
+                )
                 pipeline = IngestionPipeline(
                     connector=connector,
                     parser=parser,
@@ -163,7 +168,11 @@ async def run_ingestion_background(
             # Invalidate search cache after successful ingestion
             try:
                 redis_client = await get_redis()
-                cache = CacheService(redis_client)
+                cache = CacheService(
+                    redis_client,
+                    search_ttl=settings.redis_search_ttl,
+                    session_ttl=settings.redis_session_ttl,
+                )
                 cleared = await cache.invalidate_search()
                 logger.info("cache_invalidated_after_ingest", keys_cleared=cleared)
             except Exception:

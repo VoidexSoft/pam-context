@@ -7,7 +7,6 @@ import structlog
 from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from pam.common.config import settings
 from pam.common.logging import CostTracker
 from pam.ingestion.embedders.base import BaseEmbedder
 
@@ -19,14 +18,14 @@ BATCH_SIZE = 100  # OpenAI recommends max 2048, but 100 is safer for rate limits
 class OpenAIEmbedder(BaseEmbedder):
     def __init__(
         self,
-        api_key: str | None = None,
-        model: str | None = None,
-        dims: int | None = None,
+        api_key: str,
+        model: str,
+        dims: int,
         cost_tracker: CostTracker | None = None,
     ) -> None:
-        self._client = AsyncOpenAI(api_key=api_key or settings.openai_api_key)
-        self._model = model or settings.embedding_model
-        self._dims = dims or settings.embedding_dims
+        self._client = AsyncOpenAI(api_key=api_key)
+        self._model = model
+        self._dims = dims
         self._cost_tracker = cost_tracker
         # In-memory LRU cache: content_hash -> embedding vector
         self._cache: OrderedDict[str, list[float]] = OrderedDict()

@@ -12,13 +12,13 @@ from pam.ingestion.stores.elasticsearch_store import ElasticsearchStore
 class TestEnsureIndex:
     async def test_creates_index_when_not_exists(self, mock_es_client):
         mock_es_client.indices.exists = AsyncMock(return_value=False)
-        store = ElasticsearchStore(mock_es_client, index_name="test_index")
+        store = ElasticsearchStore(mock_es_client, index_name="test_index", embedding_dims=1536)
         await store.ensure_index()
         mock_es_client.indices.create.assert_called_once()
 
     async def test_skips_when_exists(self, mock_es_client):
         mock_es_client.indices.exists = AsyncMock(return_value=True)
-        store = ElasticsearchStore(mock_es_client, index_name="test_index")
+        store = ElasticsearchStore(mock_es_client, index_name="test_index", embedding_dims=1536)
         await store.ensure_index()
         mock_es_client.indices.create.assert_not_called()
 
@@ -38,13 +38,13 @@ class TestBulkIndex:
             )
             for i in range(3)
         ]
-        store = ElasticsearchStore(mock_es_client, index_name="test_index")
+        store = ElasticsearchStore(mock_es_client, index_name="test_index", embedding_dims=1536)
         count = await store.bulk_index(segments)
         assert count == 3
         mock_es_client.bulk.assert_called_once()
 
     async def test_empty_segments(self, mock_es_client):
-        store = ElasticsearchStore(mock_es_client, index_name="test_index")
+        store = ElasticsearchStore(mock_es_client, index_name="test_index", embedding_dims=1536)
         count = await store.bulk_index([])
         assert count == 0
         mock_es_client.bulk.assert_not_called()
@@ -60,7 +60,7 @@ class TestBulkIndex:
                 position=0,
             )
         ]
-        store = ElasticsearchStore(mock_es_client, index_name="test_index")
+        store = ElasticsearchStore(mock_es_client, index_name="test_index", embedding_dims=1536)
         count = await store.bulk_index(segments)
         assert count == 0
         mock_es_client.bulk.assert_not_called()
@@ -82,7 +82,7 @@ class TestBulkIndex:
                 position=0,
             )
         ]
-        store = ElasticsearchStore(mock_es_client, index_name="test_index")
+        store = ElasticsearchStore(mock_es_client, index_name="test_index", embedding_dims=1536)
         with pytest.raises(RuntimeError, match="ES bulk indexing failed: 1 of 1"):
             await store.bulk_index(segments)
 
@@ -90,13 +90,13 @@ class TestBulkIndex:
 class TestDeleteByDocument:
     async def test_delete(self, mock_es_client):
         mock_es_client.delete_by_query = AsyncMock(return_value={"deleted": 5})
-        store = ElasticsearchStore(mock_es_client, index_name="test_index")
+        store = ElasticsearchStore(mock_es_client, index_name="test_index", embedding_dims=1536)
         deleted = await store.delete_by_document(uuid.uuid4())
         assert deleted == 5
         mock_es_client.delete_by_query.assert_called_once()
 
     async def test_delete_no_matches(self, mock_es_client):
         mock_es_client.delete_by_query = AsyncMock(return_value={"deleted": 0})
-        store = ElasticsearchStore(mock_es_client, index_name="test_index")
+        store = ElasticsearchStore(mock_es_client, index_name="test_index", embedding_dims=1536)
         deleted = await store.delete_by_document(uuid.uuid4())
         assert deleted == 0

@@ -59,7 +59,7 @@ class TestRegisterFiles:
         assert sales["row_count"] == 4
 
     def test_empty_dir(self, tmp_path):
-        svc = DuckDBService(data_dir=str(tmp_path))
+        svc = DuckDBService(data_dir=str(tmp_path), max_rows=100)
         svc.register_files()
         assert svc.list_tables() == []
 
@@ -177,7 +177,7 @@ class TestSQLGuardrails:
 
 class TestNoDataDir:
     def test_returns_error_without_data(self):
-        svc = DuckDBService(data_dir="")
+        svc = DuckDBService(data_dir="", max_rows=100)
         result = svc.execute_query("SELECT 1")
         assert "error" in result
         assert "No data" in result["error"]

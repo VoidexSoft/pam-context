@@ -48,6 +48,8 @@ class TestGetDocumentContext:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=mock_session,
         )
 
@@ -66,6 +68,8 @@ class TestGetDocumentContext:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=mock_session,
         )
 
@@ -77,6 +81,8 @@ class TestGetDocumentContext:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=None,
         )
 
@@ -109,6 +115,8 @@ class TestGetChangeHistory:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=mock_session,
         )
 
@@ -127,6 +135,8 @@ class TestGetChangeHistory:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=mock_session,
         )
 
@@ -144,12 +154,14 @@ class TestQueryDatabase:
             writer.writerow(["a", "b"])
             writer.writerow([1, 2])
 
-        duckdb_svc = DuckDBService(data_dir=str(tmp_path))
+        duckdb_svc = DuckDBService(data_dir=str(tmp_path), max_rows=100)
         duckdb_svc.register_files()
 
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="test-model",
             duckdb_service=duckdb_svc,
         )
 
@@ -167,12 +179,14 @@ class TestQueryDatabase:
             writer.writerow(["a", 10])
             writer.writerow(["b", 20])
 
-        duckdb_svc = DuckDBService(data_dir=str(tmp_path))
+        duckdb_svc = DuckDBService(data_dir=str(tmp_path), max_rows=100)
         duckdb_svc.register_files()
 
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="test-model",
             duckdb_service=duckdb_svc,
         )
 
@@ -183,6 +197,8 @@ class TestQueryDatabase:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="test-model",
             duckdb_service=None,
         )
 
@@ -195,6 +211,8 @@ class TestToolDispatch:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="test-model",
         )
 
         result_text, _citations = await agent._execute_tool("nonexistent_tool", {})
@@ -208,6 +226,8 @@ class TestToolDispatch:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=mock_session,
         )
 
@@ -218,6 +238,8 @@ class TestToolDispatch:
         agent = RetrievalAgent(
             search_service=mock_search_service,
             embedder=mock_embedder,
+            api_key="test-key",
+            model="test-model",
             duckdb_service=None,
         )
 

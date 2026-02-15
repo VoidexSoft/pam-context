@@ -6,8 +6,6 @@ from dataclasses import dataclass
 import structlog
 from docling_core.types.doc import DoclingDocument
 
-from pam.common.config import settings
-
 logger = structlog.get_logger()
 
 
@@ -22,19 +20,17 @@ class ChunkResult:
     position: int
 
 
-def chunk_document(doc: DoclingDocument, max_tokens: int | None = None) -> list[ChunkResult]:
+def chunk_document(doc: DoclingDocument, max_tokens: int) -> list[ChunkResult]:
     """Chunk a DoclingDocument using Docling's HybridChunker.
 
     Args:
         doc: Parsed DoclingDocument from Docling.
-        max_tokens: Max tokens per chunk. Defaults to settings.chunk_size_tokens.
+        max_tokens: Max tokens per chunk.
 
     Returns:
         List of ChunkResult objects with content, metadata, and position.
     """
     from docling.chunking import HybridChunker
-
-    max_tokens = max_tokens or settings.chunk_size_tokens
 
     chunker = HybridChunker.model_validate(
         {

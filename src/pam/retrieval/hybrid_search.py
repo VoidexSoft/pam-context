@@ -13,7 +13,6 @@ import structlog
 from elasticsearch import AsyncElasticsearch
 
 from pam.common.cache import CacheService
-from pam.common.config import settings
 from pam.retrieval.rerankers.base import BaseReranker
 from pam.retrieval.types import SearchQuery, SearchResult
 
@@ -24,12 +23,12 @@ class HybridSearchService:
     def __init__(
         self,
         client: AsyncElasticsearch,
-        index_name: str | None = None,
+        index_name: str,
         cache: CacheService | None = None,
         reranker: BaseReranker | None = None,
     ) -> None:
         self.client = client
-        self.index_name = index_name or settings.elasticsearch_index
+        self.index_name = index_name
         self.cache = cache
         self.reranker = reranker
 

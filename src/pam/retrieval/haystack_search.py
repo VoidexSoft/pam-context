@@ -16,7 +16,6 @@ from haystack_integrations.components.retrievers.elasticsearch import (
 from haystack_integrations.document_stores.elasticsearch import ElasticsearchDocumentStore
 
 from pam.common.cache import CacheService
-from pam.common.config import settings
 from pam.common.haystack_adapter import haystack_doc_to_search_result
 from pam.retrieval.types import SearchQuery, SearchResult
 
@@ -35,17 +34,17 @@ class HaystackSearchService:
 
     def __init__(
         self,
-        es_url: str | None = None,
-        index_name: str | None = None,
+        es_url: str,
+        index_name: str,
+        rerank_model: str,
         cache: CacheService | None = None,
         rerank_enabled: bool = False,
-        rerank_model: str | None = None,
     ) -> None:
-        self._es_url = es_url or settings.elasticsearch_url
-        self._index_name = index_name or settings.elasticsearch_index
+        self._es_url = es_url
+        self._index_name = index_name
         self.cache = cache
         self._rerank_enabled = rerank_enabled
-        self._rerank_model = rerank_model or settings.rerank_model
+        self._rerank_model = rerank_model
         self._pipeline: Pipeline | None = None
         self._document_store: ElasticsearchDocumentStore | None = None
 

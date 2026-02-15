@@ -33,7 +33,11 @@ async def lifespan(app: FastAPI):
     # Ensure ES index exists
     from pam.ingestion.stores.elasticsearch_store import ElasticsearchStore
 
-    es_store = ElasticsearchStore(app.state.es_client)
+    es_store = ElasticsearchStore(
+        app.state.es_client,
+        index_name=settings.elasticsearch_index,
+        embedding_dims=settings.embedding_dims,
+    )
     await es_store.ensure_index()
 
     # Initialize Redis

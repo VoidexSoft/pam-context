@@ -5,58 +5,60 @@ import uuid
 import structlog
 from elasticsearch import AsyncElasticsearch
 
-from pam.common.config import settings
 from pam.common.models import KnowledgeSegment
 
 logger = structlog.get_logger()
 
-# Haystack-compatible mapping: content + embedding at top level, metadata under meta.*
-INDEX_MAPPING = {
-    "mappings": {
-        "properties": {
-            "content": {"type": "text", "analyzer": "standard"},
-            "embedding": {
-                "type": "dense_vector",
-                "dims": settings.embedding_dims,
-                "index": True,
-                "similarity": "cosine",
-            },
-            "meta": {
-                "properties": {
-                    "segment_id": {"type": "keyword"},
-                    "document_id": {"type": "keyword"},
-                    "source_type": {"type": "keyword"},
-                    "source_id": {"type": "keyword"},
-                    "source_url": {"type": "keyword"},
-                    "document_title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                    "section_path": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                    "segment_type": {"type": "keyword"},
-                    "position": {"type": "integer"},
-                    "project": {"type": "keyword"},
-                    "owner": {"type": "keyword"},
-                    "tags": {"type": "keyword"},
-                    "updated_at": {"type": "date"},
-                }
-            },
-        }
-    },
-    "settings": {
-        "number_of_shards": 1,
-        "number_of_replicas": 0,
-    },
-}
+
+def get_index_mapping(embedding_dims: int) -> dict:
+    """Build the Haystack-compatible ES index mapping with the given embedding dimensions."""
+    return {
+        "mappings": {
+            "properties": {
+                "content": {"type": "text", "analyzer": "standard"},
+                "embedding": {
+                    "type": "dense_vector",
+                    "dims": embedding_dims,
+                    "index": True,
+                    "similarity": "cosine",
+                },
+                "meta": {
+                    "properties": {
+                        "segment_id": {"type": "keyword"},
+                        "document_id": {"type": "keyword"},
+                        "source_type": {"type": "keyword"},
+                        "source_id": {"type": "keyword"},
+                        "source_url": {"type": "keyword"},
+                        "document_title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                        "section_path": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                        "segment_type": {"type": "keyword"},
+                        "position": {"type": "integer"},
+                        "project": {"type": "keyword"},
+                        "owner": {"type": "keyword"},
+                        "tags": {"type": "keyword"},
+                        "updated_at": {"type": "date"},
+                    }
+                },
+            }
+        },
+        "settings": {
+            "number_of_shards": 1,
+            "number_of_replicas": 0,
+        },
+    }
 
 
 class ElasticsearchStore:
-    def __init__(self, client: AsyncElasticsearch, index_name: str | None = None) -> None:
+    def __init__(self, client: AsyncElasticsearch, index_name: str, embedding_dims: int) -> None:
         self.client = client
-        self.index_name = index_name or settings.elasticsearch_index
+        self.index_name = index_name
+        self._embedding_dims = embedding_dims
 
     async def ensure_index(self) -> None:
         """Create the index if it doesn't exist."""
         exists = await self.client.indices.exists(index=self.index_name)
         if not exists:
-            await self.client.indices.create(index=self.index_name, body=INDEX_MAPPING)
+            await self.client.indices.create(index=self.index_name, body=get_index_mapping(self._embedding_dims))
             logger.info("elasticsearch_index_created", index=self.index_name)
         else:
             logger.info("elasticsearch_index_exists", index=self.index_name)

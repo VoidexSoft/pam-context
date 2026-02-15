@@ -38,7 +38,11 @@ def get_cache_service(request: Request) -> CacheService | None:
     redis_client = getattr(request.app.state, "redis_client", None)
     if redis_client is None:
         return None
-    return CacheService(redis_client)
+    return CacheService(
+        redis_client,
+        search_ttl=settings.redis_search_ttl,
+        session_ttl=settings.redis_session_ttl,
+    )
 
 
 _embedder: OpenAIEmbedder | None = None
@@ -50,7 +54,11 @@ async def get_embedder() -> OpenAIEmbedder:
     if _embedder is None:
         async with _embedder_lock:
             if _embedder is None:
-                _embedder = OpenAIEmbedder()
+                _embedder = OpenAIEmbedder(
+                    api_key=settings.openai_api_key,
+                    model=settings.embedding_model,
+                    dims=settings.embedding_dims,
+                )
     return _embedder
 
 
@@ -90,12 +98,19 @@ async def get_search_service(
                     from pam.retrieval.haystack_search import HaystackSearchService
 
                     _search_service = HaystackSearchService(
+                        es_url=settings.elasticsearch_url,
+                        index_name=settings.elasticsearch_index,
+                        rerank_model=settings.rerank_model,
                         cache=cache,
                         rerank_enabled=settings.rerank_enabled,
-                        rerank_model=settings.rerank_model,
                     )
                 else:
-                    _search_service = HybridSearchService(es_client, cache=cache, reranker=reranker)
+                    _search_service = HybridSearchService(
+                        es_client,
+                        index_name=settings.elasticsearch_index,
+                        cache=cache,
+                        reranker=reranker,
+                    )
     return _search_service  # type: ignore[no-any-return]
 
 
@@ -112,7 +127,10 @@ async def get_duckdb_service():
                 from pam.agent.duckdb_service import DuckDBService
 
                 if settings.duckdb_data_dir:
-                    _duckdb_service = DuckDBService()
+                    _duckdb_service = DuckDBService(
+                        data_dir=settings.duckdb_data_dir,
+                        max_rows=settings.duckdb_max_rows,
+                    )
                     _duckdb_service.register_files()
                 _duckdb_initialized = True
     return _duckdb_service
@@ -127,6 +145,8 @@ async def get_agent(
     return RetrievalAgent(
         search_service=search_service,
         embedder=embedder,
+        api_key=settings.anthropic_api_key,
+        model=settings.agent_model,
         cost_tracker=CostTracker(),
         db_session=db,
         duckdb_service=duckdb_service,

@@ -46,6 +46,7 @@ class TestRetrievalAgent:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
         result = await agent.answer("What is the answer?")
 
@@ -90,6 +91,7 @@ class TestRetrievalAgent:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
         result = await agent.answer("What was the revenue?")
 
@@ -120,6 +122,7 @@ class TestRetrievalAgent:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
         result = await agent.answer("infinite loop?")
 
@@ -156,6 +159,7 @@ class TestSearchKnowledge:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
         result_text, citations = await agent._search_knowledge({"query": "unknown"})
         assert "No relevant results" in result_text
@@ -184,6 +188,7 @@ class TestSearchKnowledge:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
         result_text, citations = await agent._search_knowledge({"query": "knowledge"})
         assert "Some knowledge" in result_text
@@ -234,6 +239,7 @@ class TestStreamingDoubleSend:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
 
         events = [event async for event in agent.answer_streaming("What was the revenue?")]
@@ -265,6 +271,7 @@ class TestStreamingDoubleSend:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
 
         events = [event async for event in agent.answer_streaming("Simple question?")]
@@ -296,6 +303,7 @@ class TestAnswerStreaming:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
 
         events = [event async for event in agent.answer_streaming("Simple question?")]
@@ -362,6 +370,7 @@ class TestAnswerStreaming:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
 
         events = [event async for event in agent.answer_streaming("What was the revenue?")]
@@ -420,6 +429,7 @@ class TestAnswerStreaming:
             search_service=mock_search,
             embedder=mock_embedder,
             api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
         )
 
         events = [event async for event in agent.answer_streaming("infinite loop?")]
@@ -443,6 +453,8 @@ class TestSearchEntities:
         agent = RetrievalAgent(
             search_service=AsyncMock(),
             embedder=AsyncMock(),
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=None,
         )
         result_text, citations = await agent._search_entities({"search_term": "revenue"})
@@ -462,6 +474,8 @@ class TestSearchEntities:
         agent = RetrievalAgent(
             search_service=AsyncMock(),
             embedder=AsyncMock(),
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=mock_session,
         )
         result_text, citations = await agent._search_entities({"search_term": "nonexistent"})
@@ -493,6 +507,8 @@ class TestSearchEntities:
         agent = RetrievalAgent(
             search_service=AsyncMock(),
             embedder=AsyncMock(),
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=mock_session,
         )
         result_text, citations = await agent._search_entities(
@@ -519,6 +535,8 @@ class TestSearchEntities:
         agent = RetrievalAgent(
             search_service=AsyncMock(),
             embedder=AsyncMock(),
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
             db_session=mock_session,
         )
         result_text, _citations = await agent._execute_tool("search_entities", {"search_term": "test"})
