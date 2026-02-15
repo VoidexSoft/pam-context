@@ -137,7 +137,7 @@ class TestDevLoginEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
-        assert data["token_type"] == "bearer"
+        assert data["token_type"] == "bearer"  # noqa: S105
         assert data["user"]["email"] == "dev@test.com"
 
     async def test_dev_login_existing_user(self, client, mock_api_db_session):
@@ -575,7 +575,7 @@ class TestGoogleOAuthLogin:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
-        assert data["token_type"] == "bearer"
+        assert data["token_type"] == "bearer"  # noqa: S105
         assert data["user"]["email"] == "new@example.com"
 
     async def test_google_login_existing_user(self, client, mock_api_db_session):

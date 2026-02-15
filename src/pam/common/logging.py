@@ -19,14 +19,14 @@ def set_correlation_id(cid: str | None = None) -> str:
     return cid
 
 
-def add_correlation_id(logger: structlog.types.WrappedLogger, method_name: str, event_dict: dict) -> dict:
+def add_correlation_id(_logger: structlog.types.WrappedLogger, _method_name: str, event_dict: dict) -> dict:
     cid = correlation_id_var.get()
     if cid:
         event_dict["correlation_id"] = cid
     return event_dict
 
 
-def configure_logging(log_level: str = "INFO") -> None:
+def configure_logging(_log_level: str = "INFO") -> None:
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

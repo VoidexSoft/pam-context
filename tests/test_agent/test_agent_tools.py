@@ -80,7 +80,7 @@ class TestGetDocumentContext:
             db_session=None,
         )
 
-        result_text, citations = await agent._get_document_context({"document_title": "Test"})
+        result_text, _citations = await agent._get_document_context({"document_title": "Test"})
         assert "not available" in result_text.lower()
 
 
@@ -197,7 +197,7 @@ class TestToolDispatch:
             embedder=mock_embedder,
         )
 
-        result_text, citations = await agent._execute_tool("nonexistent_tool", {})
+        result_text, _citations = await agent._execute_tool("nonexistent_tool", {})
         assert "Unknown tool" in result_text
 
     async def test_dispatch_get_document_context(self, mock_search_service, mock_embedder, mock_session):

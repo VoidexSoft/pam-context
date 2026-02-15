@@ -56,7 +56,7 @@ class OpenAIEmbedder(BaseEmbedder):
         results: list[list[float] | None] = [None] * len(texts)
         texts_to_embed: list[tuple[int, str]] = []
 
-        for i, (text, hash_) in enumerate(zip(texts, content_hashes)):
+        for i, (text, hash_) in enumerate(zip(texts, content_hashes, strict=True)):
             if hash_ in self._cache:
                 self._cache.move_to_end(hash_)
                 results[i] = self._cache[hash_]
@@ -64,9 +64,9 @@ class OpenAIEmbedder(BaseEmbedder):
                 texts_to_embed.append((i, text))
 
         if texts_to_embed:
-            indices, batch_texts = zip(*texts_to_embed)
+            indices, batch_texts = zip(*texts_to_embed, strict=True)
             embeddings = await self.embed_texts(list(batch_texts))
-            for idx, embedding in zip(indices, embeddings):
+            for idx, embedding in zip(indices, embeddings, strict=True):
                 results[idx] = embedding
                 # Cache by content hash with LRU eviction
                 self._cache[content_hashes[idx]] = embedding

@@ -47,12 +47,10 @@ class CrossEncoderReranker(BaseReranker):
         scores = await loop.run_in_executor(None, self._predict, pairs)
 
         # Attach scores and sort descending
-        scored = list(zip(results, scores))
+        scored = list(zip(results, scores, strict=True))
         scored.sort(key=lambda x: x[1], reverse=True)
 
-        reranked = []
-        for result, score in scored:
-            reranked.append(result.model_copy(update={"score": float(score)}))
+        reranked = [result.model_copy(update={"score": float(score)}) for result, score in scored]
 
         if top_k is not None:
             reranked = reranked[:top_k]

@@ -102,6 +102,6 @@ class TestGetDb:
             gen = get_db()
             await gen.__anext__()
             # Throw an exception into the generator
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="test error"):
                 await gen.athrow(ValueError("test error"))
             mock_session.rollback.assert_called_once()

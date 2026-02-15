@@ -476,13 +476,12 @@ class RetrievalAgent:
         if not logs:
             return "No change history found.", []
 
-        parts = []
-        for log in logs:
-            parts.append(
-                f"- [{log.created_at}] {log.action}"
-                f" | segments_affected: {log.segments_affected}"
-                f" | details: {json.dumps(log.details) if log.details else 'N/A'}"
-            )
+        parts = [
+            f"- [{log.created_at}] {log.action}"
+            f" | segments_affected: {log.segments_affected}"
+            f" | details: {json.dumps(log.details) if log.details else 'N/A'}"
+            for log in logs
+        ]
 
         return f"Recent changes ({len(logs)} records):\n" + "\n".join(parts), []
 
@@ -559,8 +558,5 @@ class RetrievalAgent:
     @staticmethod
     def _extract_text(content: list) -> str:
         """Extract text from Claude response content blocks."""
-        parts = []
-        for block in content:
-            if hasattr(block, "text"):
-                parts.append(block.text)
+        parts = [block.text for block in content if hasattr(block, "text")]
         return "\n".join(parts)

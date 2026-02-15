@@ -82,7 +82,7 @@ class TestJwtSecretValidation:
             auth_required=False,
             jwt_secret="dev-secret-change-in-production-32b",
         )
-        assert s.jwt_secret == "dev-secret-change-in-production-32b"
+        assert s.jwt_secret == "dev-secret-change-in-production-32b"  # noqa: S105
 
     def test_secure_secret_with_auth_is_ok(self):
         """Should not raise if JWT secret is a custom strong value."""

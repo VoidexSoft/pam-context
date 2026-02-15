@@ -100,9 +100,8 @@ def _classify_block(block: list[list[str]], start_row: int) -> SheetRegion | Non
                 end_row=start_row,
                 raw_text=" ".join(non_empty),
             )
-        else:
-            # Single row with many columns — likely a header-only table
-            return SheetRegion(
+        # Single row with many columns — likely a header-only table
+        return SheetRegion(
                 type="table",
                 start_row=start_row,
                 end_row=start_row,

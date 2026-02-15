@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Auth
     auth_required: bool = False  # Optional in dev mode; set True in production
-    jwt_secret: str = "dev-secret-change-in-production-32b"
+    jwt_secret: str = "dev-secret-change-in-production-32b"  # noqa: S105
     jwt_algorithm: str = "HS256"
     jwt_expiry_hours: int = 24
 

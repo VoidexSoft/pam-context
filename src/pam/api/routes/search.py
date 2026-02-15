@@ -21,5 +21,4 @@ async def search_knowledge(
 ):
     """Search the knowledge base directly (no agent reasoning)."""
     query_embeddings = await embedder.embed_texts([query.query])
-    results = await search_service.search_from_query(query, query_embeddings[0])
-    return results
+    return await search_service.search_from_query(query, query_embeddings[0])

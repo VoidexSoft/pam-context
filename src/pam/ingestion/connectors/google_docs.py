@@ -23,7 +23,7 @@ class GoogleDocsConnector(BaseConnector):
 
     def __init__(self, credentials_path: str | Path | None = None, folder_ids: list[str] | None = None) -> None:
         self.folder_ids = folder_ids or []
-        self._service = None
+        self._service: object | None = None
         self._credentials_path = credentials_path
 
     def _get_service(self):

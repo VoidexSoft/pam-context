@@ -74,7 +74,8 @@ class TestContentHash:
         docs = await connector.list_documents()
         hash_ = await connector.get_content_hash(docs[0].source_id)
         # Verify it matches actual file content hash
-        content = open(docs[0].source_id, "rb").read()
+        with open(docs[0].source_id, "rb") as f:
+            content = f.read()
         expected = hashlib.sha256(content).hexdigest()
         assert hash_ == expected
 

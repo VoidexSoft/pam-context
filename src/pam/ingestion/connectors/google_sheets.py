@@ -89,14 +89,14 @@ class GoogleSheetsConnector(BaseConnector):
                     pageToken=page_token,
                 )
                 results = await loop.run_in_executor(None, request.execute)
-                for f in results.get("files", []):
-                    docs.append(
-                        DocumentInfo(
-                            source_id=f["id"],
-                            title=f["name"],
-                            source_url=f.get("webViewLink"),
-                        )
+                docs.extend(
+                    DocumentInfo(
+                        source_id=f["id"],
+                        title=f["name"],
+                        source_url=f.get("webViewLink"),
                     )
+                    for f in results.get("files", [])
+                )
                 page_token = results.get("nextPageToken")
                 if not page_token:
                     break
@@ -125,10 +125,7 @@ class GoogleSheetsConnector(BaseConnector):
             rows = []
 
             for row_data in grid_data.get("rowData", []):
-                cells = []
-                for cell in row_data.get("values", []):
-                    # Get the formatted/displayed value
-                    cells.append(cell.get("formattedValue", ""))
+                cells = [cell.get("formattedValue", "") for cell in row_data.get("values", [])]
                 rows.append(cells)
 
             # Detect regions for this tab

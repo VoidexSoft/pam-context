@@ -53,9 +53,9 @@ async def chat(
 
     try:
         result: AgentResponse = await agent.answer(request.message, **kwargs)
-    except Exception:
+    except Exception as e:
         logger.exception("chat_error", message=request.message[:100])
-        raise HTTPException(status_code=500, detail="An internal error occurred")
+        raise HTTPException(status_code=500, detail="An internal error occurred") from e
 
     return ChatResponse(
         response=result.answer,

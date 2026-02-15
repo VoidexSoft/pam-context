@@ -79,9 +79,8 @@ class IngestionPipeline:
             embeddings = await self.embedder.embed_texts_with_cache(texts, hashes)
 
             # 6. Build KnowledgeSegment objects
-            segments = []
-            for chunk, embedding in zip(chunks, embeddings):
-                seg = KnowledgeSegment(
+            segments = [
+                KnowledgeSegment(
                     content=chunk.content,
                     content_hash=chunk.content_hash,
                     embedding=embedding,
@@ -93,7 +92,8 @@ class IngestionPipeline:
                     position=chunk.position,
                     document_title=raw_doc.title,
                 )
-                segments.append(seg)
+                for chunk, embedding in zip(chunks, embeddings, strict=True)
+            ]
 
             # 7. Write to PostgreSQL
             doc_id = await pg_store.upsert_document(

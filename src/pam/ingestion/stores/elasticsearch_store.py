@@ -96,11 +96,13 @@ class ElasticsearchStore:
             response = await self.client.bulk(operations=actions, refresh="wait_for")
             errors = response.get("errors", False)
             if errors:
-                failed_items = []
-                for item in response["items"]:
-                    if "error" in item.get("index", {}):
-                        failed_items.append(item["index"]["error"])
-                        logger.error("es_bulk_error", error=item["index"]["error"])
+                failed_items = [
+                    item["index"]["error"]
+                    for item in response["items"]
+                    if "error" in item.get("index", {})
+                ]
+                for error in failed_items:
+                    logger.error("es_bulk_error", error=error)
                 raise RuntimeError(f"ES bulk indexing failed: {len(failed_items)} of {total} documents failed")
 
             logger.info("es_bulk_index", index=self.index_name, count=total, errors=errors)

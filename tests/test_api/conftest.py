@@ -55,8 +55,7 @@ def mock_api_db_session():
 
 @pytest.fixture
 def mock_api_es_client():
-    client = AsyncMock()
-    return client
+    return AsyncMock()
 
 
 @pytest.fixture

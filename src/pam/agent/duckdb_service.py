@@ -58,7 +58,10 @@ class DuckDBService:
             try:
                 conn = duckdb.connect(":memory:")
                 rel = self._read_file(conn, path)
-                columns = [{"name": col, "type": str(dtype)} for col, dtype in zip(rel.columns, rel.dtypes)]
+                columns = [
+                    {"name": col, "type": str(dtype)}
+                    for col, dtype in zip(rel.columns, rel.dtypes, strict=True)
+                ]
                 row_count = rel.count("*").fetchone()[0]
                 result.append(
                     {
@@ -116,7 +119,7 @@ class DuckDBService:
             clean_sql = sql.strip().rstrip(";").strip()
 
             # Execute with row limit
-            limited_sql = f"SELECT * FROM ({clean_sql}) AS _q LIMIT {self.max_rows + 1}"
+            limited_sql = f"SELECT * FROM ({clean_sql}) AS _q LIMIT {self.max_rows + 1}"  # noqa: S608
             result = conn.execute(limited_sql)
             columns = [desc[0] for desc in result.description]
             rows = result.fetchall()
@@ -150,12 +153,11 @@ class DuckDBService:
         suffix = path.suffix.lower()
         if suffix == ".csv":
             return conn.read_csv(str(path))
-        elif suffix == ".parquet":
+        if suffix == ".parquet":
             return conn.read_parquet(str(path))
-        elif suffix == ".json":
+        if suffix == ".json":
             return conn.read_json(str(path))
-        else:
-            raise ValueError(f"Unsupported file type: {suffix}")
+        raise ValueError(f"Unsupported file type: {suffix}")
 
 
 def _serialize_value(v):

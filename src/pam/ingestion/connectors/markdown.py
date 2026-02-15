@@ -18,16 +18,15 @@ class MarkdownConnector(BaseConnector):
             raise ValueError(f"Directory does not exist: {self.directory}")
 
     async def list_documents(self) -> list[DocumentInfo]:
-        docs = []
-        for path in sorted(self.directory.rglob("*.md")):
-            docs.append(
-                DocumentInfo(
-                    source_id=str(path),
-                    title=path.stem,
-                    source_url=f"file://{path}",
-                    modified_at=None,  # Could use stat.st_mtime but keeping simple
-                )
+        docs = [
+            DocumentInfo(
+                source_id=str(path),
+                title=path.stem,
+                source_url=f"file://{path}",
+                modified_at=None,  # Could use stat.st_mtime but keeping simple
             )
+            for path in sorted(self.directory.rglob("*.md"))
+        ]
         logger.info("markdown_list_documents", directory=str(self.directory), count=len(docs))
         return docs
 

@@ -236,9 +236,7 @@ class TestStreamingDoubleSend:
             api_key="test-key",
         )
 
-        events = []
-        async for event in agent.answer_streaming("What was the revenue?"):
-            events.append(event)
+        events = [event async for event in agent.answer_streaming("What was the revenue?")]
 
         # Collect all token events
         token_events = [e for e in events if e["type"] == "token"]
@@ -269,9 +267,7 @@ class TestStreamingDoubleSend:
             api_key="test-key",
         )
 
-        events = []
-        async for event in agent.answer_streaming("Simple question?"):
-            events.append(event)
+        events = [event async for event in agent.answer_streaming("Simple question?")]
 
         token_events = [e for e in events if e["type"] == "token"]
         combined = "".join(e["content"] for e in token_events)
@@ -302,9 +298,7 @@ class TestAnswerStreaming:
             api_key="test-key",
         )
 
-        events = []
-        async for event in agent.answer_streaming("Simple question?"):
-            events.append(event)
+        events = [event async for event in agent.answer_streaming("Simple question?")]
 
         # Should have status, token(s), and done events
         event_types = [e["type"] for e in events]
@@ -370,9 +364,7 @@ class TestAnswerStreaming:
             api_key="test-key",
         )
 
-        events = []
-        async for event in agent.answer_streaming("What was the revenue?"):
-            events.append(event)
+        events = [event async for event in agent.answer_streaming("What was the revenue?")]
 
         # Should have tool-use status events
         status_events = [e for e in events if e["type"] == "status"]
@@ -430,9 +422,7 @@ class TestAnswerStreaming:
             api_key="test-key",
         )
 
-        events = []
-        async for event in agent.answer_streaming("infinite loop?"):
-            events.append(event)
+        events = [event async for event in agent.answer_streaming("infinite loop?")]
 
         # Should have the max-iterations warning status
         status_events = [e for e in events if e["type"] == "status"]
@@ -531,5 +521,5 @@ class TestSearchEntities:
             embedder=AsyncMock(),
             db_session=mock_session,
         )
-        result_text, citations = await agent._execute_tool("search_entities", {"search_term": "test"})
+        result_text, _citations = await agent._execute_tool("search_entities", {"search_term": "test"})
         assert "no matching" in result_text.lower()

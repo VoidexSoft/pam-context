@@ -5,6 +5,7 @@ import uuid
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pydantic import ValidationError
 
 from pam.ingestion.extractors.entity_extractor import EntityExtractor
 from pam.ingestion.extractors.schemas import (
@@ -78,7 +79,7 @@ class TestExtractedEntityData:
         assert e.confidence == 0.95
 
     def test_confidence_bounds(self):
-        with pytest.raises(Exception):  # Pydantic validation
+        with pytest.raises(ValidationError):
             ExtractedEntityData(
                 entity_type="metric_definition",
                 entity_data={},
@@ -93,7 +94,7 @@ class TestExtractionSchemas:
         assert "kpi_target" in EXTRACTION_SCHEMAS
 
     def test_schemas_have_models(self):
-        for name, info in EXTRACTION_SCHEMAS.items():
+        for info in EXTRACTION_SCHEMAS.values():
             assert "model" in info
             assert "description" in info
 
@@ -101,8 +102,7 @@ class TestExtractionSchemas:
 class TestEntityExtractor:
     @pytest.fixture
     def mock_anthropic(self):
-        client = AsyncMock()
-        return client
+        return AsyncMock()
 
     async def test_extract_metric(self, mock_anthropic):
         # Mock Claude response with a metric extraction

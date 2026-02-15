@@ -178,7 +178,7 @@ class TestCacheServiceSearchResults:
     async def test_invalidate_search_no_keys(self, cache, mock_redis):
         async def fake_scan_iter(match=None):
             return
-            yield  # noqa: F841 - make it an async generator
+            yield  # make it an async generator
 
         mock_redis.scan_iter = fake_scan_iter
         deleted = await cache.invalidate_search()

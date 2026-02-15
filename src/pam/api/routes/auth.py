@@ -46,7 +46,7 @@ async def google_login(
         )
     except Exception as e:
         logger.warning("google_auth_failed", error=str(e))
-        raise HTTPException(status_code=401, detail="Invalid Google ID token")
+        raise HTTPException(status_code=401, detail="Invalid Google ID token") from e
 
     email = idinfo.get("email")
     if not email:

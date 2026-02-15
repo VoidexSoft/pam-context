@@ -1,6 +1,7 @@
 """Tests for background ingestion task manager."""
 
 import asyncio
+import contextlib
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -203,10 +204,8 @@ class TestSpawnIngestionTask:
 
             # Cancel and await to clean up
             asyncio_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await asyncio_task
-            except (asyncio.CancelledError, Exception):
-                pass
         finally:
             # Ensure cleanup
             _running_tasks.pop(task_id, None)
