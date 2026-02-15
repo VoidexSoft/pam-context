@@ -46,5 +46,8 @@ test_docs/
 # Tool logs
 .playwright-mcp/
 
+# Planning
+.planning/
+
 # Worktrees
 .worktrees/
