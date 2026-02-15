@@ -225,6 +225,27 @@ class TestRunPipelineSync:
         results = service._run_pipeline_sync("q", [0.1], 5, None)
         assert results == []
 
+    def test_pipeline_exception_returns_empty(self):
+        """Issue #30.3: Pipeline errors are caught and return empty results."""
+        mock_pipeline = MagicMock()
+        mock_pipeline.run.side_effect = RuntimeError("ES connection lost")
+
+        service = HaystackSearchService(es_url="http://localhost:9200")
+        service._pipeline = mock_pipeline
+
+        results = service._run_pipeline_sync("q", [0.1], 5, None)
+        assert results == []
+
+    def test_pipeline_connection_error_returns_empty(self):
+        mock_pipeline = MagicMock()
+        mock_pipeline.run.side_effect = ConnectionError("Connection refused")
+
+        service = HaystackSearchService(es_url="http://localhost:9200")
+        service._pipeline = mock_pipeline
+
+        results = service._run_pipeline_sync("q", [0.1], 5, None)
+        assert results == []
+
 
 # ---------------------------------------------------------------------------
 # pipeline property (lazy initialization)

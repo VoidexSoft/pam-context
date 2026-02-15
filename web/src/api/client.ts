@@ -127,6 +127,7 @@ export interface StreamEvent {
   data?: Citation;
   message?: string;
   metadata?: {
+    conversation_id?: string;
     token_usage: Record<string, number>;
     latency_ms: number;
     tool_calls: number;

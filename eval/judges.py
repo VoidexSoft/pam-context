@@ -9,6 +9,19 @@ import os
 import json
 import anthropic
 
+_client: anthropic.AsyncAnthropic | None = None
+
+
+def get_client() -> anthropic.AsyncAnthropic:
+    """Return a module-level singleton AsyncAnthropic client."""
+    global _client
+    if _client is None:
+        _client = anthropic.AsyncAnthropic(
+            api_key=os.environ.get("ANTHROPIC_API_KEY"),
+        )
+    return _client
+
+
 RUBRIC_PROMPT = """\
 You are an expert evaluator for a business knowledge Q&A system. Your job is to
 score an AI-generated answer against a reference (expected) answer.
@@ -63,9 +76,7 @@ async def score_answer(
         A dict with keys: factual_accuracy, citation_presence, completeness,
         average_score, and reasoning.
     """
-    client = anthropic.AsyncAnthropic(
-        api_key=os.environ.get("ANTHROPIC_API_KEY"),
-    )
+    client = get_client()
 
     user_message = (
         f"## Question\n{question}\n\n"

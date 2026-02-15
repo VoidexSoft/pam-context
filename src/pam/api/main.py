@@ -44,6 +44,14 @@ async def lifespan(app: FastAPI):
         logger.warning("redis_connect_failed", exc_info=True)
         app.state.redis_client = None
 
+    # Warn when auth is disabled — admin routes are fully open
+    if not settings.auth_required:
+        logger.warning(
+            "auth_disabled",
+            detail="AUTH_REQUIRED=false — admin routes are open without authentication. "
+            "Set AUTH_REQUIRED=true in production.",
+        )
+
     # Clean up orphaned ingestion tasks from previous server runs
     async with async_session_factory() as session:
         await session.execute(
@@ -73,8 +81,8 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
     )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(CorrelationIdMiddleware)

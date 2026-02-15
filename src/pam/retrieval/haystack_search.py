@@ -26,6 +26,13 @@ logger = structlog.get_logger()
 class HaystackSearchService:
     """Hybrid search using Haystack's component pipeline with ES BM25 + kNN + RRF fusion."""
 
+    # NOTE on reranking design: HaystackSearchService uses Haystack's built-in
+    # TransformersSimilarityRanker (integrated into the pipeline) rather than PAM's
+    # BaseReranker interface used by HybridSearchService. This is intentional —
+    # Haystack pipelines manage their own component lifecycle and model loading,
+    # so wiring in an external reranker would bypass Haystack's warm_up/connect
+    # mechanisms. Both paths achieve the same cross-encoder reranking result.
+
     def __init__(
         self,
         es_url: str | None = None,
@@ -135,7 +142,16 @@ class HaystackSearchService:
         if self._rerank_enabled:
             run_data["ranker"] = {"query": query, "top_k": top_k}
 
-        result = self.pipeline.run(data=run_data)
+        try:
+            result = self.pipeline.run(data=run_data)
+        except Exception:
+            logger.exception(
+                "haystack_search_pipeline_error",
+                query_length=len(query),
+                top_k=top_k,
+                has_filters=filters is not None,
+            )
+            return []
 
         # Get documents from the last component
         output_key = "ranker" if self._rerank_enabled else "joiner"
@@ -182,8 +198,13 @@ class HaystackSearchService:
         # Store in cache
         if self.cache and results:
             await self.cache.set_search_results(
-                query, top_k, [r.model_dump() for r in results],
-                source_type, project, date_from, date_to,
+                query,
+                top_k,
+                [r.model_dump(mode="json") for r in results],
+                source_type,
+                project,
+                date_from,
+                date_to,
             )
 
         return results

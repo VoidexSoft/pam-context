@@ -1,5 +1,6 @@
 """Tests for IngestionPipeline — orchestration of the full ingestion flow."""
 
+import hashlib
 import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -86,17 +87,18 @@ class TestIngestDocument:
         mock_db_session,
     ):
         """Should skip documents whose content hash hasn't changed."""
+        content = b"# Same"
+        content_hash = hashlib.sha256(content).hexdigest()
         raw_doc = RawDocument(
-            content=b"# Same",
+            content=content,
             content_type="text/markdown",
             source_id="/same.md",
             title="Same",
         )
         mock_connector.fetch_document = AsyncMock(return_value=raw_doc)
-        mock_connector.get_content_hash = AsyncMock(return_value="samehash")
 
         existing_doc = Mock()
-        existing_doc.content_hash = "samehash"
+        existing_doc.content_hash = content_hash
         mock_pg = AsyncMock()
         mock_pg.get_document_by_source = AsyncMock(return_value=existing_doc)
         mock_pg_cls.return_value = mock_pg

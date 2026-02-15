@@ -1,15 +1,18 @@
 """Tests for background ingestion task manager."""
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pam.common.models import IngestionTask
 from pam.ingestion.pipeline import IngestionResult
 from pam.ingestion.task_manager import (
+    _running_tasks,
     create_task,
     get_task,
     list_tasks,
     run_ingestion_background,
+    spawn_ingestion_task,
 )
 
 
@@ -175,3 +178,35 @@ class TestRunIngestionBackground:
         # Error session should have been used to update status
         err_session.execute.assert_called()
         err_session.commit.assert_called()
+
+
+class TestSpawnIngestionTask:
+    @patch("pam.ingestion.task_manager.run_ingestion_background", new_callable=AsyncMock)
+    async def test_populates_running_tasks_and_creates_named_task(self, mock_run_bg):
+        """spawn_ingestion_task should register an asyncio task in _running_tasks with a proper name."""
+        task_id = uuid.uuid4()
+        es_client = AsyncMock()
+        embedder = AsyncMock()
+
+        # Clean up any leftover state
+        _running_tasks.pop(task_id, None)
+
+        try:
+            spawn_ingestion_task(task_id, "/tmp/test_docs", es_client, embedder)
+
+            # Verify it was added to _running_tasks
+            assert task_id in _running_tasks
+            asyncio_task = _running_tasks[task_id]
+
+            # Verify the task has the expected name
+            assert asyncio_task.get_name() == f"ingest-{task_id}"
+
+            # Cancel and await to clean up
+            asyncio_task.cancel()
+            try:
+                await asyncio_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        finally:
+            # Ensure cleanup
+            _running_tasks.pop(task_id, None)

@@ -1,5 +1,6 @@
 """Ingestion pipeline orchestrator: connector → parser → chunker → embedder → stores."""
 
+import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -55,8 +56,8 @@ class IngestionPipeline:
             raw_doc = await self.connector.fetch_document(source_id)
             logger.info("pipeline_fetch", source_id=source_id, title=raw_doc.title)
 
-            # 2. Content hash check
-            new_hash = await self.connector.get_content_hash(source_id)
+            # 2. Content hash check — computed from already-fetched content to avoid double-fetch
+            new_hash = hashlib.sha256(raw_doc.content).hexdigest()
             existing_doc = await pg_store.get_document_by_source(self.source_type, source_id)
 
             if existing_doc and existing_doc.content_hash == new_hash:

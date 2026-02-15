@@ -7,50 +7,72 @@ export function useAuth() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    // Check if auth is required by hitting the health/config endpoint
-    fetch("/api/health")
-      .then((res) => res.json())
-      .then((data) => {
-        // If auth_required is in config, use it; otherwise default to false
-        setAuthRequired(data.auth_required ?? false);
-      })
-      .catch(() => {
+    let cancelled = false;
+
+    async function init() {
+      // Step 1: Check if auth is required by hitting the health/config endpoint
+      let isAuthRequired = false;
+      try {
+        const res = await fetch("/api/health");
+        const data = await res.json();
+        isAuthRequired = data.auth_required ?? false;
+      } catch {
         // If can't reach server, assume no auth needed
-        setAuthRequired(false);
-      })
-      .finally(() => setChecked(true));
-  }, []);
+        isAuthRequired = false;
+      }
 
-  useEffect(() => {
-    // If we have a stored token, try to restore user from it
-    const token = getStoredToken();
-    if (!token) return;
+      if (cancelled) return;
+      setAuthRequired(isAuthRequired);
 
-    // Optimistic: decode JWT locally for immediate UX while server validates
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      setUser({
-        id: payload.sub || "",
-        email: payload.email || "",
-        name: payload.name || payload.email || "",
-        role: payload.role || "viewer",
-      });
-    } catch {
-      // Invalid token format, clear immediately
-      setAuthToken(null);
-      return;
+      // Step 2: If we have a stored token, try to restore user from it
+      const token = getStoredToken();
+      if (!token) {
+        setChecked(true);
+        return;
+      }
+
+      // Optimistic: decode JWT locally for immediate UX while server validates
+      try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        if (!cancelled) {
+          setUser({
+            id: payload.sub || "",
+            email: payload.email || "",
+            name: payload.name || payload.email || "",
+            role: payload.role || "viewer",
+          });
+        }
+      } catch {
+        // Invalid token format, clear immediately
+        setAuthToken(null);
+        setChecked(true);
+        return;
+      }
+
+      // Server-side validation: call /api/auth/me to verify signature and get real user data
+      try {
+        const serverUser = await getMe();
+        if (!cancelled) {
+          setUser(serverUser);
+        }
+      } catch {
+        // Server rejected the token (401, expired, tampered, etc.) — clear session
+        if (!cancelled) {
+          setAuthToken(null);
+          setUser(null);
+        }
+      }
+
+      if (!cancelled) {
+        setChecked(true);
+      }
     }
 
-    // Server-side validation: call /api/auth/me to verify signature and get real user data
-    getMe()
-      .then((serverUser) => {
-        setUser(serverUser);
-      })
-      .catch(() => {
-        // Server rejected the token (401, expired, tampered, etc.) — clear session
-        setAuthToken(null);
-        setUser(null);
-      });
+    init();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback((authUser: AuthUser) => {

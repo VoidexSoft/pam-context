@@ -66,8 +66,4 @@ function MessageBubble({ message, isStreaming, onViewSource }: Props) {
   );
 }
 
-export default React.memo(MessageBubble, (prev, next) =>
-  prev.message.content === next.message.content &&
-  prev.message.citations?.length === next.message.citations?.length &&
-  prev.isStreaming === next.isStreaming
-);
+export default React.memo(MessageBubble);

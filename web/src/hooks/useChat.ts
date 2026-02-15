@@ -18,6 +18,8 @@ export function useChat() {
   const [filters, setFilters] = useState<ChatFilters>({});
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = messages;
 
   const cancelStreaming = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -35,8 +37,8 @@ export function useChat() {
       setError(null);
       setStatusText(undefined);
 
-      // Build conversation history
-      const history: ConversationMessage[] = messages.slice(-20).map((m) => ({
+      // Build conversation history from ref to avoid stale closure
+      const history: ConversationMessage[] = messagesRef.current.slice(-20).map((m) => ({
         role: m.role,
         content: m.content,
       }));
@@ -104,8 +106,8 @@ export function useChat() {
               break;
 
             case "done":
-              if (event.metadata?.token_usage) {
-                setConversationId(conversationId);
+              if (event.metadata?.conversation_id) {
+                setConversationId(event.metadata.conversation_id);
               }
               break;
 
@@ -161,7 +163,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [conversationId, messages, filters]
+    [conversationId, filters]
   );
 
   const clearChat = useCallback(() => {

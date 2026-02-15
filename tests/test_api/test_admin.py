@@ -7,6 +7,73 @@ from unittest.mock import AsyncMock, MagicMock
 from pam.common.models import Project, User
 
 
+class TestGetUser:
+    def _make_mock_user(self, user_id, email="detail@test.com", name="Detail User", roles=None):
+        """Helper: create a mock user that behaves like a SQLAlchemy ORM User."""
+        now = datetime.now(UTC)
+        user = MagicMock()
+        user.id = user_id
+        user.email = email
+        user.name = name
+        user.is_active = True
+        user.picture = None
+        user.google_id = None
+        user.created_at = now
+        user.updated_at = now
+        user.project_roles = roles or []
+        return user
+
+    async def test_get_user_found(self, client, mock_api_db_session):
+        """GET /admin/users/{user_id} returns user with roles."""
+        user_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+
+        role = MagicMock()
+        role.project_id = project_id
+        role.project = MagicMock()
+        role.project.name = "Test Project"
+        role.role = "editor"
+
+        user = self._make_mock_user(user_id, roles=[role])
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+
+        response = await client.get(f"/api/admin/users/{user_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == "detail@test.com"
+        assert data["name"] == "Detail User"
+        assert len(data["roles"]) == 1
+        assert data["roles"][0]["project_name"] == "Test Project"
+        assert data["roles"][0]["role"] == "editor"
+
+    async def test_get_user_not_found(self, client, mock_api_db_session):
+        """GET /admin/users/{user_id} returns 404 for unknown user."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+
+        response = await client.get(f"/api/admin/users/{uuid.uuid4()}")
+        assert response.status_code == 404
+        assert "User not found" in response.json()["detail"]
+
+    async def test_get_user_no_roles(self, client, mock_api_db_session):
+        """GET /admin/users/{user_id} returns empty roles list for user without roles."""
+        user_id = uuid.uuid4()
+        user = self._make_mock_user(user_id, email="noroles@test.com", name="No Roles", roles=[])
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+
+        response = await client.get(f"/api/admin/users/{user_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["roles"] == []
+
+
 class TestListUsers:
     async def test_returns_users(self, client, mock_api_db_session):
         user = User(

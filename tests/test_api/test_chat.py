@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock, Mock
 
-import pytest
-
 from pam.agent.agent import AgentResponse
 
 
@@ -34,11 +32,12 @@ class TestChatEndpoint:
 
     async def test_chat_agent_error(self, client, mock_agent):
         mock_agent.answer = AsyncMock(side_effect=RuntimeError("Agent failed"))
-        with pytest.raises(RuntimeError, match="Agent failed"):
-            await client.post(
-                "/api/chat",
-                json={"message": "test"},
-            )
+        response = await client.post(
+            "/api/chat",
+            json={"message": "test"},
+        )
+        assert response.status_code == 500
+        assert response.json()["detail"] == "An internal error occurred"
 
     async def test_chat_with_conversation_history(self, client, mock_agent):
         """Conversation history is forwarded to the agent as a kwarg."""

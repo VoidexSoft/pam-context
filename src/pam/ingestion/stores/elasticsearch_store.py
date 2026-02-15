@@ -93,7 +93,7 @@ class ElasticsearchStore:
 
         if actions:
             total = len(actions) // 2
-            response = await self.client.bulk(body=actions, refresh="wait_for")
+            response = await self.client.bulk(operations=actions, refresh="wait_for")
             errors = response.get("errors", False)
             if errors:
                 failed_items = []

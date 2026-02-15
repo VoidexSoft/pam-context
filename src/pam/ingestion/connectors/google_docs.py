@@ -49,23 +49,30 @@ class GoogleDocsConnector(BaseConnector):
 
         for folder_id in self.folder_ids:
             query = f"'{folder_id}' in parents and mimeType='{GOOGLE_DOC_MIME}' and trashed=false"
-            request = service.files().list(
-                q=query,
-                fields="files(id, name, owners, webViewLink, modifiedTime)",
-                pageSize=100,
-            )
-            results = await loop.run_in_executor(None, request.execute)
-
-            for f in results.get("files", []):
-                owner = f.get("owners", [{}])[0].get("emailAddress") if f.get("owners") else None
-                docs.append(
-                    DocumentInfo(
-                        source_id=f["id"],
-                        title=f["name"],
-                        owner=owner,
-                        source_url=f.get("webViewLink"),
-                    )
+            page_token = None
+            while True:
+                request = service.files().list(
+                    q=query,
+                    fields="nextPageToken,files(id, name, owners, webViewLink, modifiedTime)",
+                    pageSize=100,
+                    pageToken=page_token,
                 )
+                results = await loop.run_in_executor(None, request.execute)
+
+                for f in results.get("files", []):
+                    owner = f.get("owners", [{}])[0].get("emailAddress") if f.get("owners") else None
+                    docs.append(
+                        DocumentInfo(
+                            source_id=f["id"],
+                            title=f["name"],
+                            owner=owner,
+                            source_url=f.get("webViewLink"),
+                        )
+                    )
+
+                page_token = results.get("nextPageToken")
+                if not page_token:
+                    break
 
         logger.info("gdocs_list_documents", folder_count=len(self.folder_ids), doc_count=len(docs))
         return docs

@@ -81,16 +81,25 @@ class GoogleSheetsConnector(BaseConnector):
                 f"'{self.folder_id}' in parents and "
                 "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
             )
-            request = drive.files().list(q=query, fields="files(id,name,webViewLink)")
-            results = await loop.run_in_executor(None, request.execute)
-            for f in results.get("files", []):
-                docs.append(
-                    DocumentInfo(
-                        source_id=f["id"],
-                        title=f["name"],
-                        source_url=f.get("webViewLink"),
-                    )
+            page_token = None
+            while True:
+                request = drive.files().list(
+                    q=query,
+                    fields="nextPageToken,files(id,name,webViewLink)",
+                    pageToken=page_token,
                 )
+                results = await loop.run_in_executor(None, request.execute)
+                for f in results.get("files", []):
+                    docs.append(
+                        DocumentInfo(
+                            source_id=f["id"],
+                            title=f["name"],
+                            source_url=f.get("webViewLink"),
+                        )
+                    )
+                page_token = results.get("nextPageToken")
+                if not page_token:
+                    break
 
         logger.info("sheets_list_documents", count=len(docs))
         return docs

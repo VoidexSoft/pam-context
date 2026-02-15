@@ -6,6 +6,7 @@ settings.use_haystack_retrieval is True, HaystackSearchService is used instead.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 import structlog
@@ -107,17 +108,39 @@ class HybridSearchService:
             },
         }
 
-        response = await self.client.search(index=self.index_name, body=body)
+        try:
+            response = await self.client.search(index=self.index_name, body=body)
+        except Exception:
+            logger.exception(
+                "hybrid_search_es_error",
+                query_length=len(query),
+                top_k=top_k,
+                source_type=source_type,
+                project=project,
+            )
+            return []
 
         results = []
         for hit in response["hits"]["hits"]:
             src = hit["_source"]
             meta = src.get("meta", {})
+
+            # _score may be present but None when using RRF retriever
+            score = hit.get("_score") or 0.0
+
+            # segment_id fallback: ES _id may not be a valid UUID, so
+            # generate a deterministic UUID5 from the string if parsing fails
+            raw_segment_id = meta.get("segment_id") or hit["_id"]
+            try:
+                segment_id = uuid.UUID(str(raw_segment_id))
+            except (ValueError, AttributeError):
+                segment_id = uuid.uuid5(uuid.NAMESPACE_URL, str(hit["_id"]))
+
             results.append(
                 SearchResult(
-                    segment_id=meta.get("segment_id", hit["_id"]),
+                    segment_id=segment_id,
                     content=src.get("content", ""),
-                    score=hit.get("_score", 0.0),
+                    score=score,
                     source_url=meta.get("source_url"),
                     source_id=meta.get("source_id"),
                     section_path=meta.get("section_path"),
@@ -135,8 +158,13 @@ class HybridSearchService:
         # Store in cache (after reranking so cached results are already reranked)
         if self.cache and results:
             await self.cache.set_search_results(
-                query, top_k, [r.model_dump() for r in results],
-                source_type, project, date_from, date_to,
+                query,
+                top_k,
+                [r.model_dump(mode="json") for r in results],
+                source_type,
+                project,
+                date_from,
+                date_to,
             )
 
         return results

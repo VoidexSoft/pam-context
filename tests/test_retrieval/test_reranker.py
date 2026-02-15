@@ -144,17 +144,20 @@ class TestHybridSearchWithReranker:
         reranked_results = [_make_result("reranked", score=0.99)]
         mock_reranker.rerank = AsyncMock(return_value=reranked_results)
 
-        # Setup ES to return results
+        # Setup ES to return results (fields nested under meta.* to match real ES mapping)
+        sid = str(uuid.uuid4())
         mock_es_client.search = AsyncMock(
             return_value={
                 "hits": {
                     "hits": [
                         {
-                            "_id": str(uuid.uuid4()),
+                            "_id": sid,
                             "_score": 0.5,
                             "_source": {
-                                "segment_id": str(uuid.uuid4()),
                                 "content": "original",
+                                "meta": {
+                                    "segment_id": sid,
+                                },
                             },
                         }
                     ]
@@ -172,16 +175,19 @@ class TestHybridSearchWithReranker:
     async def test_search_skips_reranker_when_not_configured(self, mock_es_client):
         from pam.retrieval.hybrid_search import HybridSearchService
 
+        sid = str(uuid.uuid4())
         mock_es_client.search = AsyncMock(
             return_value={
                 "hits": {
                     "hits": [
                         {
-                            "_id": str(uuid.uuid4()),
+                            "_id": sid,
                             "_score": 0.5,
                             "_source": {
-                                "segment_id": str(uuid.uuid4()),
                                 "content": "original",
+                                "meta": {
+                                    "segment_id": sid,
+                                },
                             },
                         }
                     ]

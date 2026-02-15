@@ -4,13 +4,16 @@ Uses PostgreSQL to track task state and asyncio.create_task() for background exe
 """
 
 import asyncio
+import json as json_module
 import uuid
 from datetime import UTC, datetime
 
 import structlog
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.expression import cast, literal
 
 from pam.common.cache import CacheService, get_redis
 from pam.common.database import async_session_factory
@@ -102,15 +105,9 @@ async def run_ingestion_background(
                 return
 
             # Progress callback — updates task record after each document
+            # Uses SQL-level increments for atomicity (no read-modify-write race)
             async def on_progress(result: IngestionResult) -> None:
-                task_row = await get_task(task_id, status_session)
-                if task_row is None:
-                    return
-                new_processed = task_row.processed_documents + 1
-                new_succeeded = task_row.succeeded + (1 if not result.error and not result.skipped else 0)
-                new_skipped = task_row.skipped + (1 if result.skipped else 0)
-                new_failed = task_row.failed + (1 if result.error else 0)
-                new_results = list(task_row.results) + [
+                result_entry = [
                     {
                         "source_id": result.source_id,
                         "title": result.title,
@@ -119,15 +116,23 @@ async def run_ingestion_background(
                         "error": result.error,
                     }
                 ]
+                succeeded_inc = 1 if not result.error and not result.skipped else 0
+                skipped_inc = 1 if result.skipped else 0
+                failed_inc = 1 if result.error else 0
+
                 await status_session.execute(
                     update(IngestionTask)
                     .where(IngestionTask.id == task_id)
                     .values(
-                        processed_documents=new_processed,
-                        succeeded=new_succeeded,
-                        skipped=new_skipped,
-                        failed=new_failed,
-                        results=new_results,
+                        processed_documents=IngestionTask.processed_documents + 1,
+                        succeeded=IngestionTask.succeeded + succeeded_inc,
+                        skipped=IngestionTask.skipped + skipped_inc,
+                        failed=IngestionTask.failed + failed_inc,
+                        results=IngestionTask.results
+                        + cast(
+                            literal(json_module.dumps(result_entry)),
+                            JSONB,
+                        ),
                     )
                 )
                 await status_session.commit()
@@ -166,6 +171,23 @@ async def run_ingestion_background(
 
         logger.info("task_completed", task_id=str(task_id))
 
+    except asyncio.CancelledError:
+        logger.warning("task_cancelled", task_id=str(task_id))
+        try:
+            async with async_session_factory() as err_session:
+                await err_session.execute(
+                    update(IngestionTask)
+                    .where(IngestionTask.id == task_id)
+                    .values(
+                        status="failed",
+                        error="Task was cancelled",
+                        completed_at=datetime.now(UTC),
+                    )
+                )
+                await err_session.commit()
+        except Exception:
+            logger.exception("task_cancelled_status_update_error", task_id=str(task_id))
+
     except Exception as e:
         logger.exception("task_failed", task_id=str(task_id))
         try:
@@ -185,3 +207,26 @@ async def run_ingestion_background(
 
     finally:
         _running_tasks.pop(task_id, None)
+
+
+async def recover_stale_tasks() -> int:
+    """Mark any 'running' tasks as 'failed' on startup.
+
+    Tasks stuck in 'running' state indicate a previous crash or unclean shutdown.
+    This should be called once during application startup.
+    """
+    async with async_session_factory() as session:
+        result = await session.execute(
+            update(IngestionTask)
+            .where(IngestionTask.status == "running")
+            .values(
+                status="failed",
+                error="Recovered on startup: task was stuck in running state",
+                completed_at=datetime.now(UTC),
+            )
+        )
+        await session.commit()
+        count: int = result.rowcount  # type: ignore[attr-defined]
+        if count:
+            logger.warning("recovered_stale_tasks", count=count)
+        return count

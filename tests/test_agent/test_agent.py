@@ -1,7 +1,7 @@
 """Tests for RetrievalAgent — tool-use loop with mocked Anthropic + search."""
 
 import uuid
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from pam.agent.agent import RetrievalAgent
 from pam.retrieval.types import SearchResult
@@ -256,9 +256,7 @@ class TestStreamingDoubleSend:
     async def test_simple_answer_no_phase_b(self, mock_anthropic_cls):
         """When no tools are used, Phase B should not fire either."""
         mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(
-            return_value=_make_response([_make_text_block("Direct answer.")])
-        )
+        mock_client.messages.create = AsyncMock(return_value=_make_response([_make_text_block("Direct answer.")]))
         mock_client.messages.stream = Mock()
         mock_anthropic_cls.return_value = mock_client
 
@@ -281,3 +279,257 @@ class TestStreamingDoubleSend:
 
         # No streaming call should have been made
         mock_client.messages.stream.assert_not_called()
+
+
+class TestAnswerStreaming:
+    """Tests for answer_streaming() — direct answers, tool use, and max iterations."""
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_direct_answer_streaming(self, mock_anthropic_cls):
+        """Streaming returns token events for a direct answer (no tool use)."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_response([_make_text_block("Direct streaming answer.")])
+        )
+        mock_anthropic_cls.return_value = mock_client
+
+        mock_search = AsyncMock()
+        mock_embedder = AsyncMock()
+
+        agent = RetrievalAgent(
+            search_service=mock_search,
+            embedder=mock_embedder,
+            api_key="test-key",
+        )
+
+        events = []
+        async for event in agent.answer_streaming("Simple question?"):
+            events.append(event)
+
+        # Should have status, token(s), and done events
+        event_types = [e["type"] for e in events]
+        assert "status" in event_types
+        assert "token" in event_types
+        assert "done" in event_types
+
+        # Verify the answer text is present
+        token_events = [e for e in events if e["type"] == "token"]
+        combined = "".join(e["content"] for e in token_events)
+        assert "Direct streaming answer." in combined
+
+        # Verify done metadata
+        done_event = next(e for e in events if e["type"] == "done")
+        assert "token_usage" in done_event["metadata"]
+        assert done_event["metadata"]["tool_calls"] == 0
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_tool_use_then_streaming_final_answer(self, mock_anthropic_cls):
+        """After tool use + end_turn in loop, Phase B streams the final answer."""
+        mock_client = AsyncMock()
+
+        # First call: tool_use
+        tool_response = _make_response(
+            [_make_tool_use_block("search_knowledge", {"query": "revenue"})],
+            stop_reason="tool_use",
+        )
+        # Second call: tool_use again (to test multi-round)
+        tool_response2 = _make_response(
+            [_make_tool_use_block("search_knowledge", {"query": "revenue details"}, tool_id="tool_2")],
+            stop_reason="tool_use",
+        )
+        # Third call: end_turn (but we went through tools, so Phase B fires)
+        final_text_response = _make_response(
+            [_make_text_block("Revenue was $10M.")],
+            stop_reason="end_turn",
+        )
+        mock_client.messages.create = AsyncMock(side_effect=[tool_response, tool_response2, final_text_response])
+
+        # Set up mock for Phase B streaming (should NOT be called since end_turn was hit)
+        mock_client.messages.stream = Mock()
+        mock_anthropic_cls.return_value = mock_client
+
+        mock_search = AsyncMock()
+        mock_search.search = AsyncMock(
+            return_value=[
+                SearchResult(
+                    segment_id=uuid.uuid4(),
+                    content="Revenue was $10M",
+                    score=0.9,
+                    source_url="file:///r.md",
+                    document_title="Report",
+                    section_path="Q1",
+                )
+            ]
+        )
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_texts = AsyncMock(return_value=[[0.1] * 1536])
+
+        agent = RetrievalAgent(
+            search_service=mock_search,
+            embedder=mock_embedder,
+            api_key="test-key",
+        )
+
+        events = []
+        async for event in agent.answer_streaming("What was the revenue?"):
+            events.append(event)
+
+        # Should have tool-use status events
+        status_events = [e for e in events if e["type"] == "status"]
+        assert any("Search Knowledge" in e["content"] for e in status_events)
+
+        # The answer was emitted via chunked tokens (end_turn path in the loop)
+        token_events = [e for e in events if e["type"] == "token"]
+        combined = "".join(e["content"] for e in token_events)
+        assert "10M" in combined
+
+        # Done event with correct tool_calls count
+        done_event = next(e for e in events if e["type"] == "done")
+        assert done_event["metadata"]["tool_calls"] == 2
+
+        # Citations should be emitted
+        citation_events = [e for e in events if e["type"] == "citation"]
+        assert len(citation_events) >= 1
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_max_iterations_streaming(self, mock_anthropic_cls):
+        """Streaming yields a warning status when max iterations is reached."""
+        mock_client = AsyncMock()
+        # Always return tool_use, never end_turn — will exhaust MAX_TOOL_ITERATIONS
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_response(
+                [_make_tool_use_block("search_knowledge", {"query": "x"})],
+                stop_reason="tool_use",
+            )
+        )
+
+        # Phase B streaming mock (will be called since tool_call_count > 0 and not answer_already_emitted)
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+
+        async def empty_text_stream():
+            yield "Max iterations fallback answer."
+
+        mock_stream.text_stream = empty_text_stream()
+        final_msg = Mock()
+        final_msg.usage = Mock(input_tokens=50, output_tokens=25)
+        mock_stream.get_final_message = AsyncMock(return_value=final_msg)
+        mock_client.messages.stream = Mock(return_value=mock_stream)
+
+        mock_anthropic_cls.return_value = mock_client
+
+        mock_search = AsyncMock()
+        mock_search.search = AsyncMock(return_value=[])
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_texts = AsyncMock(return_value=[[0.1] * 1536])
+
+        agent = RetrievalAgent(
+            search_service=mock_search,
+            embedder=mock_embedder,
+            api_key="test-key",
+        )
+
+        events = []
+        async for event in agent.answer_streaming("infinite loop?"):
+            events.append(event)
+
+        # Should have the max-iterations warning status
+        status_events = [e for e in events if e["type"] == "status"]
+        assert any("maximum search iterations" in e["content"].lower() for e in status_events)
+
+        # Should have a done event
+        done_events = [e for e in events if e["type"] == "done"]
+        assert len(done_events) == 1
+        assert done_events[0]["metadata"]["tool_calls"] == 5
+
+
+class TestSearchEntities:
+    """Tests for the _search_entities tool method."""
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_no_db_session(self, mock_anthropic_cls):
+        mock_anthropic_cls.return_value = AsyncMock()
+        agent = RetrievalAgent(
+            search_service=AsyncMock(),
+            embedder=AsyncMock(),
+            db_session=None,
+        )
+        result_text, citations = await agent._search_entities({"search_term": "revenue"})
+        assert "not available" in result_text.lower()
+        assert citations == []
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_no_matching_entities(self, mock_anthropic_cls):
+        mock_anthropic_cls.return_value = AsyncMock()
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        agent = RetrievalAgent(
+            search_service=AsyncMock(),
+            embedder=AsyncMock(),
+            db_session=mock_session,
+        )
+        result_text, citations = await agent._search_entities({"search_term": "nonexistent"})
+        assert "no matching" in result_text.lower()
+        assert citations == []
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_returns_matching_entities(self, mock_anthropic_cls):
+        """Tests the JSONB cast + ILIKE query pattern returns formatted entities."""
+        mock_anthropic_cls.return_value = AsyncMock()
+        mock_session = AsyncMock()
+
+        entity1 = MagicMock()
+        entity1.entity_type = "metric_definition"
+        entity1.entity_data = {"name": "Revenue", "formula": "SUM(amount)"}
+        entity1.confidence = 0.95
+
+        entity2 = MagicMock()
+        entity2.entity_type = "kpi_target"
+        entity2.entity_data = {"name": "Monthly Revenue Target", "value": "$1M"}
+        entity2.confidence = 0.88
+
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [entity1, entity2]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        agent = RetrievalAgent(
+            search_service=AsyncMock(),
+            embedder=AsyncMock(),
+            db_session=mock_session,
+        )
+        result_text, citations = await agent._search_entities(
+            {"search_term": "revenue", "entity_type": "metric_definition", "limit": 5}
+        )
+        assert "2 entities" in result_text
+        assert "metric_definition" in result_text
+        assert "Revenue" in result_text
+        assert "95.0%" in result_text
+        assert citations == []
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_dispatch_search_entities(self, mock_anthropic_cls):
+        """Verify _execute_tool dispatches to _search_entities correctly."""
+        mock_anthropic_cls.return_value = AsyncMock()
+        mock_session = AsyncMock()
+
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        agent = RetrievalAgent(
+            search_service=AsyncMock(),
+            embedder=AsyncMock(),
+            db_session=mock_session,
+        )
+        result_text, citations = await agent._execute_tool("search_entities", {"search_term": "test"})
+        assert "no matching" in result_text.lower()

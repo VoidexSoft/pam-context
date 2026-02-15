@@ -54,6 +54,7 @@ class DuckDBService:
 
         result = []
         for name, path in self._tables.items():
+            conn = None
             try:
                 conn = duckdb.connect(":memory:")
                 rel = self._read_file(conn, path)
@@ -67,9 +68,11 @@ class DuckDBService:
                         "row_count": row_count,
                     }
                 )
-                conn.close()
             except Exception as e:
                 result.append({"table": name, "file": str(path.name), "error": str(e)})
+            finally:
+                if conn is not None:
+                    conn.close()
 
         return result
 
@@ -96,6 +99,7 @@ class DuckDBService:
                 "Set DUCKDB_DATA_DIR to a directory containing CSV/Parquet/JSON files."
             }
 
+        conn = None
         try:
             conn = duckdb.connect(":memory:")
 
@@ -121,8 +125,6 @@ class DuckDBService:
             if truncated:
                 rows = rows[: self.max_rows]
 
-            conn.close()
-
             # Convert to serializable format
             serializable_rows = [[_serialize_value(v) for v in row] for row in rows]
 
@@ -137,6 +139,10 @@ class DuckDBService:
         except Exception as e:
             logger.warning("duckdb_query_error", sql=sql[:200], error=str(e))
             return {"error": str(e)}
+
+        finally:
+            if conn is not None:
+                conn.close()
 
     @staticmethod
     def _read_file(conn: duckdb.DuckDBPyConnection, path: Path):

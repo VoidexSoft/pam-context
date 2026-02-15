@@ -15,6 +15,7 @@ from pam.api.auth import (
     get_user_project_ids,
     require_admin,
     require_auth,
+    require_role,
 )
 from pam.common.config import settings
 from pam.common.models import User
@@ -393,6 +394,270 @@ class TestAuthDisabledByDefault:
         assert response.status_code != 403
 
 
+class TestRequireRole:
+    """Tests for the require_role dependency factory."""
+
+    def _make_user_with_role(self, project_id: uuid.UUID, role: str) -> MagicMock:
+        """Helper: create a mock user with a single project role."""
+        user = MagicMock(spec=User)
+        pr = MagicMock()
+        pr.project_id = project_id
+        pr.role = role
+        user.project_roles = [pr]
+        return user
+
+    def _make_request(self, project_id: str | None = None) -> MagicMock:
+        """Helper: create a mock FastAPI Request with path_params."""
+        request = MagicMock()
+        request.path_params = {"project_id": project_id} if project_id else {}
+        request.query_params = {}
+        return request
+
+    async def test_sufficient_role_passes(self):
+        """User with editor role passes a check requiring viewer."""
+        project_id = uuid.uuid4()
+        user = self._make_user_with_role(project_id, "editor")
+        request = self._make_request(str(project_id))
+
+        checker = require_role("viewer")
+        with patch.object(settings, "auth_required", True):
+            result = await checker(request=request, user=user)
+            assert result is user
+
+    async def test_exact_role_passes(self):
+        """User with admin role passes a check requiring admin."""
+        project_id = uuid.uuid4()
+        user = self._make_user_with_role(project_id, "admin")
+        request = self._make_request(str(project_id))
+
+        checker = require_role("admin")
+        with patch.object(settings, "auth_required", True):
+            result = await checker(request=request, user=user)
+            assert result is user
+
+    async def test_insufficient_role_raises_403(self):
+        """User with viewer role is rejected when admin is required."""
+        project_id = uuid.uuid4()
+        user = self._make_user_with_role(project_id, "viewer")
+        request = self._make_request(str(project_id))
+
+        checker = require_role("admin")
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await checker(request=request, user=user)
+            assert exc_info.value.status_code == 403
+            assert "admin" in exc_info.value.detail
+
+    async def test_role_on_different_project_raises_403(self):
+        """User with admin role on project A is rejected for project B."""
+        project_a = uuid.uuid4()
+        project_b = uuid.uuid4()
+        user = self._make_user_with_role(project_a, "admin")
+        request = self._make_request(str(project_b))
+
+        checker = require_role("viewer")
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await checker(request=request, user=user)
+            assert exc_info.value.status_code == 403
+
+    async def test_missing_project_id_raises_400(self):
+        """Missing project_id parameter raises 400."""
+        user = MagicMock(spec=User)
+        user.project_roles = []
+        request = self._make_request(None)
+
+        checker = require_role("viewer")
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await checker(request=request, user=user)
+            assert exc_info.value.status_code == 400
+            assert "project_id" in exc_info.value.detail
+
+    async def test_auth_disabled_returns_none(self):
+        """When auth is disabled, require_role returns None."""
+        request = self._make_request(None)
+
+        checker = require_role("admin")
+        with patch.object(settings, "auth_required", False):
+            result = await checker(request=request, user=None)
+            assert result is None
+
+    async def test_no_user_raises_401(self):
+        """When auth is enabled but user is None, raises 401."""
+        request = self._make_request(str(uuid.uuid4()))
+
+        checker = require_role("viewer")
+        with patch.object(settings, "auth_required", True):
+            with pytest.raises(HTTPException) as exc_info:
+                await checker(request=request, user=None)
+            assert exc_info.value.status_code == 401
+
+
+class TestGoogleOAuthLogin:
+    """Tests for the POST /auth/google endpoint."""
+
+    def _mock_google_modules(self, fake_idinfo=None, side_effect=None):
+        """Helper: set up mock google.oauth2.id_token and google.auth.transport.requests modules.
+
+        Uses sys.modules patching because the google auth imports are lazy (inside the endpoint
+        function body), so we need the modules to exist when `from google.oauth2 import id_token`
+        is executed.
+        """
+        mock_id_token_module = MagicMock()
+        if side_effect:
+            mock_id_token_module.verify_oauth2_token.side_effect = side_effect
+        else:
+            mock_id_token_module.verify_oauth2_token.return_value = fake_idinfo
+
+        mock_requests_module = MagicMock()
+        mock_requests_module.Request.return_value = MagicMock()
+
+        # Build a coherent mock hierarchy so `from X import Y` works
+        mock_google = MagicMock()
+        mock_google_auth = MagicMock()
+        mock_google_auth_transport = MagicMock()
+        mock_google_oauth2 = MagicMock()
+
+        # Wire up attribute access
+        mock_google.auth = mock_google_auth
+        mock_google.oauth2 = mock_google_oauth2
+        mock_google_auth.transport = mock_google_auth_transport
+        mock_google_auth_transport.requests = mock_requests_module
+        mock_google_oauth2.id_token = mock_id_token_module
+
+        return patch.dict(
+            "sys.modules",
+            {
+                "google": mock_google,
+                "google.auth": mock_google_auth,
+                "google.auth.transport": mock_google_auth_transport,
+                "google.auth.transport.requests": mock_requests_module,
+                "google.oauth2": mock_google_oauth2,
+                "google.oauth2.id_token": mock_id_token_module,
+            },
+        )
+
+    async def test_google_login_creates_new_user(self, client, mock_api_db_session):
+        """Successful Google login creates a new user and returns JWT."""
+        user_id = uuid.uuid4()
+        now = datetime.now(UTC)
+
+        # Mock: no existing user
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_api_db_session.add = MagicMock()
+
+        async def mock_refresh(obj):
+            obj.id = user_id
+            obj.created_at = now
+            obj.updated_at = now
+            obj.is_active = True
+            obj.picture = "https://example.com/pic.jpg"
+            obj.google_id = "google-sub-123"
+
+        mock_api_db_session.refresh = mock_refresh
+
+        fake_idinfo = {
+            "email": "new@example.com",
+            "name": "New User",
+            "picture": "https://example.com/pic.jpg",
+            "sub": "google-sub-123",
+        }
+
+        with self._mock_google_modules(fake_idinfo=fake_idinfo):
+            response = await client.post(
+                "/api/auth/google",
+                json={"id_token": "fake-google-id-token"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+        assert data["user"]["email"] == "new@example.com"
+
+    async def test_google_login_existing_user(self, client, mock_api_db_session):
+        """Google login with existing user updates profile and returns JWT."""
+        user_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        user = User(
+            id=user_id,
+            email="existing@example.com",
+            name="Old Name",
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = user
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+
+        fake_idinfo = {
+            "email": "existing@example.com",
+            "name": "Updated Name",
+            "picture": "https://example.com/new-pic.jpg",
+            "sub": "google-sub-456",
+        }
+
+        with self._mock_google_modules(fake_idinfo=fake_idinfo):
+            response = await client.post(
+                "/api/auth/google",
+                json={"id_token": "fake-google-id-token"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert data["user"]["email"] == "existing@example.com"
+
+    async def test_google_login_invalid_token(self, client, mock_api_db_session):
+        """Invalid Google ID token returns 401."""
+        with self._mock_google_modules(side_effect=ValueError("Invalid token")):
+            response = await client.post(
+                "/api/auth/google",
+                json={"id_token": "bad-token"},
+            )
+
+        assert response.status_code == 401
+        assert "Invalid Google ID token" in response.json()["detail"]
+
+    async def test_google_login_jwt_token_is_valid(self, client, mock_api_db_session):
+        """The returned JWT can be decoded successfully."""
+        user_id = uuid.uuid4()
+        now = datetime.now(UTC)
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_api_db_session.add = MagicMock()
+
+        async def mock_refresh(obj):
+            obj.id = user_id
+            obj.created_at = now
+            obj.updated_at = now
+            obj.is_active = True
+            obj.picture = None
+            obj.google_id = "g-sub"
+
+        mock_api_db_session.refresh = mock_refresh
+
+        fake_idinfo = {"email": "jwt@example.com", "name": "JWT User", "sub": "g-sub"}
+
+        with self._mock_google_modules(fake_idinfo=fake_idinfo):
+            response = await client.post(
+                "/api/auth/google",
+                json={"id_token": "valid-google-token"},
+            )
+
+        data = response.json()
+        payload = decode_access_token(data["access_token"])
+        assert payload["sub"] == str(user_id)
+        assert payload["email"] == "jwt@example.com"
+
+
 class TestAuthEnforcedWhenEnabled:
     """When auth_required=True, endpoints must reject unauthenticated requests."""
 
@@ -424,4 +689,13 @@ class TestAuthEnforcedWhenEnabled:
     async def test_stats_requires_auth(self, client):
         with patch.object(settings, "auth_required", True):
             response = await client.get("/api/stats")
+            assert response.status_code == 401
+
+    async def test_ingest_requires_admin_auth(self, client):
+        """Non-admin users should be rejected from the ingest endpoint when auth is enabled."""
+        with patch.object(settings, "auth_required", True):
+            response = await client.post(
+                "/api/ingest/folder",
+                json={"path": "/tmp/docs"},
+            )
             assert response.status_code == 401

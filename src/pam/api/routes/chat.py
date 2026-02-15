@@ -3,7 +3,8 @@
 import json
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+import structlog
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -11,6 +12,8 @@ from pam.agent.agent import AgentResponse, RetrievalAgent
 from pam.api.auth import get_current_user
 from pam.api.deps import get_agent
 from pam.common.models import User
+
+logger = structlog.get_logger()
 
 router = APIRouter()
 
@@ -48,7 +51,11 @@ async def chat(
     if request.source_type:
         kwargs["source_type"] = request.source_type
 
-    result: AgentResponse = await agent.answer(request.message, **kwargs)
+    try:
+        result: AgentResponse = await agent.answer(request.message, **kwargs)
+    except Exception:
+        logger.exception("chat_error", message=request.message[:100])
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
     return ChatResponse(
         response=result.answer,

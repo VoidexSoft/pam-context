@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getStats, SystemStats } from "../api/client";
 
 function StatCard({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
@@ -15,12 +15,19 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     getStats()
       .then(setStats)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load stats"))
       .finally(() => setLoading(false));
+  }, [refreshKey]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
   }, []);
 
   if (loading) {
@@ -65,8 +72,15 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="px-6 py-3 border-b border-gray-200 bg-white">
+      <header className="px-6 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
         <h2 className="text-base font-semibold text-gray-800">Admin Dashboard</h2>
+        <button
+          onClick={handleRefresh}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">

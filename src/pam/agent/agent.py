@@ -33,6 +33,7 @@ Available tools:
 - get_document_context: Fetch full document content for deep reading.
 - get_change_history: See recent document changes and sync history.
 - query_database: Run SQL queries on analytics data files (CSV/Parquet/JSON).
+- search_entities: Search for structured business entities (metrics, events, KPIs).
 
 Rules:
 1. ALWAYS use tools to find information before answering.
@@ -81,6 +82,9 @@ class RetrievalAgent:
         self.cost_tracker = cost_tracker or CostTracker()
         self.db_session = db_session
         self.duckdb_service = duckdb_service
+        # NOTE: _default_source_type is instance state set per-call by answer()/answer_streaming().
+        # This is safe because agents are instantiated per-request (see api/deps.py).
+        # Do NOT share a single RetrievalAgent across concurrent requests.
         self._default_source_type: str | None = None
 
     async def answer(
@@ -250,8 +254,11 @@ class RetrievalAgent:
                     continue
 
             else:
-                # Hit max iterations — do a final streaming call
-                pass
+                # Hit max iterations — warn the user
+                yield {
+                    "type": "status",
+                    "content": "Reached maximum search iterations without finding a complete answer.",
+                }
 
             # Phase B: Final streaming call (if we went through tools and answer not yet emitted)
             if tool_call_count > 0 and not answer_already_emitted:

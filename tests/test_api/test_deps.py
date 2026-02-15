@@ -17,19 +17,19 @@ class TestGetDuckdbService:
         deps_module._duckdb_initialized = False
 
     @patch.object(deps_module.settings, "duckdb_data_dir", "")
-    def test_returns_none_when_no_data_dir(self):
-        result = deps_module.get_duckdb_service()
+    async def test_returns_none_when_no_data_dir(self):
+        result = await deps_module.get_duckdb_service()
         assert result is None
 
     @patch.object(deps_module.settings, "duckdb_data_dir", "/some/dir")
     @patch("pam.api.deps.DuckDBService", create=True)
-    def test_returns_singleton(self, mock_duckdb_cls):
+    async def test_returns_singleton(self, mock_duckdb_cls):
         mock_instance = MagicMock()
         mock_duckdb_cls.return_value = mock_instance
 
         with patch.dict("sys.modules", {"pam.agent.duckdb_service": MagicMock(DuckDBService=mock_duckdb_cls)}):
-            first = deps_module.get_duckdb_service()
-            second = deps_module.get_duckdb_service()
+            first = await deps_module.get_duckdb_service()
+            second = await deps_module.get_duckdb_service()
 
         assert first is second
         # DuckDBService constructor called only once
@@ -37,12 +37,12 @@ class TestGetDuckdbService:
         mock_instance.register_files.assert_called_once()
 
     @patch.object(deps_module.settings, "duckdb_data_dir", "")
-    def test_none_result_is_cached(self):
+    async def test_none_result_is_cached(self):
         """Even None result should be cached (not re-evaluated)."""
-        first = deps_module.get_duckdb_service()
+        first = await deps_module.get_duckdb_service()
         assert first is None
         assert deps_module._duckdb_initialized is True
 
         # Second call should not re-check
-        second = deps_module.get_duckdb_service()
+        second = await deps_module.get_duckdb_service()
         assert second is None

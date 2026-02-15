@@ -135,7 +135,13 @@ async def evaluate_agent(
             }
 
         data = resp.json()
-        answer = data.get("answer", data.get("response", data.get("message", "")))
+        # Backend returns { response: str, citations: [...] } or
+        # potentially { message: { role, content, citations } }.
+        # Handle both structures safely.
+        answer = data.get("answer", data.get("response", ""))
+        if not answer:
+            message = data.get("message", {})
+            answer = message.get("content", "") if isinstance(message, dict) else str(message)
         return {"answer": answer, "latency_ms": latency_ms}
 
     except httpx.RequestError as exc:
