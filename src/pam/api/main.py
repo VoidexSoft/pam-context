@@ -2,23 +2,24 @@
 
 from contextlib import asynccontextmanager
 
+import redis.asyncio as aioredis
 import structlog
 from elasticsearch import AsyncElasticsearch
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, text
 from sqlalchemy import update as sa_update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
 from pam.api.routes import admin, auth, chat, documents, ingest, search
-from pam.common.cache import close_redis, get_redis, ping_redis
+from pam.common.cache import CacheService
 from pam.common.config import settings
-from pam.common.database import async_session_factory
 from pam.common.logging import configure_logging
 from pam.common.models import IngestionTask
+from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
 
 logger = structlog.get_logger()
 
@@ -28,6 +29,18 @@ async def lifespan(app: FastAPI):
     # Startup
     configure_logging(settings.log_level)
 
+    # --- Database engine + session factory ---
+    engine = create_async_engine(
+        settings.database_url,
+        echo=False,
+        pool_size=5,
+        max_overflow=10,
+    )
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    app.state.db_engine = engine
+    app.state.session_factory = session_factory
+
+    # --- Elasticsearch client ---
     app.state.es_client = AsyncElasticsearch(settings.elasticsearch_url)
 
     # Ensure ES index exists
@@ -40,13 +53,78 @@ async def lifespan(app: FastAPI):
     )
     await es_store.ensure_index()
 
-    # Initialize Redis
+    # --- Redis client ---
+    redis_client = None
     try:
-        app.state.redis_client = await get_redis()
+        redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
+        await redis_client.ping()
         logger.info("redis_connected", url=settings.redis_url)
     except Exception:
         logger.warning("redis_connect_failed", exc_info=True)
-        app.state.redis_client = None
+        redis_client = None
+    app.state.redis_client = redis_client
+
+    # --- CacheService ---
+    cache_service = None
+    if redis_client:
+        cache_service = CacheService(
+            redis_client,
+            search_ttl=settings.redis_search_ttl,
+            session_ttl=settings.redis_session_ttl,
+        )
+    app.state.cache_service = cache_service
+
+    # --- Embedder ---
+    app.state.embedder = OpenAIEmbedder(
+        api_key=settings.openai_api_key,
+        model=settings.embedding_model,
+        dims=settings.embedding_dims,
+    )
+
+    # --- Reranker (conditional) ---
+    reranker = None
+    if settings.rerank_enabled:
+        from pam.retrieval.rerankers.cross_encoder import CrossEncoderReranker
+
+        reranker = CrossEncoderReranker(model_name=settings.rerank_model)
+    app.state.reranker = reranker
+
+    # --- Search service (haystack or legacy) ---
+    if settings.use_haystack_retrieval:
+        from pam.retrieval.haystack_search import HaystackSearchService
+
+        app.state.search_service = HaystackSearchService(
+            es_url=settings.elasticsearch_url,
+            index_name=settings.elasticsearch_index,
+            cache=cache_service,
+            rerank_enabled=settings.rerank_enabled,
+            rerank_model=settings.rerank_model,
+        )
+    else:
+        from pam.retrieval.hybrid_search import HybridSearchService
+
+        app.state.search_service = HybridSearchService(
+            app.state.es_client,
+            index_name=settings.elasticsearch_index,
+            cache=cache_service,
+            reranker=reranker,
+        )
+
+    # --- DuckDB (conditional) ---
+    duckdb_service = None
+    if settings.duckdb_data_dir:
+        from pam.agent.duckdb_service import DuckDBService
+
+        duckdb_service = DuckDBService(
+            data_dir=settings.duckdb_data_dir,
+            max_rows=settings.duckdb_max_rows,
+        )
+        duckdb_service.register_files()
+    app.state.duckdb_service = duckdb_service
+
+    # --- Store config values on app.state for deps.py agent creation ---
+    app.state.anthropic_api_key = settings.anthropic_api_key
+    app.state.agent_model = settings.agent_model
 
     # Warn when auth is disabled — admin routes are fully open
     if not settings.auth_required:
@@ -57,7 +135,7 @@ async def lifespan(app: FastAPI):
         )
 
     # Clean up orphaned ingestion tasks from previous server runs
-    async with async_session_factory() as session:
+    async with session_factory() as session:
         await session.execute(
             sa_update(IngestionTask)
             .where(IngestionTask.status.in_(["pending", "running"]))
@@ -68,8 +146,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    await close_redis()
+    if redis_client:
+        await redis_client.aclose()
     await app.state.es_client.close()
+    await engine.dispose()
 
 
 def create_app() -> FastAPI:
@@ -101,6 +181,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health(
+        request: Request,
         es_client: AsyncElasticsearch = Depends(get_es_client),
         db: AsyncSession = Depends(get_db),
     ):
@@ -125,13 +206,17 @@ def create_app() -> FastAPI:
             services["postgres"] = "down"
 
         # Check Redis
-        try:
-            if await ping_redis():
-                services["redis"] = "up"
-            else:
+        redis_client = getattr(request.app.state, "redis_client", None)
+        if redis_client:
+            try:
+                if await redis_client.ping():
+                    services["redis"] = "up"
+                else:
+                    services["redis"] = "down"
+            except Exception:
+                logger.warning("health_check_redis_failed", exc_info=True)
                 services["redis"] = "down"
-        except Exception:
-            logger.warning("health_check_redis_failed", exc_info=True)
+        else:
             services["redis"] = "down"
 
         all_up = all(v == "up" for v in services.values())

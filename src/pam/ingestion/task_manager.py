@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import cast, literal
 
-from pam.common.cache import CacheService, get_redis
+from pam.common.cache import CacheService
 from pam.common.config import settings
 from pam.common.database import async_session_factory
 from pam.common.models import IngestionTask
@@ -165,18 +165,7 @@ async def run_ingestion_background(
             )
             await status_session.commit()
 
-            # Invalidate search cache after successful ingestion
-            try:
-                redis_client = await get_redis()
-                cache = CacheService(
-                    redis_client,
-                    search_ttl=settings.redis_search_ttl,
-                    session_ttl=settings.redis_session_ttl,
-                )
-                cleared = await cache.invalidate_search()
-                logger.info("cache_invalidated_after_ingest", keys_cleared=cleared)
-            except Exception:
-                logger.warning("cache_invalidate_failed", exc_info=True)
+            # Cache invalidation deferred to Task 2 (cache_service parameter injection)
 
         logger.info("task_completed", task_id=str(task_id))
 

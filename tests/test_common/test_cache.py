@@ -1,10 +1,9 @@
 """Tests for the Redis cache layer."""
 
-import asyncio
 import json
 import uuid
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -217,54 +216,22 @@ class TestCacheServiceSessions:
         mock_redis.delete.assert_called_once_with("session:sess-123")
 
 
-class TestGetRedisLock:
-    """Test that get_redis() uses async locking to prevent race conditions."""
-
-    async def test_concurrent_get_redis_creates_single_client(self):
-        """Multiple concurrent calls to get_redis() should only create one Redis client."""
-        import pam.common.cache as cache_mod
-
-        # Reset global state
-        original_client = cache_mod._redis_client
-        cache_mod._redis_client = None
-
-        call_count = 0
-        mock_client = AsyncMock()
-
-        def counting_from_url(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            return mock_client
-
-        try:
-            with patch("pam.common.cache.redis.from_url", side_effect=counting_from_url):
-                # Launch multiple concurrent calls
-                results = await asyncio.gather(
-                    cache_mod.get_redis(),
-                    cache_mod.get_redis(),
-                    cache_mod.get_redis(),
-                )
-
-            # All should return the same client
-            assert all(r is mock_client for r in results)
-            # from_url should have been called exactly once
-            assert call_count == 1
-        finally:
-            cache_mod._redis_client = original_client
-
-
 class TestPingRedis:
     async def test_ping_success(self):
+        from pam.common.cache import ping_redis
+
         mock_client = AsyncMock()
         mock_client.ping = AsyncMock(return_value=True)
-
-        with patch("pam.common.cache.get_redis", return_value=mock_client):
-            from pam.common.cache import ping_redis
-
-            assert await ping_redis() is True
+        assert await ping_redis(mock_client) is True
 
     async def test_ping_failure(self):
-        with patch("pam.common.cache.get_redis", side_effect=ConnectionError("refused")):
-            from pam.common.cache import ping_redis
+        from pam.common.cache import ping_redis
 
-            assert await ping_redis() is False
+        mock_client = AsyncMock()
+        mock_client.ping = AsyncMock(side_effect=ConnectionError("refused"))
+        assert await ping_redis(mock_client) is False
+
+    async def test_ping_none_client(self):
+        from pam.common.cache import ping_redis
+
+        assert await ping_redis(None) is False

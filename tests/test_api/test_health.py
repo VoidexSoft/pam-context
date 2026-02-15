@@ -1,13 +1,15 @@
 """Tests for GET /api/health endpoint."""
 
-from unittest.mock import AsyncMock, patch
-
-PATCH_REDIS = "pam.api.main.ping_redis"
+from unittest.mock import AsyncMock
 
 
 class TestHealthEndpoint:
-    @patch(PATCH_REDIS, new_callable=AsyncMock, return_value=True)
-    async def test_health_all_services_up(self, mock_redis, client, mock_api_es_client, mock_api_db_session):
+    async def test_health_all_services_up(self, app, client, mock_api_es_client, mock_api_db_session):
+        # Set redis_client on app.state for health check
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(return_value=True)
+        app.state.redis_client = mock_redis
+
         mock_api_es_client.ping = AsyncMock(return_value=True)
         mock_api_db_session.execute = AsyncMock()
 
@@ -20,8 +22,11 @@ class TestHealthEndpoint:
         assert data["services"]["postgres"] == "up"
         assert data["services"]["redis"] == "up"
 
-    @patch(PATCH_REDIS, new_callable=AsyncMock, return_value=True)
-    async def test_health_es_down(self, mock_redis, client, mock_api_es_client, mock_api_db_session):
+    async def test_health_es_down(self, app, client, mock_api_es_client, mock_api_db_session):
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(return_value=True)
+        app.state.redis_client = mock_redis
+
         mock_api_es_client.ping = AsyncMock(return_value=False)
         mock_api_db_session.execute = AsyncMock()
 
@@ -33,8 +38,11 @@ class TestHealthEndpoint:
         assert data["services"]["elasticsearch"] == "down"
         assert data["services"]["postgres"] == "up"
 
-    @patch(PATCH_REDIS, new_callable=AsyncMock, return_value=True)
-    async def test_health_es_exception(self, mock_redis, client, mock_api_es_client, mock_api_db_session):
+    async def test_health_es_exception(self, app, client, mock_api_es_client, mock_api_db_session):
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(return_value=True)
+        app.state.redis_client = mock_redis
+
         mock_api_es_client.ping = AsyncMock(side_effect=ConnectionError("refused"))
         mock_api_db_session.execute = AsyncMock()
 
@@ -45,8 +53,11 @@ class TestHealthEndpoint:
         assert data["services"]["elasticsearch"] == "down"
         assert data["services"]["postgres"] == "up"
 
-    @patch(PATCH_REDIS, new_callable=AsyncMock, return_value=True)
-    async def test_health_pg_down(self, mock_redis, client, mock_api_es_client, mock_api_db_session):
+    async def test_health_pg_down(self, app, client, mock_api_es_client, mock_api_db_session):
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(return_value=True)
+        app.state.redis_client = mock_redis
+
         mock_api_es_client.ping = AsyncMock(return_value=True)
         mock_api_db_session.execute = AsyncMock(side_effect=Exception("pg connection failed"))
 
@@ -58,8 +69,10 @@ class TestHealthEndpoint:
         assert data["services"]["elasticsearch"] == "up"
         assert data["services"]["postgres"] == "down"
 
-    @patch(PATCH_REDIS, new_callable=AsyncMock, return_value=False)
-    async def test_health_all_services_down(self, mock_redis, client, mock_api_es_client, mock_api_db_session):
+    async def test_health_all_services_down(self, app, client, mock_api_es_client, mock_api_db_session):
+        # Redis not available
+        app.state.redis_client = None
+
         mock_api_es_client.ping = AsyncMock(return_value=False)
         mock_api_db_session.execute = AsyncMock(side_effect=Exception("pg down"))
 
@@ -72,8 +85,12 @@ class TestHealthEndpoint:
         assert data["services"]["postgres"] == "down"
         assert data["services"]["redis"] == "down"
 
-    @patch(PATCH_REDIS, new_callable=AsyncMock, return_value=False)
-    async def test_health_redis_down(self, mock_redis, client, mock_api_es_client, mock_api_db_session):
+    async def test_health_redis_down(self, app, client, mock_api_es_client, mock_api_db_session):
+        # Redis client exists but ping fails
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(return_value=False)
+        app.state.redis_client = mock_redis
+
         mock_api_es_client.ping = AsyncMock(return_value=True)
         mock_api_db_session.execute = AsyncMock()
 

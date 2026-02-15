@@ -1,48 +1,65 @@
-"""Tests for FastAPI dependency injection singletons."""
+"""Tests for stateless FastAPI dependency injection functions."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pam.api.deps as deps_module
+from pam.api.deps import (
+    get_cache_service,
+    get_duckdb_service,
+    get_embedder,
+    get_es_client,
+    get_reranker,
+    get_search_service,
+)
 
 
-class TestGetDuckdbService:
-    def setup_method(self):
-        """Reset singleton state before each test."""
-        deps_module._duckdb_service = None
-        deps_module._duckdb_initialized = False
+class TestStatelessDeps:
+    def test_get_duckdb_service_returns_from_app_state(self):
+        mock_service = MagicMock()
+        request = MagicMock()
+        request.app.state.duckdb_service = mock_service
+        assert get_duckdb_service(request) is mock_service
 
-    def teardown_method(self):
-        """Reset singleton state after each test."""
-        deps_module._duckdb_service = None
-        deps_module._duckdb_initialized = False
+    def test_get_duckdb_service_returns_none_when_not_set(self):
+        request = MagicMock()
+        request.app.state.duckdb_service = None
+        assert get_duckdb_service(request) is None
 
-    @patch.object(deps_module.settings, "duckdb_data_dir", "")
-    async def test_returns_none_when_no_data_dir(self):
-        result = await deps_module.get_duckdb_service()
-        assert result is None
+    def test_get_embedder_returns_from_app_state(self):
+        mock_embedder = MagicMock()
+        request = MagicMock()
+        request.app.state.embedder = mock_embedder
+        assert get_embedder(request) is mock_embedder
 
-    @patch.object(deps_module.settings, "duckdb_data_dir", "/some/dir")
-    @patch("pam.api.deps.DuckDBService", create=True)
-    async def test_returns_singleton(self, mock_duckdb_cls):
-        mock_instance = MagicMock()
-        mock_duckdb_cls.return_value = mock_instance
+    def test_get_search_service_returns_from_app_state(self):
+        mock_search = MagicMock()
+        request = MagicMock()
+        request.app.state.search_service = mock_search
+        assert get_search_service(request) is mock_search
 
-        with patch.dict("sys.modules", {"pam.agent.duckdb_service": MagicMock(DuckDBService=mock_duckdb_cls)}):
-            first = await deps_module.get_duckdb_service()
-            second = await deps_module.get_duckdb_service()
+    def test_get_es_client_returns_from_app_state(self):
+        mock_es = MagicMock()
+        request = MagicMock()
+        request.app.state.es_client = mock_es
+        assert get_es_client(request) is mock_es
 
-        assert first is second
-        # DuckDBService constructor called only once
-        assert mock_duckdb_cls.call_count == 1
-        mock_instance.register_files.assert_called_once()
+    def test_get_reranker_returns_from_app_state(self):
+        mock_reranker = MagicMock()
+        request = MagicMock()
+        request.app.state.reranker = mock_reranker
+        assert get_reranker(request) is mock_reranker
 
-    @patch.object(deps_module.settings, "duckdb_data_dir", "")
-    async def test_none_result_is_cached(self):
-        """Even None result should be cached (not re-evaluated)."""
-        first = await deps_module.get_duckdb_service()
-        assert first is None
-        assert deps_module._duckdb_initialized is True
+    def test_get_reranker_returns_none_when_disabled(self):
+        request = MagicMock()
+        request.app.state.reranker = None
+        assert get_reranker(request) is None
 
-        # Second call should not re-check
-        second = await deps_module.get_duckdb_service()
-        assert second is None
+    def test_get_cache_service_returns_from_app_state(self):
+        mock_cache = MagicMock()
+        request = MagicMock()
+        request.app.state.cache_service = mock_cache
+        assert get_cache_service(request) is mock_cache
+
+    def test_get_cache_service_returns_none_when_no_redis(self):
+        request = MagicMock()
+        request.app.state.cache_service = None
+        assert get_cache_service(request) is None

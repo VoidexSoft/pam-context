@@ -1,6 +1,5 @@
 """Redis cache layer for search results, segments, and conversation sessions."""
 
-import asyncio
 import hashlib
 import json
 from datetime import datetime
@@ -9,36 +8,14 @@ from typing import Any
 import redis.asyncio as redis
 import structlog
 
-from pam.common.config import settings
-
 logger = structlog.get_logger()
 
-_redis_client: redis.Redis | None = None
-_redis_lock = asyncio.Lock()
 
-
-async def get_redis() -> redis.Redis:
-    """Get or create a shared async Redis client."""
-    global _redis_client
-    if _redis_client is None:
-        async with _redis_lock:
-            if _redis_client is None:
-                _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
-    return _redis_client
-
-
-async def close_redis() -> None:
-    """Close the shared Redis client."""
-    global _redis_client
-    if _redis_client is not None:
-        await _redis_client.aclose()
-        _redis_client = None
-
-
-async def ping_redis() -> bool:
+async def ping_redis(client: redis.Redis | None) -> bool:
     """Check if Redis is reachable."""
+    if client is None:
+        return False
     try:
-        client = await get_redis()
         return bool(await client.ping())  # type: ignore[misc]
     except Exception:
         return False
