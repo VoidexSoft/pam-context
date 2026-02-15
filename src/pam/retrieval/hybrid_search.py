@@ -51,7 +51,7 @@ class HybridSearchService:
         """
         # Check cache first
         if self.cache:
-            cached = await self.cache.get_search_results(query, top_k, source_type, project)
+            cached = await self.cache.get_search_results(query, top_k, source_type, project, date_from, date_to)
             if cached is not None:
                 logger.info("hybrid_search_cache_hit", query_length=len(query))
                 return [SearchResult(**r) for r in cached]
@@ -134,7 +134,10 @@ class HybridSearchService:
 
         # Store in cache (after reranking so cached results are already reranked)
         if self.cache and results:
-            await self.cache.set_search_results(query, top_k, [r.model_dump() for r in results], source_type, project)
+            await self.cache.set_search_results(
+                query, top_k, [r.model_dump() for r in results],
+                source_type, project, date_from, date_to,
+            )
 
         return results
 

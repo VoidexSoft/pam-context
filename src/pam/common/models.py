@@ -48,7 +48,10 @@ class Document(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    __table_args__ = ({"comment": "Source document registry"},)
+    __table_args__ = (
+        UniqueConstraint("source_type", "source_id", name="uq_documents_source"),
+        {"comment": "Source document registry"},
+    )
 
     project: Mapped[Project | None] = relationship(back_populates="documents")
     segments: Mapped[list["Segment"]] = relationship(back_populates="document", cascade="all, delete-orphan")

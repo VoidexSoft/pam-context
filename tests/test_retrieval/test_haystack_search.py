@@ -369,7 +369,7 @@ class TestSearch:
         assert len(results) == 1
         assert results[0].segment_id == SEGMENT_ID
         assert results[0].content == "cached content"
-        mock_cache.get_search_results.assert_awaited_once_with("test query", 5, None, None)
+        mock_cache.get_search_results.assert_awaited_once_with("test query", 5, None, None, None, None)
         # Pipeline should not have been called
         service._pipeline.run.assert_not_called()
 

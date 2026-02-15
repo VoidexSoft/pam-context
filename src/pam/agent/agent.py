@@ -204,6 +204,7 @@ class RetrievalAgent:
         total_input_tokens = 0
         total_output_tokens = 0
         tool_call_count = 0
+        answer_already_emitted = False
 
         try:
             # Phase A: Tool-use loop (non-streaming)
@@ -225,6 +226,7 @@ class RetrievalAgent:
                     answer_text = self._extract_text(response.content)
                     for token in self._chunk_text(answer_text, 4):
                         yield {"type": "token", "content": token}
+                    answer_already_emitted = True
                     break
 
                 if response.stop_reason == "tool_use":
@@ -251,8 +253,8 @@ class RetrievalAgent:
                 # Hit max iterations — do a final streaming call
                 pass
 
-            # Phase B: Final streaming call (if we went through tools)
-            if tool_call_count > 0:
+            # Phase B: Final streaming call (if we went through tools and answer not yet emitted)
+            if tool_call_count > 0 and not answer_already_emitted:
                 yield {"type": "status", "content": "Generating answer..."}
                 async with self.client.messages.stream(
                     model=self.model,

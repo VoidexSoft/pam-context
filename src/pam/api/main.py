@@ -27,7 +27,6 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     # Startup
     configure_logging(settings.log_level)
-    settings.validate_jwt_secret()
 
     app.state.es_client = AsyncElasticsearch(settings.elasticsearch_url)
 

@@ -48,6 +48,8 @@ class MarkdownConnector(BaseConnector):
         )
 
     async def get_content_hash(self, source_id: str) -> str:
-        path = Path(source_id)
+        path = Path(source_id).resolve()
+        if not path.is_relative_to(self.directory):
+            raise ValueError(f"Path traversal denied: {source_id}")
         content = path.read_bytes()
         return hashlib.sha256(content).hexdigest()

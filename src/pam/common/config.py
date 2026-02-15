@@ -1,5 +1,6 @@
 """Application configuration via environment variables."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 _INSECURE_SECRETS = {
@@ -65,7 +66,8 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
-    def validate_jwt_secret(self) -> None:
+    @model_validator(mode="after")
+    def _check_jwt_secret(self) -> "Settings":
         """Raise if auth is required but JWT secret is insecure."""
         if self.auth_required and self.jwt_secret in _INSECURE_SECRETS:
             raise ValueError(
@@ -74,6 +76,7 @@ class Settings(BaseSettings):
             )
         if self.auth_required and len(self.jwt_secret) < 32:
             raise ValueError("JWT_SECRET must be at least 32 characters when AUTH_REQUIRED=true.")
+        return self
 
 
 settings = Settings()

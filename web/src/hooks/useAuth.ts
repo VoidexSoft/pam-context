@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { AuthUser, getStoredToken, setAuthToken } from "../api/client";
+import { AuthUser, getMe, getStoredToken, setAuthToken } from "../api/client";
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -24,21 +24,33 @@ export function useAuth() {
   useEffect(() => {
     // If we have a stored token, try to restore user from it
     const token = getStoredToken();
-    if (token) {
-      try {
-        // Decode JWT payload (simple base64 decode, no verification)
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        setUser({
-          id: payload.sub || "",
-          email: payload.email || "",
-          name: payload.name || payload.email || "",
-          role: payload.role || "viewer",
-        });
-      } catch {
-        // Invalid token, clear it
-        setAuthToken(null);
-      }
+    if (!token) return;
+
+    // Optimistic: decode JWT locally for immediate UX while server validates
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      setUser({
+        id: payload.sub || "",
+        email: payload.email || "",
+        name: payload.name || payload.email || "",
+        role: payload.role || "viewer",
+      });
+    } catch {
+      // Invalid token format, clear immediately
+      setAuthToken(null);
+      return;
     }
+
+    // Server-side validation: call /api/auth/me to verify signature and get real user data
+    getMe()
+      .then((serverUser) => {
+        setUser(serverUser);
+      })
+      .catch(() => {
+        // Server rejected the token (401, expired, tampered, etc.) — clear session
+        setAuthToken(null);
+        setUser(null);
+      });
   }, []);
 
   const login = useCallback((authUser: AuthUser) => {

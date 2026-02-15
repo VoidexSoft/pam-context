@@ -189,3 +189,95 @@ class TestSearchKnowledge:
         assert "Some knowledge" in result_text
         assert "Doc > Section 1" in result_text
         assert len(citations) == 1
+
+
+class TestStreamingDoubleSend:
+    """Regression tests for issue #19: streaming double-sends answer after tool use."""
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_no_duplicate_answer_after_tool_use(self, mock_anthropic_cls):
+        """After tool use + end_turn, Phase B must NOT fire a second streaming call."""
+        mock_client = AsyncMock()
+
+        # First response: tool_use
+        tool_response = _make_response(
+            [_make_tool_use_block("search_knowledge", {"query": "revenue"})],
+            stop_reason="tool_use",
+        )
+        # Second response: end_turn with the final answer
+        final_response = _make_response(
+            [_make_text_block("Revenue was $10M.")],
+            stop_reason="end_turn",
+        )
+        mock_client.messages.create = AsyncMock(side_effect=[tool_response, final_response])
+        # Phase B would call messages.stream — should NOT be called
+        mock_client.messages.stream = Mock()
+        mock_anthropic_cls.return_value = mock_client
+
+        mock_search = AsyncMock()
+        mock_search.search = AsyncMock(
+            return_value=[
+                SearchResult(
+                    segment_id=uuid.uuid4(),
+                    content="Revenue was $10M",
+                    score=0.9,
+                    source_url="file:///r.md",
+                    document_title="Report",
+                    section_path="Q1",
+                )
+            ]
+        )
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_texts = AsyncMock(return_value=[[0.1] * 1536])
+
+        agent = RetrievalAgent(
+            search_service=mock_search,
+            embedder=mock_embedder,
+            api_key="test-key",
+        )
+
+        events = []
+        async for event in agent.answer_streaming("What was the revenue?"):
+            events.append(event)
+
+        # Collect all token events
+        token_events = [e for e in events if e["type"] == "token"]
+        combined_answer = "".join(e["content"] for e in token_events)
+        assert "10M" in combined_answer
+
+        # The answer must appear exactly once — no duplicate streaming call
+        mock_client.messages.stream.assert_not_called()
+
+        # Verify we got exactly one done event
+        done_events = [e for e in events if e["type"] == "done"]
+        assert len(done_events) == 1
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_simple_answer_no_phase_b(self, mock_anthropic_cls):
+        """When no tools are used, Phase B should not fire either."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_response([_make_text_block("Direct answer.")])
+        )
+        mock_client.messages.stream = Mock()
+        mock_anthropic_cls.return_value = mock_client
+
+        mock_search = AsyncMock()
+        mock_embedder = AsyncMock()
+
+        agent = RetrievalAgent(
+            search_service=mock_search,
+            embedder=mock_embedder,
+            api_key="test-key",
+        )
+
+        events = []
+        async for event in agent.answer_streaming("Simple question?"):
+            events.append(event)
+
+        token_events = [e for e in events if e["type"] == "token"]
+        combined = "".join(e["content"] for e in token_events)
+        assert "Direct answer." in combined
+
+        # No streaming call should have been made
+        mock_client.messages.stream.assert_not_called()

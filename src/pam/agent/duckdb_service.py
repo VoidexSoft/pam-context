@@ -15,7 +15,7 @@ logger = structlog.get_logger()
 # SQL injection guard: block write operations and dangerous commands
 _FORBIDDEN_PATTERNS = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE"
-    r"|EXEC|EXECUTE|COPY|ATTACH|DETACH|PRAGMA|INSTALL|LOAD)\b",
+    r"|EXEC|EXECUTE|COPY|ATTACH|DETACH|PRAGMA|INSTALL|LOAD|SET)\b",
     re.IGNORECASE,
 )
 

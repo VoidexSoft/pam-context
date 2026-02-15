@@ -243,6 +243,20 @@ export function getAuthStatus(): Promise<{ auth_required: boolean }> {
   return request<{ auth_required: boolean }>("/auth/status");
 }
 
+export async function getMe(): Promise<AuthUser> {
+  const data = await request<{
+    id: string;
+    email: string;
+    name: string;
+  }>("/auth/me");
+  return {
+    id: data.id,
+    email: data.email,
+    name: data.name,
+    role: "viewer", // Role is per-project on the backend; default for UI
+  };
+}
+
 export async function* streamChatMessage(
   message: string,
   conversationId?: string,

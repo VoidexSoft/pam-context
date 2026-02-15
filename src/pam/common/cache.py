@@ -1,7 +1,9 @@
 """Redis cache layer for search results, segments, and conversation sessions."""
 
+import asyncio
 import hashlib
 import json
+from datetime import datetime
 from typing import Any
 
 import redis.asyncio as redis
@@ -12,13 +14,16 @@ from pam.common.config import settings
 logger = structlog.get_logger()
 
 _redis_client: redis.Redis | None = None
+_redis_lock = asyncio.Lock()
 
 
 async def get_redis() -> redis.Redis:
     """Get or create a shared async Redis client."""
     global _redis_client
     if _redis_client is None:
-        _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+        async with _redis_lock:
+            if _redis_client is None:
+                _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
     return _redis_client
 
 
@@ -39,10 +44,24 @@ async def ping_redis() -> bool:
         return False
 
 
-def _make_search_key(query: str, top_k: int, source_type: str | None, project: str | None) -> str:
+def _make_search_key(
+    query: str,
+    top_k: int,
+    source_type: str | None,
+    project: str | None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> str:
     """Build a deterministic cache key for a search query."""
     raw = json.dumps(
-        {"q": query, "k": top_k, "st": source_type, "p": project},
+        {
+            "q": query,
+            "k": top_k,
+            "st": source_type,
+            "p": project,
+            "df": date_from.isoformat() if date_from else None,
+            "dt": date_to.isoformat() if date_to else None,
+        },
         sort_keys=True,
     )
     digest = hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -59,9 +78,15 @@ class CacheService:
     # Search result caching
     # ------------------------------------------------------------------
     async def get_search_results(
-        self, query: str, top_k: int, source_type: str | None = None, project: str | None = None
+        self,
+        query: str,
+        top_k: int,
+        source_type: str | None = None,
+        project: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> list[dict[str, Any]] | None:
-        key = _make_search_key(query, top_k, source_type, project)
+        key = _make_search_key(query, top_k, source_type, project, date_from, date_to)
         raw = await self.client.get(key)
         if raw is None:
             return None
@@ -76,8 +101,10 @@ class CacheService:
         results: list[dict[str, Any]],
         source_type: str | None = None,
         project: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> None:
-        key = _make_search_key(query, top_k, source_type, project)
+        key = _make_search_key(query, top_k, source_type, project, date_from, date_to)
         await self.client.set(key, json.dumps(results, default=str), ex=settings.redis_search_ttl)
         logger.debug("cache_set", key=key, ttl=settings.redis_search_ttl)
 

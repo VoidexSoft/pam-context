@@ -159,7 +159,7 @@ class HaystackSearchService:
         """Perform hybrid search using Haystack pipeline (async wrapper)."""
         # Check cache first
         if self.cache:
-            cached = await self.cache.get_search_results(query, top_k, source_type, project)
+            cached = await self.cache.get_search_results(query, top_k, source_type, project, date_from, date_to)
             if cached is not None:
                 logger.info("haystack_search_cache_hit", query_length=len(query))
                 return [SearchResult(**r) for r in cached]
@@ -181,7 +181,10 @@ class HaystackSearchService:
 
         # Store in cache
         if self.cache and results:
-            await self.cache.set_search_results(query, top_k, [r.model_dump() for r in results], source_type, project)
+            await self.cache.set_search_results(
+                query, top_k, [r.model_dump() for r in results],
+                source_type, project, date_from, date_to,
+            )
 
         return results
 

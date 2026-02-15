@@ -87,3 +87,8 @@ class TestContentHash:
             f.write("\nNew content")
         hash2 = await connector.get_content_hash(docs[0].source_id)
         assert hash1 != hash2
+
+    async def test_content_hash_path_traversal_denied(self, temp_dir):
+        connector = MarkdownConnector(temp_dir)
+        with pytest.raises(ValueError, match="Path traversal denied"):
+            await connector.get_content_hash("/etc/passwd")

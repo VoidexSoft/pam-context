@@ -142,6 +142,11 @@ class TestSQLGuardrails:
         result = service.execute_query("LOAD httpfs")
         assert "error" in result
 
+    def test_blocks_set(self, service):
+        result = service.execute_query("SET enable_external_access = true")
+        assert "error" in result
+        assert "SELECT" in result["error"]
+
     def test_blocks_semicolon_chaining(self, service):
         result = service.execute_query("SELECT 1; SELECT 2")
         assert "error" in result
