@@ -31,27 +31,27 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
 
 
 def get_es_client(request: Request) -> AsyncElasticsearch:
-    return request.app.state.es_client
+    return request.app.state.es_client  # type: ignore[no-any-return]
 
 
 def get_embedder(request: Request) -> OpenAIEmbedder:
-    return request.app.state.embedder
+    return request.app.state.embedder  # type: ignore[no-any-return]
 
 
 def get_search_service(request: Request) -> HybridSearchService:
-    return request.app.state.search_service
+    return request.app.state.search_service  # type: ignore[no-any-return]
 
 
 def get_reranker(request: Request) -> BaseReranker | None:
-    return request.app.state.reranker
+    return request.app.state.reranker  # type: ignore[no-any-return]
 
 
 def get_duckdb_service(request: Request) -> DuckDBService | None:
-    return request.app.state.duckdb_service
+    return request.app.state.duckdb_service  # type: ignore[no-any-return]
 
 
 def get_cache_service(request: Request) -> CacheService | None:
-    return request.app.state.cache_service
+    return request.app.state.cache_service  # type: ignore[no-any-return]
 
 
 async def get_agent(
