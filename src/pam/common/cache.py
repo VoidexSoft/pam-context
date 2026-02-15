@@ -71,8 +71,23 @@ def _make_search_key(
 class CacheService:
     """Thin wrapper around Redis for PAM-specific caching."""
 
-    def __init__(self, client: redis.Redis) -> None:
+    def __init__(
+        self,
+        client: redis.Redis,
+        search_ttl: int | None = None,
+        session_ttl: int | None = None,
+    ) -> None:
         self.client = client
+        self._search_ttl = search_ttl
+        self._session_ttl = session_ttl
+
+    @property
+    def search_ttl(self) -> int:
+        return self._search_ttl if self._search_ttl is not None else settings.redis_search_ttl
+
+    @property
+    def session_ttl(self) -> int:
+        return self._session_ttl if self._session_ttl is not None else settings.redis_session_ttl
 
     # ------------------------------------------------------------------
     # Search result caching
@@ -105,8 +120,8 @@ class CacheService:
         date_to: datetime | None = None,
     ) -> None:
         key = _make_search_key(query, top_k, source_type, project, date_from, date_to)
-        await self.client.set(key, json.dumps(results, default=str), ex=settings.redis_search_ttl)
-        logger.debug("cache_set", key=key, ttl=settings.redis_search_ttl)
+        await self.client.set(key, json.dumps(results, default=str), ex=self.search_ttl)
+        logger.debug("cache_set", key=key, ttl=self.search_ttl)
 
     async def invalidate_search(self) -> int:
         """Invalidate all cached search results (e.g. after ingestion)."""
@@ -130,7 +145,7 @@ class CacheService:
         await self.client.set(
             f"session:{session_id}",
             json.dumps(messages, default=str),
-            ex=settings.redis_session_ttl,
+            ex=self.session_ttl,
         )
 
     async def delete_session(self, session_id: str) -> None:

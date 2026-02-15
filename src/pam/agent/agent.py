@@ -143,6 +143,26 @@ class RetrievalAgent:
                     tool_calls=tool_call_count,
                 )
 
+            # Unexpected stop reason (e.g. max_tokens)
+            if response.stop_reason != "tool_use":
+                logger.warning(
+                    "unexpected_stop_reason",
+                    stop_reason=response.stop_reason,
+                )
+                answer_text = self._extract_text(response.content)
+                total_latency = (time.perf_counter() - start) * 1000
+                return AgentResponse(
+                    answer=answer_text or "The response was cut short. Please try a more specific question.",
+                    citations=all_citations,
+                    token_usage={
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "total_tokens": total_input_tokens + total_output_tokens,
+                    },
+                    latency_ms=round(total_latency, 1),
+                    tool_calls=tool_call_count,
+                )
+
             # Process tool calls
             if response.stop_reason == "tool_use":
                 # Append assistant message with full content (text + tool_use blocks)
@@ -230,6 +250,21 @@ class RetrievalAgent:
                     answer_text = self._extract_text(response.content)
                     for token in self._chunk_text(answer_text, 4):
                         yield {"type": "token", "content": token}
+                    answer_already_emitted = True
+                    break
+
+                if response.stop_reason not in ("end_turn", "tool_use"):
+                    logger.warning(
+                        "unexpected_stop_reason",
+                        stop_reason=response.stop_reason,
+                    )
+                    answer_text = self._extract_text(response.content)
+                    if answer_text:
+                        for token in self._chunk_text(answer_text, 4):
+                            yield {"type": "token", "content": token}
+                    else:
+                        msg = "The response was cut short. Please try a more specific question."
+                        yield {"type": "token", "content": msg}
                     answer_already_emitted = True
                     break
 

@@ -1,5 +1,7 @@
 """Application configuration via environment variables."""
 
+from functools import lru_cache
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
@@ -79,4 +81,25 @@ class Settings(BaseSettings):
         return self
 
 
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return a cached Settings instance (created on first call)."""
+    return Settings()
+
+
+def reset_settings() -> None:
+    """Clear the cached settings so the next call re-reads env vars."""
+    get_settings.cache_clear()
+
+
+class _SettingsProxy:
+    """Proxy that delegates attribute access to the lazily-created Settings."""
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(get_settings(), name)
+
+    def __repr__(self) -> str:
+        return repr(get_settings())
+
+
+settings: Settings = _SettingsProxy()  # type: ignore[assignment]

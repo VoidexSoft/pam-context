@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from pam.common.config import Settings
+from pam.common.config import Settings, get_settings, reset_settings
 
 
 class TestSettings:
@@ -107,3 +107,26 @@ class TestJwtSecretValidation:
         for secret in ("secret", "changeme", "password"):
             with pytest.raises(ValidationError, match="Insecure JWT secret"):
                 Settings(_env_file=None, auth_required=True, jwt_secret=secret)
+
+
+class TestGetSettings:
+    def test_get_settings_returns_settings_instance(self):
+        """get_settings() should return a Settings instance."""
+        reset_settings()
+        s = get_settings()
+        assert isinstance(s, Settings)
+
+    def test_get_settings_is_cached(self):
+        """Repeated calls to get_settings() should return the same object."""
+        reset_settings()
+        s1 = get_settings()
+        s2 = get_settings()
+        assert s1 is s2
+
+    def test_reset_settings_clears_cache(self):
+        """reset_settings() should cause a new Settings instance to be created."""
+        reset_settings()
+        s1 = get_settings()
+        reset_settings()
+        s2 = get_settings()
+        assert s1 is not s2

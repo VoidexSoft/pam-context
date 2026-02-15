@@ -2,6 +2,7 @@
 
 import uuid
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from pam.api.deps import get_db
 from pam.common.models import Document, ExtractedEntity, IngestionTask, Segment, User
 from pam.ingestion.stores.postgres_store import PostgresStore
 
+logger = structlog.get_logger()
 router = APIRouter()
 
 
@@ -75,6 +77,7 @@ async def get_stats(
         )
         entity_counts = {row[0]: row[1] for row in entity_result.all()}
     except Exception:
+        logger.warning("entity_count_query_failed", exc_info=True)
         entity_counts = {}
 
     # Recent ingestion tasks

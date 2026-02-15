@@ -22,7 +22,11 @@ from pam.retrieval.rerankers.base import BaseReranker
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 def get_es_client(request: Request) -> AsyncElasticsearch:

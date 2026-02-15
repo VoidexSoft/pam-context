@@ -58,16 +58,55 @@ class TestMakeSearchKey:
 
     def test_same_dates_same_key(self):
         key1 = _make_search_key(
-            "hello", 10, None, None,
+            "hello",
+            10,
+            None,
+            None,
             date_from=datetime(2024, 1, 1),
             date_to=datetime(2024, 12, 31),
         )
         key2 = _make_search_key(
-            "hello", 10, None, None,
+            "hello",
+            10,
+            None,
+            None,
             date_from=datetime(2024, 1, 1),
             date_to=datetime(2024, 12, 31),
         )
         assert key1 == key2
+
+
+class TestCacheServiceTTLInjection:
+    def test_defaults_to_settings(self):
+        """TTL should fall back to settings when not explicitly provided."""
+        client = AsyncMock()
+        cache = CacheService(client)
+        # Should read from settings (not raise)
+        assert isinstance(cache.search_ttl, int)
+        assert isinstance(cache.session_ttl, int)
+
+    def test_explicit_ttl_overrides_settings(self):
+        """Explicit TTL params should override settings values."""
+        client = AsyncMock()
+        cache = CacheService(client, search_ttl=42, session_ttl=99)
+        assert cache.search_ttl == 42
+        assert cache.session_ttl == 99
+
+    async def test_set_search_results_uses_custom_ttl(self):
+        """set_search_results should use the injected search_ttl."""
+        client = AsyncMock()
+        cache = CacheService(client, search_ttl=60)
+        await cache.set_search_results("q", 5, [{"x": 1}])
+        call_kwargs = client.set.call_args
+        assert call_kwargs[1]["ex"] == 60 or call_kwargs.kwargs.get("ex") == 60
+
+    async def test_save_session_uses_custom_ttl(self):
+        """save_session should use the injected session_ttl."""
+        client = AsyncMock()
+        cache = CacheService(client, session_ttl=120)
+        await cache.save_session("s1", [{"role": "user", "content": "hi"}])
+        call_kwargs = client.set.call_args
+        assert call_kwargs[1]["ex"] == 120 or call_kwargs.kwargs.get("ex") == 120
 
 
 class TestCacheServiceSearchResults:
@@ -123,9 +162,7 @@ class TestCacheServiceSearchResults:
         await cache.set_search_results("test", 10, stored)
 
         # The key for a query WITH date_from is different, so redis.get returns None
-        result = await cache.get_search_results(
-            "test", 10, date_from=datetime(2024, 1, 1)
-        )
+        result = await cache.get_search_results("test", 10, date_from=datetime(2024, 1, 1))
         # mock_redis.get returns None by default, confirming different keys cause a miss
         assert result is None
 
@@ -201,8 +238,6 @@ class TestGetRedisLock:
 
         call_count = 0
         mock_client = AsyncMock()
-
-        original_from_url = None
 
         def counting_from_url(*args, **kwargs):
             nonlocal call_count

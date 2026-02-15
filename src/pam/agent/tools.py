@@ -92,6 +92,7 @@ QUERY_DATABASE_TOOL = {
                 "description": "Set to true to list all available tables and their schemas instead of running a query.",
             },
         },
+        "required": ["sql"],
     },
 }
 
@@ -120,6 +121,7 @@ SEARCH_ENTITIES_TOOL = {
                 "default": 10,
             },
         },
+        "required": ["search_term"],
     },
 }
 

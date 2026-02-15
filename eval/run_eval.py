@@ -260,7 +260,8 @@ def print_summary(eval_results: dict) -> None:
     )
 
     print(f"\n--- Retrieval Recall ---")
-    print(f"  Relevant results found: {relevant_count}/{total} ({relevant_count/total*100:.0f}%)")
+    pct = f"({relevant_count/total*100:.0f}%)" if total else "(N/A)"
+    print(f"  Relevant results found: {relevant_count}/{total} {pct}")
     print(f"  Retrieval errors:       {retrieval_errors}/{total}")
     print(f"  Avg retrieval latency:  {avg_retrieval_latency:.0f}ms")
 
