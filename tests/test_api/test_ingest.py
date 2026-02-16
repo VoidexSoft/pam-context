@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pam.common.models import IngestionTask
 
@@ -102,9 +102,19 @@ class TestIngestEndpoint:
         response = await client.get(f"/api/ingest/tasks/{uuid.uuid4()}")
         assert response.status_code == 404
 
-    @patch("pam.api.routes.ingest.list_tasks")
-    async def test_list_tasks(self, mock_list, client):
-        mock_list.return_value = []
+    async def test_list_tasks(self, client, mock_api_db_session):
+        # First call: count query
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+
+        # Second call: tasks query
+        task_result = MagicMock()
+        task_scalars = MagicMock()
+        task_scalars.all.return_value = []
+        task_result.scalars.return_value = task_scalars
+
+        mock_api_db_session.execute = AsyncMock(side_effect=[count_result, task_result])
+
         response = await client.get("/api/ingest/tasks")
         assert response.status_code == 200
         data = response.json()

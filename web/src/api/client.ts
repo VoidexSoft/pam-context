@@ -110,6 +110,12 @@ export interface SystemStats {
   }>;
 }
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  cursor: string;
+}
+
 export interface ChatFilters {
   source_type?: string;
 }
@@ -206,8 +212,9 @@ export function searchKnowledge(query: string): Promise<SearchResult[]> {
   });
 }
 
-export function listDocuments(): Promise<Document[]> {
-  return request<Document[]>("/documents");
+export async function listDocuments(): Promise<Document[]> {
+  const response = await request<PaginatedResponse<Document>>("/documents");
+  return response.items;
 }
 
 export function ingestFolder(path: string): Promise<TaskCreatedResponse> {
@@ -221,8 +228,11 @@ export function getTaskStatus(taskId: string): Promise<IngestionTask> {
   return request<IngestionTask>(`/ingest/tasks/${taskId}`);
 }
 
-export function listTasks(limit: number = 20): Promise<IngestionTask[]> {
-  return request<IngestionTask[]>(`/ingest/tasks?limit=${limit}`);
+export async function listTasks(limit: number = 20): Promise<IngestionTask[]> {
+  const response = await request<PaginatedResponse<IngestionTask>>(
+    `/ingest/tasks?limit=${limit}`
+  );
+  return response.items;
 }
 
 export function getSegment(segmentId: string): Promise<SegmentDetail> {

@@ -1,20 +1,22 @@
 """Ingest endpoints — trigger document ingestion and track task progress."""
 
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pam.api.auth import get_current_user, require_admin
 from pam.api.deps import get_db, get_embedder, get_es_client
-from pam.api.pagination import PaginatedResponse
+from pam.api.pagination import DEFAULT_PAGE_SIZE, PaginatedResponse, decode_cursor, encode_cursor
 from pam.common.config import settings
-from pam.common.models import IngestionTaskResponse, TaskCreatedResponse, User
+from pam.common.models import IngestionTask, IngestionTaskResponse, TaskCreatedResponse, User
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
-from pam.ingestion.task_manager import create_task, get_task, list_tasks, spawn_ingestion_task
+from pam.ingestion.task_manager import create_task, get_task, spawn_ingestion_task
 
 router = APIRouter()
 
@@ -72,11 +74,50 @@ async def get_task_status(
 
 @router.get("/ingest/tasks", response_model=PaginatedResponse[IngestionTaskResponse])
 async def list_task_statuses(
-    limit: int = Query(default=20, le=100),
+    cursor: str = "",
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, le=100),
     db: AsyncSession = Depends(get_db),
     _user: User | None = Depends(get_current_user),
 ):
     """List recent ingestion tasks with cursor-based pagination."""
-    tasks = await list_tasks(db, limit=limit)
+    # Count total
+    count_result = await db.execute(select(func.count()).select_from(IngestionTask))
+    total = count_result.scalar() or 0
+
+    # Base query
+    stmt = select(IngestionTask).order_by(IngestionTask.created_at.desc(), IngestionTask.id.desc())
+
+    # Apply cursor filter for keyset pagination
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            cursor_sv = datetime.fromisoformat(cursor_data["sv"])
+            cursor_id = uuid.UUID(cursor_data["id"])
+            stmt = stmt.where(
+                or_(
+                    IngestionTask.created_at < cursor_sv,
+                    (IngestionTask.created_at == cursor_sv) & (IngestionTask.id < cursor_id),
+                )
+            )
+        except (ValueError, KeyError):
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+
+    # Fetch limit + 1 to detect next page
+    stmt = stmt.limit(limit + 1)
+    result = await db.execute(stmt)
+    tasks = list(result.scalars().all())
+
+    has_next = len(tasks) > limit
+    tasks = tasks[:limit]
+
     items = [IngestionTaskResponse.model_validate(t) for t in tasks]
-    return PaginatedResponse(items=items, total=len(items), cursor="")
+
+    next_cursor = ""
+    if has_next and tasks:
+        last_task = tasks[-1]
+        next_cursor = encode_cursor(
+            str(last_task.id),
+            last_task.created_at.isoformat() if last_task.created_at else "",
+        )
+
+    return PaginatedResponse(items=items, total=total, cursor=next_cursor)

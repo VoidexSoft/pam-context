@@ -1,16 +1,17 @@
 """Documents endpoint — list and view ingested documents."""
 
 import uuid
+from datetime import datetime
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from pam.api.auth import get_current_user
 from pam.api.deps import get_db
-from pam.api.pagination import PaginatedResponse
+from pam.api.pagination import DEFAULT_PAGE_SIZE, PaginatedResponse, decode_cursor, encode_cursor
 from pam.common.models import (
     Document,
     DocumentResponse,
@@ -21,7 +22,6 @@ from pam.common.models import (
     StatsResponse,
     User,
 )
-from pam.ingestion.stores.postgres_store import PostgresStore
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -29,6 +29,8 @@ router = APIRouter()
 
 @router.get("/documents", response_model=PaginatedResponse[DocumentResponse])
 async def list_documents(
+    cursor: str = "",
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, le=200),
     db: AsyncSession = Depends(get_db),
     _user: User | None = Depends(get_current_user),
 ):
@@ -37,7 +39,7 @@ async def list_documents(
     count_result = await db.execute(select(func.count()).select_from(Document))
     total = count_result.scalar() or 0
 
-    # Fetch documents with segment counts
+    # Base query with segment counts
     stmt = (
         select(
             Document,
@@ -45,10 +47,31 @@ async def list_documents(
         )
         .outerjoin(Segment)
         .group_by(Document.id)
-        .order_by(Document.updated_at.desc())
+        .order_by(Document.updated_at.desc(), Document.id.desc())
     )
+
+    # Apply cursor filter for keyset pagination
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            cursor_sv = datetime.fromisoformat(cursor_data["sv"])
+            cursor_id = uuid.UUID(cursor_data["id"])
+            stmt = stmt.where(
+                or_(
+                    Document.updated_at < cursor_sv,
+                    (Document.updated_at == cursor_sv) & (Document.id < cursor_id),
+                )
+            )
+        except (ValueError, KeyError):
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+
+    # Fetch limit + 1 to detect next page
+    stmt = stmt.limit(limit + 1)
     result = await db.execute(stmt)
     rows = result.all()
+
+    has_next = len(rows) > limit
+    rows = rows[:limit]
 
     items = [
         DocumentResponse(
@@ -67,7 +90,15 @@ async def list_documents(
         for doc, count in rows
     ]
 
-    return PaginatedResponse(items=items, total=total, cursor="")
+    next_cursor = ""
+    if has_next and rows:
+        last_doc = rows[-1][0]
+        next_cursor = encode_cursor(
+            str(last_doc.id),
+            last_doc.updated_at.isoformat() if last_doc.updated_at else "",
+        )
+
+    return PaginatedResponse(items=items, total=total, cursor=next_cursor)
 
 
 @router.get("/segments/{segment_id}", response_model=SegmentDetailResponse)

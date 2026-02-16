@@ -1,16 +1,17 @@
 """Admin routes — user and role management."""
 
 import uuid
+from datetime import datetime
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from pam.api.auth import require_admin
 from pam.api.deps import get_db
-from pam.api.pagination import PaginatedResponse
+from pam.api.pagination import DEFAULT_PAGE_SIZE, PaginatedResponse, decode_cursor, encode_cursor
 from pam.common.models import (
     AssignRoleRequest,
     MessageResponse,
@@ -30,7 +31,8 @@ router = APIRouter()
 
 @router.get("/admin/users", response_model=PaginatedResponse[UserResponse])
 async def list_users(
-    limit: int = Query(default=50, le=200),
+    cursor: str = "",
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, le=200),
     db: AsyncSession = Depends(get_db),
     _admin: User | None = Depends(require_admin),
 ):
@@ -39,11 +41,43 @@ async def list_users(
     count_result = await db.execute(select(func.count()).select_from(User))
     total = count_result.scalar() or 0
 
-    # Fetch page
-    result = await db.execute(select(User).order_by(User.created_at.desc()).limit(limit))
-    items = [UserResponse.model_validate(u) for u in result.scalars().all()]
+    # Base query
+    stmt = select(User).order_by(User.created_at.desc(), User.id.desc())
 
-    return PaginatedResponse(items=items, total=total, cursor="")
+    # Apply cursor filter for keyset pagination
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            cursor_sv = datetime.fromisoformat(cursor_data["sv"])
+            cursor_id = uuid.UUID(cursor_data["id"])
+            stmt = stmt.where(
+                or_(
+                    User.created_at < cursor_sv,
+                    (User.created_at == cursor_sv) & (User.id < cursor_id),
+                )
+            )
+        except (ValueError, KeyError):
+            raise HTTPException(status_code=400, detail="Invalid cursor")
+
+    # Fetch limit + 1 to detect next page
+    stmt = stmt.limit(limit + 1)
+    result = await db.execute(stmt)
+    users = list(result.scalars().all())
+
+    has_next = len(users) > limit
+    users = users[:limit]
+
+    items = [UserResponse.model_validate(u) for u in users]
+
+    next_cursor = ""
+    if has_next and users:
+        last_user = users[-1]
+        next_cursor = encode_cursor(
+            str(last_user.id),
+            last_user.created_at.isoformat() if last_user.created_at else "",
+        )
+
+    return PaginatedResponse(items=items, total=total, cursor=next_cursor)
 
 
 @router.get("/admin/users/{user_id}", response_model=UserWithRoles)
