@@ -10,8 +10,8 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Phase
 
 **Phase 3: API + Agent Hardening**
-Status: In progress
-Plans: 2/3 complete (03-01, 03-03 done)
+Status: Complete
+Plans: 3/3 complete (03-01, 03-02, 03-03 done)
 
 ## Milestone Progress
 
@@ -19,7 +19,7 @@ Plans: 2/3 complete (03-01, 03-03 done)
 |-------|--------|-------|----------|
 | 1. Singleton Lifecycle + Tooling | ✓ Complete | 2/2 | 100% |
 | 2. Database Integrity | ✓ Complete | 1/1 | 100% |
-| 3. API + Agent Hardening | ◑ In progress | 2/3 | 67% |
+| 3. API + Agent Hardening | ✓ Complete | 3/3 | 100% |
 | 4. Frontend + Dead Code Cleanup | ○ Not started | 0/TBD | 0% |
 
 ## Key Decisions
@@ -41,6 +41,10 @@ Plans: 2/3 complete (03-01, 03-03 done)
 | Protocol over ABC for SearchService | 3 | Structural subtyping without inheritance changes to existing services. |
 | runtime_checkable for SearchService Protocol | 3 | Enables isinstance() checks at runtime if needed. |
 | Empty required list for QUERY_DATABASE_TOOL | 3 | Explicit empty list rather than missing key; handler validates. |
+| Keyset cursor pagination over OFFSET | 3 | O(1) seek, stable under concurrent writes, no skip penalty. |
+| Base64 JSON cursor format | 3 | Debuggable, stateless, no server-side cursor storage needed. |
+| 501 Not Implemented for get_me when auth disabled | 3 | Correct HTTP semantics for unimplemented feature. |
+| Frontend unwrap pattern for pagination | 3 | response.items keeps hooks unchanged; full pagination UI deferred to Phase 4. |
 
 ### Blockers/Concerns
 
@@ -54,7 +58,8 @@ None currently.
 | 01 | 02 | 7min | 2 | 10 |
 | 02 | 01 | 3min | 2 | 3 |
 | 03 | 01 | 4min | 2 | 4 |
+| 03 | 02 | 8min | 2 | 12 |
 | 03 | 03 | 2min | 2 | 6 |
 
 ---
-Last activity: 2026-02-16 - Plan 03-01 complete (pure ASGI middleware, structured SSE error events, trailing-space chunk text)
+Last activity: 2026-02-16 - Plan 03-02 complete (cursor pagination, response_model, edge-case fixes). Phase 3 complete.
