@@ -13,8 +13,8 @@ from pam.agent.agent import RetrievalAgent
 from pam.common.cache import CacheService
 from pam.common.logging import CostTracker
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
-from pam.retrieval.hybrid_search import HybridSearchService
 from pam.retrieval.rerankers.base import BaseReranker
+from pam.retrieval.search_protocol import SearchService
 
 if TYPE_CHECKING:
     from pam.agent.duckdb_service import DuckDBService
@@ -38,7 +38,7 @@ def get_embedder(request: Request) -> OpenAIEmbedder:
     return request.app.state.embedder  # type: ignore[no-any-return]
 
 
-def get_search_service(request: Request) -> HybridSearchService:
+def get_search_service(request: Request) -> SearchService:
     return request.app.state.search_service  # type: ignore[no-any-return]
 
 
@@ -56,7 +56,7 @@ def get_cache_service(request: Request) -> CacheService | None:
 
 async def get_agent(
     request: Request,
-    search_service: HybridSearchService = Depends(get_search_service),
+    search_service: SearchService = Depends(get_search_service),
     embedder: OpenAIEmbedder = Depends(get_embedder),
     db: AsyncSession = Depends(get_db),
 ) -> RetrievalAgent:

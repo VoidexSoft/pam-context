@@ -148,11 +148,11 @@ class HybridSearchService:
                 )
             )
 
-        logger.info("hybrid_search", query_length=len(query), results=len(results), top_k=top_k)
-
         # Rerank results if reranker is configured
         if self.reranker and results:
             results = await self.reranker.rerank(query, results, top_k=top_k)
+
+        logger.info("hybrid_search", query_length=len(query), results=len(results), top_k=top_k)
 
         # Store in cache (after reranking so cached results are already reranked)
         if self.cache and results:
