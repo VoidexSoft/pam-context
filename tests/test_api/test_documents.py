@@ -1,12 +1,13 @@
 """Tests for GET /api/documents, /api/segments, and /api/stats endpoints."""
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
 
 class TestDocumentsEndpoint:
     async def test_list_documents(self, client, mock_api_db_session):
-        mock_result = Mock()
+        now = datetime.now(UTC)
         mock_doc = Mock()
         mock_doc.id = uuid.uuid4()
         mock_doc.source_type = "markdown"
@@ -17,32 +18,54 @@ class TestDocumentsEndpoint:
         mock_doc.status = "active"
         mock_doc.content_hash = "abc"
         mock_doc.last_synced_at = None
-        mock_doc.created_at = None
-        mock_result.all.return_value = [(mock_doc, 3)]
-        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        mock_doc.created_at = now
+
+        # First call: count query
+        count_result = Mock()
+        count_result.scalar.return_value = 1
+
+        # Second call: documents with segment counts
+        doc_result = Mock()
+        doc_result.all.return_value = [(mock_doc, 3)]
+
+        mock_api_db_session.execute = AsyncMock(side_effect=[count_result, doc_result])
 
         response = await client.get("/api/documents")
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["title"] == "Test Doc"
-        assert data[0]["segment_count"] == 3
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
+        assert data["items"][0]["title"] == "Test Doc"
+        assert data["items"][0]["segment_count"] == 3
+        assert "cursor" in data
 
     async def test_list_empty(self, client, mock_api_db_session):
-        mock_result = Mock()
-        mock_result.all.return_value = []
-        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        count_result = Mock()
+        count_result.scalar.return_value = 0
+
+        doc_result = Mock()
+        doc_result.all.return_value = []
+
+        mock_api_db_session.execute = AsyncMock(side_effect=[count_result, doc_result])
 
         response = await client.get("/api/documents")
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestSegmentEndpoint:
     async def test_get_segment_success(self, client, mock_api_db_session):
-        """GET /api/segments/{id} returns segment with parent document info."""
+        """GET /api/segments/{id} returns segment with parent document info (single JOIN query)."""
         seg_id = uuid.uuid4()
         doc_id = uuid.uuid4()
+
+        mock_doc = Mock()
+        mock_doc.id = doc_id
+        mock_doc.title = "Annual Report 2024"
+        mock_doc.source_url = "http://example.com/report.pdf"
+        mock_doc.source_type = "pdf"
 
         mock_segment = Mock()
         mock_segment.id = seg_id
@@ -52,21 +75,12 @@ class TestSegmentEndpoint:
         mock_segment.position = 3
         mock_segment.metadata_ = {"source": "annual_report"}
         mock_segment.document_id = doc_id
+        mock_segment.document = mock_doc
 
-        mock_doc = Mock()
-        mock_doc.id = doc_id
-        mock_doc.title = "Annual Report 2024"
-        mock_doc.source_url = "http://example.com/report.pdf"
-        mock_doc.source_type = "pdf"
-
-        # db.execute is called twice: once for Segment, once for Document
+        # Single query with selectinload — only one execute call
         seg_result = Mock()
         seg_result.scalar_one_or_none.return_value = mock_segment
-
-        doc_result = Mock()
-        doc_result.scalar_one_or_none.return_value = mock_doc
-
-        mock_api_db_session.execute = AsyncMock(side_effect=[seg_result, doc_result])
+        mock_api_db_session.execute = AsyncMock(return_value=seg_result)
 
         response = await client.get(f"/api/segments/{seg_id}")
         assert response.status_code == 200

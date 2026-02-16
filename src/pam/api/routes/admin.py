@@ -4,16 +4,19 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from pam.api.auth import require_admin
 from pam.api.deps import get_db
+from pam.api.pagination import PaginatedResponse
 from pam.common.models import (
     AssignRoleRequest,
+    MessageResponse,
     Project,
     ProjectRoleResponse,
+    RoleAssignedResponse,
     User,
     UserProjectRole,
     UserResponse,
@@ -25,15 +28,22 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
-@router.get("/admin/users", response_model=list[UserResponse])
+@router.get("/admin/users", response_model=PaginatedResponse[UserResponse])
 async def list_users(
     limit: int = Query(default=50, le=200),
     db: AsyncSession = Depends(get_db),
     _admin: User | None = Depends(require_admin),
 ):
-    """List all users."""
+    """List all users with cursor-based pagination."""
+    # Count total
+    count_result = await db.execute(select(func.count()).select_from(User))
+    total = count_result.scalar() or 0
+
+    # Fetch page
     result = await db.execute(select(User).order_by(User.created_at.desc()).limit(limit))
-    return [UserResponse.model_validate(u) for u in result.scalars().all()]
+    items = [UserResponse.model_validate(u) for u in result.scalars().all()]
+
+    return PaginatedResponse(items=items, total=total, cursor="")
 
 
 @router.get("/admin/users/{user_id}", response_model=UserWithRoles)
@@ -63,7 +73,7 @@ async def get_user(
     return UserWithRoles(**UserResponse.model_validate(user).model_dump(), roles=roles)
 
 
-@router.post("/admin/roles", status_code=201)
+@router.post("/admin/roles", status_code=201, response_model=RoleAssignedResponse)
 async def assign_role(
     request: AssignRoleRequest,
     db: AsyncSession = Depends(get_db),
@@ -113,16 +123,18 @@ async def revoke_role(
     _admin: User | None = Depends(require_admin),
 ):
     """Remove a user's role for a project."""
-    await db.execute(
+    result = await db.execute(
         delete(UserProjectRole).where(
             UserProjectRole.user_id == user_id,
             UserProjectRole.project_id == project_id,
         )
     )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Role assignment not found")
     await db.commit()
 
 
-@router.patch("/admin/users/{user_id}/deactivate")
+@router.patch("/admin/users/{user_id}/deactivate", response_model=MessageResponse)
 async def deactivate_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

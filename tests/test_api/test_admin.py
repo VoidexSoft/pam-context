@@ -84,28 +84,41 @@ class TestListUsers:
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )
-        mock_result = MagicMock()
+        # First call: count query
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+
+        # Second call: users query
+        user_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = [user]
-        mock_result.scalars.return_value = mock_scalars
-        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        user_result.scalars.return_value = mock_scalars
+
+        mock_api_db_session.execute = AsyncMock(side_effect=[count_result, user_result])
 
         response = await client.get("/api/admin/users")
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["email"] == "user@test.com"
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
+        assert data["items"][0]["email"] == "user@test.com"
 
     async def test_empty_list(self, client, mock_api_db_session):
-        mock_result = MagicMock()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+
+        user_result = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = []
-        mock_result.scalars.return_value = mock_scalars
-        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        user_result.scalars.return_value = mock_scalars
+
+        mock_api_db_session.execute = AsyncMock(side_effect=[count_result, user_result])
 
         response = await client.get("/api/admin/users")
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestAssignRole:

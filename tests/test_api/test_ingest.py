@@ -107,4 +107,7 @@ class TestIngestEndpoint:
         mock_list.return_value = []
         response = await client.get("/api/ingest/tasks")
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+        assert data["cursor"] == ""

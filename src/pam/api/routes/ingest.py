@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pam.api.auth import get_current_user, require_admin
 from pam.api.deps import get_db, get_embedder, get_es_client
+from pam.api.pagination import PaginatedResponse
 from pam.common.config import settings
 from pam.common.models import IngestionTaskResponse, TaskCreatedResponse, User
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
@@ -69,12 +70,13 @@ async def get_task_status(
     return IngestionTaskResponse.model_validate(task)
 
 
-@router.get("/ingest/tasks", response_model=list[IngestionTaskResponse])
+@router.get("/ingest/tasks", response_model=PaginatedResponse[IngestionTaskResponse])
 async def list_task_statuses(
     limit: int = Query(default=20, le=100),
     db: AsyncSession = Depends(get_db),
     _user: User | None = Depends(get_current_user),
 ):
-    """List recent ingestion tasks."""
+    """List recent ingestion tasks with cursor-based pagination."""
     tasks = await list_tasks(db, limit=limit)
-    return [IngestionTaskResponse.model_validate(t) for t in tasks]
+    items = [IngestionTaskResponse.model_validate(t) for t in tasks]
+    return PaginatedResponse(items=items, total=len(items), cursor="")

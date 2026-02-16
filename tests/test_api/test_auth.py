@@ -321,10 +321,11 @@ class TestRequireAdmin:
 class TestAuthMeEndpoint:
     """Tests for the /auth/me endpoint."""
 
-    async def test_returns_404_when_auth_disabled(self, client):
-        """When auth_required=False, /auth/me returns 404."""
+    async def test_returns_501_when_auth_disabled(self, client):
+        """When auth_required=False, /auth/me returns 501 Not Implemented."""
         response = await client.get("/api/auth/me")
-        assert response.status_code == 404
+        assert response.status_code == 501
+        assert "not enabled" in response.json()["detail"].lower()
 
     async def test_returns_user_when_authenticated(self, client, app, mock_api_db_session):
         """With auth enabled and valid token, /auth/me returns user profile."""
@@ -376,9 +377,12 @@ class TestAuthDisabledByDefault:
         assert response.status_code != 403
 
     async def test_documents_accessible_without_token(self, client, mock_api_db_session):
-        mock_result = MagicMock()
-        mock_result.all.return_value = []
-        mock_api_db_session.execute = AsyncMock(return_value=mock_result)
+        # First call: count query; second call: documents query
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        doc_result = MagicMock()
+        doc_result.all.return_value = []
+        mock_api_db_session.execute = AsyncMock(side_effect=[count_result, doc_result])
         response = await client.get("/api/documents")
         assert response.status_code != 401
         assert response.status_code != 403

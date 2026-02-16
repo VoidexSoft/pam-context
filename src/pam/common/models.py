@@ -287,3 +287,42 @@ class AssignRoleRequest(BaseModel):
     user_id: uuid.UUID
     project_id: uuid.UUID
     role: Literal["viewer", "editor", "admin"]
+
+
+class SegmentDetailResponse(BaseModel):
+    """Response for GET /segments/{id} with parent document info."""
+
+    id: uuid.UUID
+    content: str
+    segment_type: str
+    section_path: str | None = None
+    position: int
+    metadata: dict = Field(default_factory=dict)
+    document_id: uuid.UUID
+    document_title: str | None = None
+    source_url: str | None = None
+    source_type: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class StatsResponse(BaseModel):
+    """Response for GET /stats with system statistics."""
+
+    documents: dict
+    segments: int
+    entities: dict
+    recent_tasks: list[dict]
+
+
+class RoleAssignedResponse(BaseModel):
+    """Response for POST /admin/roles."""
+
+    message: str
+    role: str
+
+
+class MessageResponse(BaseModel):
+    """Generic message response for actions like deactivation."""
+
+    message: str

@@ -107,7 +107,7 @@ async def get_me(
 ):
     """Get current user profile. Returns 401 if auth enabled and no valid token."""
     if not settings.auth_required:
-        raise HTTPException(status_code=404, detail="Auth not enabled")
+        raise HTTPException(status_code=501, detail="Authentication is not enabled")
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return UserResponse.model_validate(user)

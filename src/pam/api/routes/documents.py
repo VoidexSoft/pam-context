@@ -6,57 +6,102 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from pam.api.auth import get_current_user
 from pam.api.deps import get_db
-from pam.common.models import Document, ExtractedEntity, IngestionTask, Segment, User
+from pam.api.pagination import PaginatedResponse
+from pam.common.models import (
+    Document,
+    DocumentResponse,
+    ExtractedEntity,
+    IngestionTask,
+    Segment,
+    SegmentDetailResponse,
+    StatsResponse,
+    User,
+)
 from pam.ingestion.stores.postgres_store import PostgresStore
 
 logger = structlog.get_logger()
 router = APIRouter()
 
 
-@router.get("/documents")
+@router.get("/documents", response_model=PaginatedResponse[DocumentResponse])
 async def list_documents(
     db: AsyncSession = Depends(get_db),
     _user: User | None = Depends(get_current_user),
 ):
-    """List all ingested documents with segment counts."""
-    store = PostgresStore(db)
-    return await store.list_documents()
+    """List all ingested documents with segment counts and cursor-based pagination."""
+    # Count total
+    count_result = await db.execute(select(func.count()).select_from(Document))
+    total = count_result.scalar() or 0
+
+    # Fetch documents with segment counts
+    stmt = (
+        select(
+            Document,
+            func.count(Segment.id).label("segment_count"),
+        )
+        .outerjoin(Segment)
+        .group_by(Document.id)
+        .order_by(Document.updated_at.desc())
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    items = [
+        DocumentResponse(
+            id=doc.id,
+            source_type=doc.source_type,
+            source_id=doc.source_id,
+            source_url=doc.source_url,
+            title=doc.title,
+            owner=doc.owner,
+            status=doc.status,
+            content_hash=doc.content_hash,
+            last_synced_at=doc.last_synced_at,
+            created_at=doc.created_at,
+            segment_count=count,
+        )
+        for doc, count in rows
+    ]
+
+    return PaginatedResponse(items=items, total=total, cursor="")
 
 
-@router.get("/segments/{segment_id}")
+@router.get("/segments/{segment_id}", response_model=SegmentDetailResponse)
 async def get_segment(
     segment_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     _user: User | None = Depends(get_current_user),
 ):
     """Get segment content and metadata for the source viewer."""
-    result = await db.execute(select(Segment).where(Segment.id == segment_id))
+    result = await db.execute(
+        select(Segment)
+        .options(selectinload(Segment.document))
+        .where(Segment.id == segment_id)
+    )
     segment = result.scalar_one_or_none()
     if not segment:
         raise HTTPException(status_code=404, detail="Segment not found")
 
-    # Get parent document for title and source URL
-    doc_result = await db.execute(select(Document).where(Document.id == segment.document_id))
-    doc = doc_result.scalar_one_or_none()
-
-    return {
-        "id": str(segment.id),
-        "content": segment.content,
-        "segment_type": segment.segment_type,
-        "section_path": segment.section_path,
-        "position": segment.position,
-        "metadata": segment.metadata_,
-        "document_id": str(segment.document_id),
-        "document_title": doc.title if doc else None,
-        "source_url": doc.source_url if doc else None,
-        "source_type": doc.source_type if doc else None,
-    }
+    doc = segment.document
+    return SegmentDetailResponse(
+        id=segment.id,
+        content=segment.content,
+        segment_type=segment.segment_type,
+        section_path=segment.section_path,
+        position=segment.position,
+        metadata=segment.metadata_,
+        document_id=segment.document_id,
+        document_title=doc.title if doc else None,
+        source_url=doc.source_url if doc else None,
+        source_type=doc.source_type if doc else None,
+    )
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=StatsResponse)
 async def get_stats(
     db: AsyncSession = Depends(get_db),
     _user: User | None = Depends(get_current_user),
