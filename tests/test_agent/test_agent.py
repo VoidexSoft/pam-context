@@ -146,6 +146,87 @@ class TestExtractText:
         assert RetrievalAgent._extract_text(content) == "Answer"
 
 
+class TestChunkText:
+    """Tests for _chunk_text — trailing-space word separation."""
+
+    def test_basic_chunking(self):
+        result = RetrievalAgent._chunk_text("hello world is great today", size=2)
+        assert result == ["hello world ", "is great ", "today"]
+
+    def test_no_leading_space_on_non_first_chunks(self):
+        chunks = RetrievalAgent._chunk_text("one two three four five six", size=2)
+        for chunk in chunks:
+            assert not chunk.startswith(" "), f"Leading space found: {chunk!r}"
+
+    def test_concatenation_produces_original(self):
+        original = "hello world is great today"
+        chunks = RetrievalAgent._chunk_text(original, size=2)
+        assert "".join(chunks) == original
+
+    def test_single_chunk(self):
+        """When all words fit in one chunk, no trailing space."""
+        result = RetrievalAgent._chunk_text("hello world", size=4)
+        assert result == ["hello world"]
+
+    def test_default_size(self):
+        text = "a b c d e f g h"
+        result = RetrievalAgent._chunk_text(text)
+        assert result == ["a b c d ", "e f g h"]
+
+    def test_empty_text(self):
+        result = RetrievalAgent._chunk_text("")
+        assert result == [""]
+
+
+class TestStreamingErrorEvent:
+    """Tests for structured SSE error events in answer_streaming."""
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_error_event_structure(self, mock_anthropic_cls):
+        """When an exception occurs, the error event has type, data, and message."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(side_effect=RuntimeError("LLM API timeout"))
+        mock_anthropic_cls.return_value = mock_client
+
+        agent = RetrievalAgent(
+            search_service=AsyncMock(),
+            embedder=AsyncMock(),
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
+        )
+
+        events = [event async for event in agent.answer_streaming("question?")]
+
+        error_events = [e for e in events if e["type"] == "error"]
+        assert len(error_events) == 1
+
+        error = error_events[0]
+        assert "data" in error
+        assert error["data"]["type"] == "RuntimeError"
+        assert "LLM API timeout" in error["data"]["message"]
+        assert "message" in error
+        assert "An error occurred" in error["message"]
+
+    @patch("pam.agent.agent.AsyncAnthropic")
+    async def test_no_done_event_after_error(self, mock_anthropic_cls):
+        """No done event should be emitted after an error event."""
+        mock_client = AsyncMock()
+        mock_client.messages.create = AsyncMock(side_effect=RuntimeError("fail"))
+        mock_anthropic_cls.return_value = mock_client
+
+        agent = RetrievalAgent(
+            search_service=AsyncMock(),
+            embedder=AsyncMock(),
+            api_key="test-key",
+            model="claude-sonnet-4-5-20250514",
+        )
+
+        events = [event async for event in agent.answer_streaming("question?")]
+
+        done_events = [e for e in events if e["type"] == "done"]
+        assert len(done_events) == 0
+
+
 class TestSearchKnowledge:
     @patch("pam.agent.agent.AsyncAnthropic")
     async def test_no_results(self, mock_anthropic_cls):

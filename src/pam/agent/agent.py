@@ -338,17 +338,25 @@ class RetrievalAgent:
 
         except Exception as e:
             logger.exception("streaming_error", error=str(e))
-            yield {"type": "error", "message": "An internal error occurred. Please try again."}
+            yield {
+                "type": "error",
+                "data": {"type": type(e).__name__, "message": str(e)},
+                "message": f"An error occurred: {e!s}",
+            }
 
     @staticmethod
     def _chunk_text(text: str, size: int = 4) -> list[str]:
-        """Split text into word-based chunks for simulated streaming."""
+        """Split text into word-based chunks for simulated streaming.
+
+        Trailing spaces separate chunks so that non-first chunks never
+        start with a leading space character.
+        """
         words = text.split(" ")
         chunks = []
         for i in range(0, len(words), size):
             chunk = " ".join(words[i : i + size])
-            if i > 0:
-                chunk = " " + chunk
+            if i + size < len(words):
+                chunk += " "  # trailing space as word separator
             chunks.append(chunk)
         return chunks
 
