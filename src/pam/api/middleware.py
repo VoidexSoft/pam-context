@@ -5,7 +5,6 @@ response body buffering that breaks SSE streaming.
 """
 
 import time
-from collections.abc import Callable
 
 import structlog
 from starlette.datastructures import MutableHeaders

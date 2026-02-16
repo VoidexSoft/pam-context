@@ -11,7 +11,7 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 
 **Phase 3: API + Agent Hardening**
 Status: In progress
-Plans: 1/3 complete (03-03 done)
+Plans: 2/3 complete (03-01, 03-03 done)
 
 ## Milestone Progress
 
@@ -19,7 +19,7 @@ Plans: 1/3 complete (03-03 done)
 |-------|--------|-------|----------|
 | 1. Singleton Lifecycle + Tooling | ✓ Complete | 2/2 | 100% |
 | 2. Database Integrity | ✓ Complete | 1/1 | 100% |
-| 3. API + Agent Hardening | ◑ In progress | 1/3 | 33% |
+| 3. API + Agent Hardening | ◑ In progress | 2/3 | 67% |
 | 4. Frontend + Dead Code Cleanup | ○ Not started | 0/TBD | 0% |
 
 ## Key Decisions
@@ -35,6 +35,9 @@ Plans: 1/3 complete (03-03 done)
 | Literal type over Field(pattern=...) for role | 2 | Better mypy, OpenAPI enum schema, clearer error messages. |
 | ORM index=True to sync models with DB schema | 2 | Keeps models.py as source of truth even for indexes created in earlier migrations. |
 | Replace BaseHTTPMiddleware with pure ASGI | 3 | Fixes SSE streaming buffering. Well-documented Starlette limitation. |
+| Structured SSE error with data + message fields | 3 | Machine-readable for frontend parsing, human-readable for display. |
+| No done event after SSE error | 3 | Frontend handles cleanup in finally block without needing done after error. |
+| Trailing-space chunking in _chunk_text | 3 | Eliminates leading-space artifacts on non-first SSE token events. |
 | Protocol over ABC for SearchService | 3 | Structural subtyping without inheritance changes to existing services. |
 | runtime_checkable for SearchService Protocol | 3 | Enables isinstance() checks at runtime if needed. |
 | Empty required list for QUERY_DATABASE_TOOL | 3 | Explicit empty list rather than missing key; handler validates. |
@@ -50,7 +53,8 @@ None currently.
 | 01 | 01 | 18min | 2 | 29 |
 | 01 | 02 | 7min | 2 | 10 |
 | 02 | 01 | 3min | 2 | 3 |
+| 03 | 01 | 4min | 2 | 4 |
 | 03 | 03 | 2min | 2 | 6 |
 
 ---
-Last activity: 2026-02-16 - Plan 03-03 complete (tool schema fix, CostTracker warning, full SHA-256 cache keys, SearchService Protocol, post-rerank logging)
+Last activity: 2026-02-16 - Plan 03-01 complete (pure ASGI middleware, structured SSE error events, trailing-space chunk text)
