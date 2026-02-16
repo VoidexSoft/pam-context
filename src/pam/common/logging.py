@@ -103,8 +103,11 @@ class CostTracker:
             "claude-sonnet-4-5-20250514": {"input": 3.0, "output": 15.0},
             "claude-opus-4-6": {"input": 15.0, "output": 75.0},
         }
-        # Default to sonnet pricing
-        rates = pricing.get(model, pricing["claude-sonnet-4-5-20250514"])
+        rates = pricing.get(model)
+        if rates is None:
+            log = structlog.get_logger()
+            log.warning("unknown_model_cost", message=f"Unknown model '{model}': using default cost estimate")
+            rates = pricing["claude-sonnet-4-5-20250514"]
         return (input_tokens * rates["input"] + output_tokens * rates["output"]) / 1_000_000
 
     @staticmethod

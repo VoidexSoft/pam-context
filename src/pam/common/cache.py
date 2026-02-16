@@ -41,7 +41,7 @@ def _make_search_key(
         },
         sort_keys=True,
     )
-    digest = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    digest = hashlib.sha256(raw.encode()).hexdigest()
     return f"search:{digest}"
 
 
