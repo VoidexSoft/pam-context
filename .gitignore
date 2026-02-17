@@ -46,6 +46,10 @@ test_docs/
 # Tool logs
 .playwright-mcp/
 
+# Playwright
+web/test-results/
+web/playwright-report/
+
 # Planning
 .planning/
 
