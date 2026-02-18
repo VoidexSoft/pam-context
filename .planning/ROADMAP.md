@@ -16,6 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Database Integrity** - Add missing indexes, constraints, and fix test isolation
 - [ ] **Phase 3: API + Agent Hardening** - Fix streaming, add response models and pagination, harden agent tools
 - [ ] **Phase 4: Frontend + Dead Code Cleanup** - Fix React rendering issues, accessibility, and remove dead code
+- [ ] **Phase 5: Audit Gap Closure** - Close partial requirements, remove dead frontend code, wire broken E2E flows
 
 ## Phase Details
 
@@ -82,6 +83,23 @@ Plans:
 - [ ] 04-01-PLAN.md — React rendering fixes (stable keys, smart scroll, useCallback, setTimeout polling, Content-Type fix, chat aria-labels)
 - [ ] 04-02-PLAN.md — Accessibility for remaining components, dead code removal (CitationLink, require_auth), eval guard
 
+### Phase 5: Audit Gap Closure
+**Goal**: Close all gaps identified by v1 milestone audit — fix partial requirement implementations, remove dead frontend code, and wire the 2 broken E2E flows
+**Depends on**: Phase 3
+**Requirements**: TOOL-02, AGNT-04
+**Gap Closure**: Closes gaps from v1-MILESTONE-AUDIT.md
+**Success Criteria** (what must be TRUE):
+  1. mypy runs clean on deps.py with no `no-any-return` errors (via `cast()` on `app.state` accesses)
+  2. `RetrievalAgent.__init__` accepts `search_service: SearchService` (Protocol type, not concrete class)
+  3. `getAuthStatus()` and `listTasks()` removed from client.ts — no dead API functions remain
+  4. SSE `done` event includes `conversation_id` in metadata, and `useChat.ts` preserves it across turns
+  5. ChatResponse field names aligned between backend and frontend — non-streaming fallback path functional
+**Plans**: 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Backend type safety (deps.py cast, Protocol annotations) and conversation_id wiring
+- [ ] 05-02-PLAN.md — Frontend: dead code removal, ChatResponse alignment, metrics wiring, expandable details
+
 ## Progress
 
 **Execution Order:**
@@ -93,3 +111,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 2. Database Integrity | 1/1 | ✓ Complete | 2026-02-16 |
 | 3. API + Agent Hardening | 0/3 | Not started | - |
 | 4. Frontend + Dead Code Cleanup | 0/2 | Not started | - |
+| 5. Audit Gap Closure | 0/1 | Not started | - |
