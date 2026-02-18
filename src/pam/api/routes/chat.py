@@ -1,6 +1,7 @@
 """Chat endpoint — conversational Q&A with the knowledge base."""
 
 import json
+import uuid
 from typing import Literal
 
 import structlog
@@ -45,6 +46,8 @@ async def chat(
     _user: User | None = Depends(get_current_user),
 ):
     """Send a message and get an AI-powered answer with citations."""
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+
     kwargs: dict = {}
     if request.conversation_history:
         kwargs["conversation_history"] = [{"role": m.role, "content": m.content} for m in request.conversation_history]
@@ -68,7 +71,7 @@ async def chat(
             }
             for c in result.citations
         ],
-        conversation_id=request.conversation_id,
+        conversation_id=conversation_id,
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
     )
@@ -81,6 +84,8 @@ async def chat_stream(
     _user: User | None = Depends(get_current_user),
 ):
     """Stream a chat response as Server-Sent Events."""
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+
     history = None
     if request.conversation_history:
         history = [{"role": m.role, "content": m.content} for m in request.conversation_history]
@@ -91,6 +96,8 @@ async def chat_stream(
             conversation_history=history,
             source_type=request.source_type,
         ):
+            if chunk.get("type") == "done":
+                chunk["conversation_id"] = conversation_id
             yield f"data: {json.dumps(chunk)}\n\n"
 
     return StreamingResponse(
