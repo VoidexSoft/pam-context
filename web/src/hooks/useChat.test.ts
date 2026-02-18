@@ -59,11 +59,14 @@ describe("useChat", () => {
         await result.current.sendMessage("Hi there");
       });
 
-      // First message should be from user
-      expect(result.current.messages[0]).toEqual({
+      // First message should be from user (id is a UUID, so use toMatchObject)
+      expect(result.current.messages[0]).toMatchObject({
         role: "user",
         content: "Hi there",
       });
+      expect(result.current.messages[0].id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
     });
 
     it("adds assistant message from streaming response", async () => {

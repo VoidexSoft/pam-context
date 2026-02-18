@@ -31,7 +31,7 @@ export function useChat() {
 
   const sendMessage = useCallback(
     async (content: string) => {
-      const userMsg: ChatMessage = { role: "user", content };
+      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", content };
       setMessages((prev) => [...prev, userMsg]);
       setLoading(true);
       setError(null);
@@ -49,7 +49,7 @@ export function useChat() {
 
       try {
         // Create placeholder assistant message
-        const assistantMsg: ChatMessage = { role: "assistant", content: "", citations: [] };
+        const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: "assistant", content: "", citations: [] };
         setMessages((prev) => [...prev, assistantMsg]);
 
         let streamingContent = "";
@@ -153,7 +153,7 @@ export function useChat() {
           setError(msg);
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: `Error: ${msg}` },
+            { id: crypto.randomUUID(), role: "assistant", content: `Error: ${msg}` },
           ]);
         }
       } finally {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import ChatInterface from "../components/ChatInterface";
 import SearchFilters from "../components/SearchFilters";
 import SourceViewer from "../components/SourceViewer";
@@ -17,6 +17,7 @@ export default function ChatPage() {
     setFilters,
   } = useChat();
   const [viewingSegmentId, setViewingSegmentId] = useState<string | null>(null);
+  const handleCloseViewer = useCallback(() => setViewingSegmentId(null), []);
 
   return (
     <div className="flex flex-col h-full">
@@ -25,6 +26,7 @@ export default function ChatPage() {
         {messages.length > 0 && (
           <button
             onClick={clearChat}
+            aria-label="Start new conversation"
             className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-2.5 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -46,7 +48,7 @@ export default function ChatPage() {
       />
       <SourceViewer
         segmentId={viewingSegmentId}
-        onClose={() => setViewingSegmentId(null)}
+        onClose={handleCloseViewer}
       />
     </div>
   );

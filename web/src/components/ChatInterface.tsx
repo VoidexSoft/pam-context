@@ -24,9 +24,19 @@ export default function ChatInterface({
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const { scrollHeight, scrollTop, clientHeight } = scrollRef.current;
+    isAtBottomRef.current = scrollHeight - scrollTop - clientHeight <= 50;
+  };
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (isAtBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, isStreaming]);
 
   // Auto-focus input on mount and after sending
@@ -47,7 +57,7 @@ export default function ChatInterface({
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-4">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center max-w-sm">
@@ -67,7 +77,7 @@ export default function ChatInterface({
         )}
         {messages.map((msg, i) => (
           <MessageBubble
-            key={i}
+            key={msg.id ?? i}
             message={msg}
             isStreaming={isStreaming && i === messages.length - 1 && msg.role === "assistant"}
             onViewSource={onViewSource}
@@ -113,6 +123,7 @@ export default function ChatInterface({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type a message..."
+            aria-label="Type a message"
             className="flex-1 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm text-gray-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             disabled={isBusy}
           />
@@ -120,6 +131,7 @@ export default function ChatInterface({
             <button
               type="button"
               onClick={onCancel}
+              aria-label="Stop generating"
               className="px-5 py-2.5 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
             >
               Stop
@@ -128,6 +140,7 @@ export default function ChatInterface({
             <button
               type="submit"
               disabled={isBusy || !input.trim()}
+              aria-label="Send message"
               className="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Send
