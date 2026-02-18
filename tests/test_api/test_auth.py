@@ -14,7 +14,6 @@ from pam.api.auth import (
     get_current_user,
     get_user_project_ids,
     require_admin,
-    require_auth,
     require_role,
 )
 from pam.common.config import settings
@@ -253,31 +252,6 @@ class TestGetCurrentUser:
             with pytest.raises(HTTPException) as exc_info:
                 await get_current_user(db=mock_api_db_session, credentials=creds)
             assert exc_info.value.status_code == 401
-
-
-class TestRequireAuth:
-    """Tests for the require_auth dependency."""
-
-    async def test_raises_401_when_user_is_none_and_auth_enabled(self):
-        """When auth is enabled and user is None, raises 401."""
-        with patch.object(settings, "auth_required", True):
-            with pytest.raises(HTTPException) as exc_info:
-                await require_auth(user=None)
-            assert exc_info.value.status_code == 401
-
-    async def test_returns_user_when_valid(self):
-        """Valid user is passed through."""
-        user = MagicMock(spec=User)
-        with patch.object(settings, "auth_required", True):
-            result = await require_auth(user=user)
-            assert result is user
-
-    async def test_raises_403_when_auth_disabled_and_none(self):
-        """When auth is disabled, require_auth with None raises 403 (safety guard)."""
-        with patch.object(settings, "auth_required", False):
-            with pytest.raises(HTTPException) as exc_info:
-                await require_auth(user=None)
-            assert exc_info.value.status_code == 403
 
 
 class TestRequireAdmin:

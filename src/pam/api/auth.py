@@ -82,18 +82,6 @@ async def get_current_user(
     return await _get_current_user_from_token(db, credentials)
 
 
-async def require_auth(
-    user: Annotated[User | None, Depends(get_current_user)],
-) -> User:
-    """FastAPI dependency: requires authentication. Raises 401 if auth enabled and no valid user."""
-    if settings.auth_required and user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
-    if user is None:
-        # Auth disabled — return a placeholder for type safety
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Auth disabled but require_auth called")
-    return user
-
-
 def require_role(required_role: str):
     """Factory: returns a dependency that checks if the user has the given role for a project.
 

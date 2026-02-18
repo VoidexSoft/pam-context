@@ -244,6 +244,14 @@ def print_summary(eval_results: dict) -> None:
     questions = eval_results["questions"]
     total = len(questions)
 
+    if total == 0:
+        print("\n" + "=" * 72)
+        print("EVALUATION SUMMARY")
+        print("=" * 72)
+        print("\nNo questions to evaluate.")
+        print("=" * 72)
+        return
+
     print("\n" + "=" * 72)
     print("EVALUATION SUMMARY")
     print("=" * 72)
