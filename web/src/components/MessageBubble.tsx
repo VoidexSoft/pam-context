@@ -61,6 +61,31 @@ function MessageBubble({ message, isStreaming, onViewSource }: Props) {
             ))}
           </div>
         )}
+
+        {!isUser && (message.token_usage || message.latency_ms) && (
+          <details className="mt-2 pt-2 border-t border-gray-200/20 dark:border-zinc-700/50">
+            <summary className="text-xs text-gray-400 dark:text-zinc-500 cursor-pointer hover:text-gray-500 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1">
+              <span className="text-[10px]">&#9662;</span>
+              {message.latency_ms != null && `${(message.latency_ms / 1000).toFixed(1)}s`}
+              {message.latency_ms != null && message.token_usage?.total_tokens != null && " \u00b7 "}
+              {message.token_usage?.total_tokens != null && `${message.token_usage.total_tokens.toLocaleString()} tokens`}
+            </summary>
+            <div className="mt-1 text-xs text-gray-400 dark:text-zinc-500 space-y-0.5">
+              {message.token_usage?.input_tokens != null && (
+                <div>Input: {message.token_usage.input_tokens.toLocaleString()} tokens</div>
+              )}
+              {message.token_usage?.output_tokens != null && (
+                <div>Output: {message.token_usage.output_tokens.toLocaleString()} tokens</div>
+              )}
+              {message.token_usage?.total_tokens != null && (
+                <div>Total: {message.token_usage.total_tokens.toLocaleString()} tokens</div>
+              )}
+              {message.latency_ms != null && (
+                <div>Latency: {message.latency_ms.toLocaleString()}ms</div>
+              )}
+            </div>
+          </details>
+        )}
       </div>
     </div>
   );

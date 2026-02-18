@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from "react";
 import {
   ChatFilters,
   ChatMessage,
-  ChatResponse,
   Citation,
   ConversationMessage,
   sendMessage as apiSendMessage,
