@@ -44,6 +44,8 @@ export default function SourceViewer({ segmentId, onClose }: Props) {
       <div
         className="fixed inset-0 bg-black/20 z-40"
         onClick={onClose}
+        role="button"
+        aria-label="Close source viewer"
       />
 
       {/* Panel */}

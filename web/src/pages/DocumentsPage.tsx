@@ -54,6 +54,7 @@ export default function DocumentsPage() {
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
               placeholder="/path/to/documents"
+              aria-label="Folder path to ingest"
               className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               onKeyDown={(e) => e.key === "Enter" && handleIngest()}
               disabled={!!isActive}
@@ -61,6 +62,7 @@ export default function DocumentsPage() {
             <button
               onClick={handleIngest}
               disabled={!!isActive || !folderPath.trim()}
+              aria-label="Start ingestion"
               className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
             >
               {isActive ? "Ingesting..." : "Ingest"}
@@ -116,6 +118,7 @@ export default function DocumentsPage() {
             <button
               onClick={refresh}
               disabled={loading}
+              aria-label="Refresh document list"
               className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
             >
               Refresh

@@ -35,6 +35,7 @@ export default function CitationTooltip({ citation, index, onViewSource }: Props
         <TooltipTrigger asChild>
           <button
             onClick={handleClick}
+            aria-label={`View source: ${citation.title}`}
             className="inline-flex items-center justify-center h-5 min-w-[1.25rem] rounded bg-indigo-100 px-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-200 transition-colors cursor-pointer dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-800/50"
           >
             {index}

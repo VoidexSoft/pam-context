@@ -55,6 +55,8 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         <div
           className="fixed inset-0 bg-black/30 z-20 md:hidden"
           onClick={onClose}
+          role="button"
+          aria-label="Close menu"
         />
       )}
       <aside
@@ -116,6 +118,7 @@ export default function App() {
           {user && (
             <button
               onClick={logout}
+              aria-label="Sign out"
               className="ml-auto text-xs text-gray-400 hover:text-gray-600"
             >
               Sign out

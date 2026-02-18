@@ -28,6 +28,8 @@ export default function SearchFilters({ filters, onChange }: Props) {
                   source_type: type.value || undefined,
                 })
               }
+              aria-label={`Filter by ${type.label}`}
+              aria-pressed={isActive}
               className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                 isActive
                   ? "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200"
