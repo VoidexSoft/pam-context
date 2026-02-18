@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from elasticsearch import AsyncElasticsearch
 from fastapi import Depends, Request
@@ -31,27 +31,27 @@ async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
 
 
 def get_es_client(request: Request) -> AsyncElasticsearch:
-    return request.app.state.es_client  # type: ignore[no-any-return]
+    return cast(AsyncElasticsearch, request.app.state.es_client)
 
 
 def get_embedder(request: Request) -> OpenAIEmbedder:
-    return request.app.state.embedder  # type: ignore[no-any-return]
+    return cast(OpenAIEmbedder, request.app.state.embedder)
 
 
 def get_search_service(request: Request) -> SearchService:
-    return request.app.state.search_service  # type: ignore[no-any-return]
+    return cast(SearchService, request.app.state.search_service)
 
 
 def get_reranker(request: Request) -> BaseReranker | None:
-    return request.app.state.reranker  # type: ignore[no-any-return]
+    return cast(BaseReranker | None, request.app.state.reranker)
 
 
 def get_duckdb_service(request: Request) -> DuckDBService | None:
-    return request.app.state.duckdb_service  # type: ignore[no-any-return]
+    return cast("DuckDBService | None", request.app.state.duckdb_service)
 
 
 def get_cache_service(request: Request) -> CacheService | None:
-    return request.app.state.cache_service  # type: ignore[no-any-return]
+    return cast(CacheService | None, request.app.state.cache_service)
 
 
 async def get_agent(
@@ -64,8 +64,8 @@ async def get_agent(
     return RetrievalAgent(
         search_service=search_service,
         embedder=embedder,
-        api_key=request.app.state.anthropic_api_key,
-        model=request.app.state.agent_model,
+        api_key=cast(str, request.app.state.anthropic_api_key),
+        model=cast(str, request.app.state.agent_model),
         cost_tracker=CostTracker(),
         db_session=db,
         duckdb_service=duckdb_service,

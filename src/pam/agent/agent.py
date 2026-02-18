@@ -15,7 +15,7 @@ from pam.agent.tools import ALL_TOOLS
 from pam.common.logging import CostTracker
 from pam.common.utils import escape_like
 from pam.ingestion.embedders.base import BaseEmbedder
-from pam.retrieval.hybrid_search import HybridSearchService
+from pam.retrieval.search_protocol import SearchService
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,7 +66,7 @@ class AgentResponse:
 class RetrievalAgent:
     def __init__(
         self,
-        search_service: HybridSearchService,
+        search_service: SearchService,
         embedder: BaseEmbedder,
         api_key: str,
         model: str,
