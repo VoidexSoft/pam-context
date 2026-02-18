@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   ChatFilters,
   ChatMessage,
+  ChatResponse,
   Citation,
   ConversationMessage,
   sendMessage as apiSendMessage,
@@ -106,8 +107,22 @@ export function useChat() {
               break;
 
             case "done":
-              if (event.metadata?.conversation_id) {
-                setConversationId(event.metadata.conversation_id);
+              if (event.conversation_id) {
+                setConversationId(event.conversation_id);
+              }
+              if (event.metadata) {
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  const last = updated[updated.length - 1];
+                  if (last?.role === "assistant") {
+                    updated[updated.length - 1] = {
+                      ...last,
+                      token_usage: event.metadata!.token_usage,
+                      latency_ms: event.metadata!.latency_ms,
+                    };
+                  }
+                  return updated;
+                });
               }
               break;
 
@@ -146,8 +161,21 @@ export function useChat() {
             history.length > 0 ? history : undefined,
             Object.keys(filters).length > 0 ? filters : undefined
           );
-          setConversationId(res.conversation_id);
-          setMessages((prev) => [...prev, res.message]);
+          if (res.conversation_id) setConversationId(res.conversation_id);
+          const assistantMsg: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: res.response,
+            citations: res.citations?.map((c) => ({
+              title: c.document_title ?? "",
+              document_id: c.document_title ?? "",
+              source_url: c.source_url,
+              segment_id: c.segment_id,
+            })),
+            token_usage: res.token_usage,
+            latency_ms: res.latency_ms,
+          };
+          setMessages((prev) => [...prev, assistantMsg]);
         } catch (fallbackErr) {
           const msg = fallbackErr instanceof Error ? fallbackErr.message : "Unknown error";
           setError(msg);

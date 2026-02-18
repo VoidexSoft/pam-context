@@ -94,8 +94,11 @@ describe("sendMessage", () => {
       ok: true,
       json: () =>
         Promise.resolve({
-          message: { role: "assistant", content: "hi" },
+          response: "hi",
+          citations: [],
           conversation_id: "conv-1",
+          token_usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+          latency_ms: 50,
         }),
     } as unknown as Response);
   });

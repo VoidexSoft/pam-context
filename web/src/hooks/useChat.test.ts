@@ -97,8 +97,11 @@ describe("useChat", () => {
         })();
       });
       mockSendMessage.mockResolvedValue({
-        message: { role: "assistant", content: "fallback response" },
+        response: "fallback response",
+        citations: [],
         conversation_id: "conv-fallback",
+        token_usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+        latency_ms: 200,
       });
 
       const { result } = renderHook(() => useChat());

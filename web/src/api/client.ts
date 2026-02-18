@@ -3,6 +3,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
+  token_usage?: Record<string, number>;
+  latency_ms?: number;
 }
 
 export interface Citation {
@@ -13,8 +15,16 @@ export interface Citation {
 }
 
 export interface ChatResponse {
-  message: ChatMessage;
-  conversation_id: string;
+  response: string;
+  citations: Array<{
+    document_title?: string;
+    section_path?: string;
+    source_url?: string;
+    segment_id?: string;
+  }>;
+  conversation_id: string | null;
+  token_usage: Record<string, number>;
+  latency_ms: number;
 }
 
 export interface SearchResult {
@@ -133,8 +143,8 @@ export interface StreamEvent {
   content?: string;
   data?: Citation;
   message?: string;
+  conversation_id?: string;
   metadata?: {
-    conversation_id?: string;
     token_usage: Record<string, number>;
     latency_ms: number;
     tool_calls: number;
@@ -231,13 +241,6 @@ export function getTaskStatus(taskId: string): Promise<IngestionTask> {
   return request<IngestionTask>(`/ingest/tasks/${taskId}`);
 }
 
-export async function listTasks(limit: number = 20): Promise<IngestionTask[]> {
-  const response = await request<PaginatedResponse<IngestionTask>>(
-    `/ingest/tasks?limit=${limit}`
-  );
-  return response.items;
-}
-
 export function getSegment(segmentId: string): Promise<SegmentDetail> {
   return request<SegmentDetail>(`/segments/${segmentId}`);
 }
@@ -251,10 +254,6 @@ export function devLogin(email: string, name: string): Promise<TokenResponse> {
     method: "POST",
     body: JSON.stringify({ email, name }),
   });
-}
-
-export function getAuthStatus(): Promise<{ auth_required: boolean }> {
-  return request<{ auth_required: boolean }>("/auth/status");
 }
 
 export async function getMe(): Promise<AuthUser> {
