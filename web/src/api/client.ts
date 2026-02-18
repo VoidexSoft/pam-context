@@ -172,9 +172,11 @@ export function getStoredToken(): string | null {
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...((init?.headers as Record<string, string>) || {}),
   };
+  if (init?.body) {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  }
   if (authToken) {
     headers["Authorization"] = `Bearer ${authToken}`;
   }

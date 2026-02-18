@@ -39,10 +39,20 @@ function lastFetchInit(): RequestInit {
 // ── Existing tests: header merge order ──────────────────────────────
 
 describe("request() header merge order", () => {
-  it("includes Content-Type by default", async () => {
+  it("includes Content-Type on POST requests with body", async () => {
     setAuthToken(null);
     await searchKnowledge("test");
     expect(lastFetchHeaders()["Content-Type"]).toBe("application/json");
+  });
+
+  it("does not include Content-Type on GET requests (no body)", async () => {
+    fetchSpy.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ items: [], total: 0, cursor: "" }),
+    } as unknown as Response);
+    setAuthToken(null);
+    await listDocuments();
+    expect(lastFetchHeaders()["Content-Type"]).toBeUndefined();
   });
 
   it("includes Authorization when token is set", async () => {
