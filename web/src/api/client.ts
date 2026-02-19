@@ -151,6 +151,14 @@ export interface StreamEvent {
   };
 }
 
+export interface GraphStatus {
+  status: string;
+  entity_counts: Record<string, number>;
+  total_entities: number;
+  last_sync_time: string | null;
+  error?: string;
+}
+
 export interface TokenResponse {
   access_token: string;
   user: AuthUser;
@@ -247,6 +255,10 @@ export function getSegment(segmentId: string): Promise<SegmentDetail> {
 
 export function getStats(): Promise<SystemStats> {
   return request<SystemStats>("/stats");
+}
+
+export function getGraphStatus(): Promise<GraphStatus> {
+  return request<GraphStatus>("/graph/status");
 }
 
 export function devLogin(email: string, name: string): Promise<TokenResponse> {
