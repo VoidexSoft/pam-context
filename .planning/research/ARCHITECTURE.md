@@ -1,443 +1,558 @@
-# Architecture Patterns
+# Architecture Patterns: Knowledge Graph & Temporal Reasoning Milestone
 
-**Domain:** Singleton refactoring and service lifecycle in async FastAPI
-**Researched:** 2026-02-15
-**Confidence:** HIGH (based on official FastAPI docs, existing codebase analysis, community consensus)
+**Domain:** Knowledge graph integration into existing RAG + FastAPI system
+**Researched:** 2026-02-19
+**Confidence:** HIGH (codebase read directly; Graphiti and Neo4j NVL verified via official docs + PyPI)
 
-## Current Architecture: What Exists Today
+---
 
-PAM Context uses three distinct patterns for managing shared state, each with different tradeoffs and testability characteristics.
+## Recommended Architecture
 
-### Pattern 1: Proxy Singletons (config.py, database.py)
+This milestone adds a **graph layer alongside** the existing vector+BM25 layer — not replacing it. The existing `HybridSearchService` (ES) continues to handle segment-level retrieval. Neo4j + Graphiti handle entity-relationship retrieval with bi-temporal semantics. The agent gains a new `search_knowledge_graph` tool that queries facts from the graph.
+
+### High-Level System After Milestone
 
 ```
-Module load                 First attribute access          Subsequent access
-     |                             |                              |
-  _SettingsProxy()          get_settings() -> Settings()     get_settings() (cached)
-  _EngineProxy()            get_engine() -> AsyncEngine      get_engine() (cached)
-  _SessionFactoryProxy()    get_session_factory()            get_session_factory() (cached)
+                     ┌─────────────────────────────────┐
+                     │          FastAPI (main.py)       │
+                     │   lifespan initializes all       │
+                     │   services on app.state          │
+                     └──────────────┬──────────────────┘
+                                    │
+           ┌────────────────────────┼──────────────────────┐
+           │                        │                      │
+           ▼                        ▼                      ▼
+  ┌─────────────────┐   ┌──────────────────────┐  ┌───────────────────┐
+  │ HybridSearch    │   │  GraphitiService      │  │  RetrievalAgent   │
+  │ (ES RRF)        │   │  (NEW)                │  │  (extended)       │
+  │ segment retrieval│  │  wraps Graphiti class │  │  +search_graph    │
+  └────────┬────────┘   └──────────┬───────────┘  └─────────┬─────────┘
+           │                       │                         │
+           ▼                       ▼                         ▼
+  ┌─────────────────┐   ┌──────────────────────┐  ┌───────────────────┐
+  │ Elasticsearch   │   │  Neo4j 5.26+         │  │  Anthropic SDK    │
+  │ (unchanged)     │   │  (NEW docker service) │  │  (unchanged)      │
+  └─────────────────┘   └──────────┬───────────┘  └───────────────────┘
+                                   │
+                         ┌─────────┴──────────┐
+                         │                    │
+                         ▼                    ▼
+                  EntityNode            EntityEdge
+                  (entities)         (facts + t_valid,
+                                       t_invalid)
+
+Ingestion pipeline (modified):
+  connector → parser → chunker → embedder → PG+ES (unchanged)
+                                         ↘
+                                    GraphitiEntityExtractor (NEW)
+                                    → graphiti.add_episode()
+                                    → Neo4j ← graph update
 ```
 
-`config.py` exposes `settings = _SettingsProxy()` at module level. The proxy delegates all attribute access to `get_settings()` which is `@lru_cache(maxsize=1)` -- creating the real `Settings()` on first access, not at import time. `database.py` follows the same pattern for engine and session factory, with `reset_database()` and `reset_settings()` to clear caches.
+---
 
-**Verdict:** This is actually a good pattern already. The proxy + lru_cache combination gives lazy initialization without import-time side effects. The `reset_*` functions enable test isolation. The main issue is that 15 modules import `settings` directly and read from it inside their constructors/methods, creating implicit coupling.
+## Component Boundaries
 
-### Pattern 2: Double-Checked Locking (deps.py, cache.py)
+### New Components
+
+| Component | Location | Responsibility | Communicates With |
+|-----------|----------|----------------|-------------------|
+| `GraphitiService` | `src/pam/graph/graphiti_service.py` | Wraps `graphiti_core.Graphiti`; lifecycle management; add_episode, search | Neo4j driver (via Graphiti), OpenAI (embeddings), Anthropic (LLM) |
+| `GraphEntityExtractor` | `src/pam/graph/entity_extractor.py` | Bridges ingestion pipeline → Graphiti; converts KnowledgeSegment + raw doc into episodes | `GraphitiService` |
+| `GraphDiffEngine` | `src/pam/graph/diff_engine.py` | Detects entity/edge changes between ingestion runs; uses Graphiti's temporal invalidation | `GraphitiService`, PG `SyncLog` |
+| `graph` route module | `src/pam/api/routes/graph.py` | REST endpoints: GET /graph/nodes, GET /graph/edges, GET /graph/subgraph/{entity_id} | `GraphitiService`, `get_graph_service` dep |
+| GraphExplorer component | `web/src/components/graph/GraphExplorer.tsx` | `@neo4j-nvl/react` `InteractiveNvlWrapper` rendering | `/api/graph/*` endpoints |
+| Graph API hooks | `web/src/hooks/useGraph.ts` | Fetches graph data, adapts API response to NVL node/rel format | `/api/graph/*` endpoints |
+
+### Existing Components Modified
+
+| Component | What Changes | Why |
+|-----------|-------------|-----|
+| `src/pam/api/main.py` | Add `GraphitiService` init/close in lifespan | Needs lifecycle management (Neo4j bolt connection) |
+| `src/pam/api/deps.py` | Add `get_graph_service(request)` dependency | Stateless accessor matching existing pattern |
+| `src/pam/common/config.py` | Add `neo4j_uri`, `neo4j_user`, `neo4j_password`, `graph_enabled` settings | Configuration without breaking existing settings |
+| `src/pam/ingestion/pipeline.py` | Add optional graph extraction step (step 9) after PG commit | Graphiti extraction is expensive; runs after PG commit so failures don't roll back |
+| `src/pam/agent/agent.py` | Add `graph_service` constructor param; add `search_knowledge_graph` tool dispatch | New tool for graph-aware retrieval |
+| `src/pam/agent/tools.py` | Add `SEARCH_KNOWLEDGE_GRAPH_TOOL` definition | Exposes new tool to Claude |
+| `src/pam/api/routes/ingest.py` | Pass `graph_service` to `spawn_ingestion_task` | Background task needs graph service reference |
+| `src/pam/ingestion/task_manager.py` | Accept optional `graph_service` param; pass to pipeline | Background task wiring |
+| `docker-compose.yml` | Add `neo4j` service | Infrastructure |
+| `pyproject.toml` | Add `graphiti-core[anthropic]` dependency | Python package |
+
+### Existing Components Unchanged
+
+- `HybridSearchService`, `HaystackSearchService` — ES retrieval unchanged
+- `ElasticsearchStore`, `PostgresStore` — storage unchanged
+- `DoclingParser`, `HybridChunker` — document processing unchanged
+- `OpenAIEmbedder` — still used for ES embeddings (Graphiti uses its own)
+- Existing `ExtractedEntity` table in PG — still used by `search_entities` tool (flat entity store for metrics/KPIs)
+- All existing API routes (chat, documents, search, auth, admin) — unchanged
+- Alembic migrations for PG — no new PG tables needed (graph lives in Neo4j)
+- Frontend chat, document list, search UI — unchanged
+
+---
+
+## Data Flow Changes
+
+### Ingestion Pipeline (Modified)
+
+```
+Before (steps 1-10 unchanged):
+  1. connector.fetch_document()
+  2. content hash check
+  3. docling_parser.parse()
+  4. chunk_document()
+  5. embedder.embed_texts_with_cache()
+  6. build KnowledgeSegment objects
+  7. pg_store.upsert_document() + save_segments()
+  8. pg_store.log_sync()
+  9. session.commit()
+  10. es_store.delete_by_document() + bulk_index()
+
+After — add step 11 (conditional):
+  11. if graph_enabled and graph_service:
+        await graph_service.ingest_document_episodes(
+            source_id=source_id,
+            title=raw_doc.title,
+            segments=segments,
+            reference_time=now(),
+        )
+      # failure here logs an error but does NOT rollback PG/ES
+```
+
+**Why after commit:** Graphiti `add_episode()` is expensive (multiple LLM calls for entity extraction, deduplication, temporal invalidation). PG is authoritative. A graph extraction failure should never cause data loss in the primary store.
+
+**Episode structure per document:** One episode per chunked segment (not per document). This gives Graphiti fine-grained provenance and lets it invalidate individual facts when a section changes.
 
 ```python
-_embedder: OpenAIEmbedder | None = None
-_embedder_lock = asyncio.Lock()
-
-async def get_embedder() -> OpenAIEmbedder:
-    global _embedder
-    if _embedder is None:
-        async with _embedder_lock:
-            if _embedder is None:
-                _embedder = OpenAIEmbedder()
-    return _embedder
+await graphiti.add_episode(
+    name=f"{source_id}::{segment.position}",
+    episode_body=segment.content,
+    source=EpisodeType.text,
+    source_description=f"PAM document: {title}",
+    reference_time=ingestion_timestamp,
+    group_id=source_id,  # isolates per document for targeted re-ingestion
+    entity_types=PAM_ENTITY_TYPES,   # Pydantic schemas
+    edge_types=PAM_EDGE_TYPES,
+    edge_type_map=PAM_EDGE_TYPE_MAP,
+)
 ```
 
-Used for: embedder, reranker, search_service, duckdb_service, redis_client. Each has a module-level `_instance` variable, an `asyncio.Lock`, and a getter function implementing double-checked locking.
-
-**Verdict:** Functionally correct for async concurrency (asyncio.Lock guards creation in a single event loop). However, the module-level globals make testing painful -- there is no `reset_*` function for these, so tests cannot swap them without `monkeypatch`. The `_search_service` is particularly problematic because it captures `es_client` and `cache` from `request.app.state` at first access and never updates them.
-
-### Pattern 3: Lifespan + app.state (main.py)
-
-```python
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    app.state.es_client = AsyncElasticsearch(settings.elasticsearch_url)
-    app.state.redis_client = await get_redis()
-    yield
-    await close_redis()
-    await app.state.es_client.close()
-```
-
-ES client and Redis client are created in the lifespan context manager and stored on `app.state`. Access is via `request.app.state` in dependency functions.
-
-**Verdict:** This is the FastAPI-recommended pattern and the best one in the codebase. It supports proper async cleanup, test overrides via `dependency_overrides`, and clear lifecycle boundaries.
-
-## Component Dependency Graph
+### Agent Tool Call Flow (New Tool)
 
 ```
-                        Settings (config.py)
-                       /    |    \       \
-                      /     |     \       \
-                     v      v      v       v
-              Database   Cache   Agent   DuckDB
-              (PG engine, (Redis) (Anthropic) (analytics)
-               session)     |       |
-                  |         v       v
-                  |    CacheService  RetrievalAgent
-                  |         |       /    |    \
-                  v         v      v     v     v
-               get_db()  get_cache  SearchSvc  Embedder  Reranker
-                  |         |       |          |         |
-                  v         v       v          v         v
-              [per-request] [per-request] [singleton] [singleton] [singleton]
-                                    |
-                                    v
-                             ES Client (app.state)
+User: "How has our MRR definition changed over time?"
+  → Claude selects search_knowledge_graph tool
+  → agent._search_knowledge_graph({"query": "MRR definition", "include_history": true})
+    → graph_service.search(query, center_node_uuid=None)
+    → graphiti.search(query) → List[EntityEdge]
+    → format facts with t_valid/t_invalid timestamps
+  → Claude receives: facts with temporal validity periods
+  → Claude synthesizes temporal narrative in answer
 ```
 
-### Component Boundaries
+### Change Detection / Diff Flow
 
-| Component | Responsibility | Reads Settings | Communicates With | Lifecycle |
-|-----------|---------------|----------------|-------------------|-----------|
-| `config.py` | Application configuration | IS settings | Everything | Process-level singleton via lru_cache |
-| `database.py` | SQLAlchemy engine + session factory | `settings.database_url` | `config.py` | Process-level singleton via lru_cache |
-| `cache.py` | Redis client + CacheService | `settings.redis_url`, `settings.redis_*_ttl` | `config.py`, Redis | Redis client = process singleton; CacheService = per-request |
-| `deps.py` | FastAPI DI wiring | 6 settings reads | Everything | Dependency functions, some caching singletons |
-| `main.py` | App factory + lifespan | `settings.*` (6 reads) | ES, Redis, DB, logging | Application lifecycle |
-| `agent.py` | Retrieval agent | `settings.anthropic_api_key`, `settings.agent_model` | SearchSvc, Embedder, DB, DuckDB | Per-request (good) |
-| `hybrid_search.py` | ES hybrid search | `settings.elasticsearch_index` | ES client, CacheService, Reranker | Singleton via deps.py |
-| `haystack_search.py` | Haystack search backend | `settings.elasticsearch_url`, `settings.elasticsearch_index`, `settings.rerank_model` | ES, CacheService | Singleton via deps.py |
-| `openai_embedder.py` | Text embedding | `settings.openai_api_key`, `settings.embedding_model`, `settings.embedding_dims` | OpenAI API | Singleton via deps.py |
-| `duckdb_service.py` | SQL analytics | `settings.duckdb_data_dir`, `settings.duckdb_max_rows` | Local DuckDB | Singleton via deps.py |
-| `task_manager.py` | Background ingestion | None (uses session_factory directly) | DB, ES, Embedder, Redis | Background asyncio tasks |
+The change detection engine hooks into re-ingestion. When a document is re-ingested (content hash changed), the pipeline calls `GraphDiffEngine.diff_document()` which:
 
-### Where Settings Are Actually Read at Runtime
+1. Retrieves current active edges for `group_id=source_id` from Neo4j
+2. Calls `add_episode()` with new segment content — Graphiti's built-in invalidation LLM call handles edge-level conflicts automatically (sets `t_invalid` on contradicted edges)
+3. Queries edges with `t_invalid` set after the ingestion timestamp — these are the "changed facts"
+4. Writes a diff summary to `SyncLog.details` (JSONB) — already exists in PG schema
 
-The 15 modules that import `settings` fall into three categories:
+This design **delegates temporal conflict resolution to Graphiti** rather than building a custom diff algorithm. Graphiti's invalidation prompt already handles "was X, now Y" semantics correctly.
 
-**Category A: Read in constructor (testable via constructor params).**
-Already pass settings as constructor defaults with `or settings.X` fallback: `RetrievalAgent`, `OpenAIEmbedder`, `HybridSearchService`, `HaystackSearchService`, `DuckDBService`.
-
-**Category B: Read at function call time (testable via proxy reset).**
-Read settings inside methods or at dependency-resolution time: `deps.py` (reads `settings.rerank_enabled`, `settings.use_haystack_retrieval`, etc.), `main.py` lifespan, `cache.py` CacheService properties.
-
-**Category C: Read at import/class-definition time (problematic).**
-Currently none -- the proxy pattern already defers reads. This is a strength of the existing design.
-
-## Recommended Architecture After Refactoring
-
-### Principle: Push Settings to the Boundary
-
-The target architecture should follow a clear rule: **settings are read once at the application boundary (lifespan + deps.py) and passed as explicit parameters to all services**. No service should import or read `settings` at runtime.
-
-### Target Component Hierarchy
-
-```
-lifespan(app)                      # Reads settings, creates long-lived resources
-  |-- app.state.es_client          # ES client (existing, good)
-  |-- app.state.redis_client       # Redis client (existing, good)
-  |-- app.state.engine             # NEW: move engine creation here
-  |-- app.state.session_factory    # NEW: derived from engine
-  |
-  v
-deps.py                            # Reads settings, wires dependencies
-  |-- get_db()                     # Uses app.state.session_factory
-  |-- get_es_client()              # Uses app.state.es_client (existing, good)
-  |-- get_cache_service()          # Uses app.state.redis_client (existing, good)
-  |-- get_embedder()               # NEW: created once, stored on app.state
-  |-- get_reranker()               # NEW: created once, stored on app.state
-  |-- get_search_service()         # NEW: created once, stored on app.state
-  |-- get_duckdb_service()         # NEW: created once, stored on app.state
-  |-- get_agent()                  # Per-request (existing, good)
-  |
-  v
-Services (no settings imports)     # All config via constructor params
-  |-- RetrievalAgent(search, embedder, api_key, model, ...)
-  |-- HybridSearchService(es_client, index_name, cache, reranker)
-  |-- OpenAIEmbedder(api_key, model, dims, ...)
-  |-- CacheService(client, search_ttl, session_ttl)
-  |-- DuckDBService(data_dir, max_rows)
-```
-
-### Pattern: app.state for Application-Scoped Singletons
-
-Move the double-checked locking singletons from `deps.py` module-level globals into `app.state` via the lifespan context manager. This gives:
-
-1. **Proper cleanup**: async resources disposed in lifespan shutdown
-2. **Test overrides**: `app.dependency_overrides[get_X]` works cleanly
-3. **No global mutation**: no `global _embedder` statements
-4. **Explicit lifecycle**: created in lifespan, used in handlers, cleaned in shutdown
-
-```python
-# main.py lifespan (target state)
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    s = get_settings()
-
-    # Infrastructure
-    app.state.es_client = AsyncElasticsearch(s.elasticsearch_url)
-    app.state.redis_client = await get_redis()
-    app.state.engine = create_async_engine(s.database_url, pool_size=5, max_overflow=10)
-    app.state.session_factory = async_sessionmaker(app.state.engine, ...)
-
-    # Services (created once, used for app lifetime)
-    app.state.embedder = OpenAIEmbedder(
-        api_key=s.openai_api_key,
-        model=s.embedding_model,
-        dims=s.embedding_dims,
-    )
-
-    # ... ES index init, stale task recovery ...
-
-    yield
-
-    # Cleanup
-    await app.state.engine.dispose()
-    await close_redis()
-    await app.state.es_client.close()
-```
-
-```python
-# deps.py (target state -- no module-level globals)
-def get_embedder(request: Request) -> OpenAIEmbedder:
-    return request.app.state.embedder
-
-def get_search_service(request: Request) -> HybridSearchService:
-    return request.app.state.search_service
-
-async def get_db(request: Request) -> AsyncGenerator[AsyncSession, None]:
-    factory = request.app.state.session_factory
-    async with factory() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-```
-
-### Pattern: Keep Proxy + lru_cache for Settings
-
-The current `_SettingsProxy` + `get_settings()` + `reset_settings()` pattern in `config.py` is solid. It should remain as-is because:
-
-1. Settings are needed before lifespan starts (e.g., `create_app()` reads CORS origins for middleware)
-2. The proxy avoids import-time env reads while providing a clean API
-3. `reset_settings()` already enables test isolation
-4. FastAPI's recommended `@lru_cache` + `Depends(get_settings)` pattern is essentially what this proxy achieves
-
-The only change needed: services that currently import `settings` and read it in methods should instead receive config values via constructor parameters.
-
-### Pattern: Explicit Constructor Parameters for Services
-
-Every service should accept all configuration as constructor params with no hidden settings reads:
-
-```python
-# BEFORE (CacheService reads settings at property access time)
-class CacheService:
-    @property
-    def search_ttl(self) -> int:
-        return self._search_ttl if self._search_ttl is not None else settings.redis_search_ttl
-
-# AFTER (CacheService is fully configured at construction)
-class CacheService:
-    def __init__(self, client: redis.Redis, search_ttl: int, session_ttl: int) -> None:
-        self.client = client
-        self.search_ttl = search_ttl
-        self.session_ttl = session_ttl
-```
-
-This matters because:
-- Tests can construct services with exact values, no env vars needed
-- No hidden coupling to global state
-- Constructor signature documents all dependencies
-
-### The task_manager.py Problem
-
-`task_manager.py` directly imports `async_session_factory` because background tasks run outside the request lifecycle and cannot use FastAPI's DI. After refactoring, it should receive the session factory as a parameter:
-
-```python
-def spawn_ingestion_task(
-    task_id: uuid.UUID,
-    folder_path: str,
-    es_client: AsyncElasticsearch,
-    embedder: BaseEmbedder,
-    session_factory: async_sessionmaker,  # NEW: explicit param
-) -> None:
-    asyncio_task = asyncio.create_task(
-        run_ingestion_background(task_id, folder_path, es_client, embedder, session_factory),
-    )
-```
-
-The caller (ingest route handler) already has access to these via dependency injection.
-
-## Anti-Patterns to Avoid
-
-### Anti-Pattern 1: Module-Level Global + asyncio.Lock Without Reset
-
-**What:** `_embedder: X | None = None` + `_embedder_lock = asyncio.Lock()` with no reset function.
-
-**Why bad:** Tests cannot replace the singleton without monkeypatching module internals. If one test creates the embedder, all subsequent tests use that instance. The Lock is created at import time, meaning it is tied to the event loop that existed at import -- this can cause issues with pytest-asyncio which may create new loops per test.
-
-**Instead:** Store on `app.state` in lifespan, override via `dependency_overrides` in tests.
-
-### Anti-Pattern 2: Singleton Capturing Request-Scoped State
-
-**What:** `get_search_service()` captures `es_client` and `cache` from the first request's `request.app.state` and never updates them.
-
-```python
-# Current problematic code
-async def get_search_service(request: Request) -> HybridSearchService:
-    global _search_service
-    if _search_service is None:
-        async with _search_service_lock:
-            if _search_service is None:
-                es_client = get_es_client(request)  # Captured once!
-                cache = get_cache_service(request)   # Captured once!
-                ...
-```
-
-**Why bad:** If `app.state.es_client` or `app.state.redis_client` changes (e.g., reconnection), the singleton still holds the old reference. In tests, if `dependency_overrides` replaces `get_es_client`, the search service still uses whatever was captured on first call.
-
-**Instead:** Create search service in lifespan with explicit params, or re-resolve dependencies on each call.
-
-### Anti-Pattern 3: Settings Reads Scattered Across Service Methods
-
-**What:** A service imports `settings` and reads it inside methods, not just the constructor.
-
-**Why bad:** Makes the service's behavior dependent on global mutable state. Tests that change env vars after service construction may or may not affect behavior depending on which code path is hit.
-
-**Instead:** Read all settings at construction time and store as instance attributes.
+---
 
 ## Patterns to Follow
 
-### Pattern: Test Override via dependency_overrides (Existing, Keep)
+### Pattern 1: GraphitiService as app.state Singleton
 
-The current test pattern in `tests/test_api/conftest.py` is excellent:
+**What:** Initialize one `Graphiti` instance in lifespan, store on `app.state.graph_service`, expose via `get_graph_service(request)` dependency — identical to how `es_client`, `embedder`, and `search_service` are handled today.
 
-```python
-@pytest.fixture
-def app(mock_agent, mock_search_service, ...):
-    application = create_app()
-    application.dependency_overrides[get_agent] = lambda: mock_agent
-    application.dependency_overrides[get_search_service] = lambda: mock_search_service
-    ...
-    return application
-```
-
-This pattern should remain the primary way to swap services in API tests. The refactoring makes it more reliable by ensuring singletons are not cached in module globals that bypass the override.
-
-### Pattern: Async Cleanup in Lifespan
-
-Resources that need async disposal (engine, ES client, Redis) must be created and destroyed in the lifespan context manager. This is already done for ES and Redis. After refactoring, the DB engine joins them:
+**Why:** The `Graphiti` class holds a Neo4j driver (bolt connection pool) and LLM clients. Creating it per-request is prohibitively expensive. The existing `app.state` singleton pattern (already used for `es_client`, `embedder`, `search_service`) is the correct FastAPI pattern.
 
 ```python
-yield  # app runs here
+# main.py lifespan addition
+if settings.graph_enabled:
+    from pam.graph.graphiti_service import GraphitiService
+    graph_service = GraphitiService(
+        neo4j_uri=settings.neo4j_uri,
+        neo4j_user=settings.neo4j_user,
+        neo4j_password=settings.neo4j_password,
+        anthropic_api_key=settings.anthropic_api_key,
+        openai_api_key=settings.openai_api_key,
+    )
+    await graph_service.initialize()  # builds indices + constraints
+    app.state.graph_service = graph_service
+else:
+    app.state.graph_service = None
 
-# Cleanup (reverse order of creation)
-await app.state.engine.dispose()
-await close_redis()
-await app.state.es_client.close()
+# lifespan shutdown:
+if app.state.graph_service:
+    await app.state.graph_service.close()
 ```
 
-### Pattern: Per-Request Services That Need Request-Scoped State
+```python
+# deps.py addition (stateless, matches existing pattern)
+def get_graph_service(request: Request) -> "GraphitiService | None":
+    return cast("GraphitiService | None", request.app.state.graph_service)
+```
 
-`RetrievalAgent` is per-request because it holds a DB session and mutable state (`_default_source_type`). This pattern is correct and should remain. Services that are stateless or hold only long-lived connections (embedder, search service) should be application-scoped singletons.
+### Pattern 2: Anthropic + OpenAI Split in Graphiti
 
-## Safe Refactoring Order
+**What:** Configure Graphiti with `AnthropicClient` for entity extraction LLM calls but `OpenAIEmbedder` for graph embeddings. OpenAI embeddings in Graphiti are independent from the project's existing `OpenAIEmbedder` — Graphiti manages its own embedder instance internally.
 
-The refactoring has a specific dependency order. Changing components out of order will break the test suite.
+**Why:** Graphiti requires OpenAI for embeddings even when using Anthropic for LLM inference. The existing project already has `settings.openai_api_key` and `settings.anthropic_api_key`.
 
-### Phase 1: Settings Foundation (Low Risk)
+```python
+# GraphitiService initialization
+from graphiti_core import Graphiti
+from graphiti_core.llm_client.anthropic_client import AnthropicClient, LLMConfig
+from graphiti_core.embedder.openai import OpenAIEmbedder as GraphitiEmbedder, OpenAIEmbedderConfig
 
-**What:** Make `CacheService` fully configured via constructor. Remove the fallback `settings.redis_search_ttl` reads from properties.
+graphiti = Graphiti(
+    neo4j_uri, neo4j_user, neo4j_password,
+    llm_client=AnthropicClient(
+        config=LLMConfig(
+            api_key=anthropic_api_key,
+            model="claude-sonnet-4-20250514",
+            small_model="claude-3-5-haiku-20241022",
+        )
+    ),
+    embedder=GraphitiEmbedder(
+        config=OpenAIEmbedderConfig(
+            api_key=openai_api_key,
+            embedding_model="text-embedding-3-small",  # Graphiti's own embedding
+        )
+    ),
+)
+```
 
-**Why first:** CacheService is a leaf dependency (nothing depends on its constructor signature changing). Tests already construct it with explicit `client` param. Only need to add `search_ttl` and `session_ttl` as required params.
+### Pattern 3: PAM-Specific Entity Types as Pydantic Models
 
-**Blast radius:** `cache.py` + `deps.py` (update CacheService construction) + `task_manager.py` (update CacheService construction) + cache tests.
+**What:** Define domain-specific entity and edge types as Pydantic models extending Graphiti's schema, passed to `add_episode()` as `entity_types` dict.
 
-**What changes:**
-1. `CacheService.__init__` requires `search_ttl` and `session_ttl` (no Optional, no settings fallback)
-2. `CacheService` no longer imports `settings`
-3. `deps.py` `get_cache_service()` passes TTL values from `get_settings()`
-4. `task_manager.py` passes TTL values when constructing CacheService
+**Why:** The existing `ExtractedEntity` table stores flat JSONB. Graphiti's graph entities require typed Pydantic schemas for the LLM extraction prompt. The schemas should mirror the business domain already established in `src/pam/ingestion/extractors/schemas.py`.
 
-**Test impact:** ~5 tests in `test_cache.py` need updated construction calls.
+```python
+# src/pam/graph/pam_entity_types.py
+from pydantic import BaseModel, Field
+from typing import Optional
 
-### Phase 2: Database Engine to Lifespan (Medium Risk)
+class Metric(BaseModel):
+    """A business metric with formula and ownership."""
+    formula: Optional[str] = Field(None, description="Calculation formula")
+    owner_team: Optional[str] = Field(None, description="Owning team")
+    data_source: Optional[str] = Field(None, description="Source system")
 
-**What:** Move `create_async_engine` and `async_sessionmaker` from `database.py` lru_cache into `app.state` via lifespan.
+class KPITarget(BaseModel):
+    """A measurable target for a metric."""
+    target_value: Optional[str] = Field(None, description="Numeric or percentage target")
+    period: Optional[str] = Field(None, description="Time period e.g. Q1 2025")
 
-**Why second:** The DB session factory is used in three places: `deps.py`, `main.py`, and `task_manager.py`. Moving it to app.state is straightforward but `task_manager.py` needs the factory passed as a parameter instead of importing it.
+class Process(BaseModel):
+    """A business process or workflow."""
+    owner_team: Optional[str] = Field(None)
+    frequency: Optional[str] = Field(None)
 
-**Blast radius:** `database.py` + `main.py` + `deps.py` + `task_manager.py` + `ingest.py` route (passes factory to task_manager) + database tests + task_manager tests.
+PAM_ENTITY_TYPES = {
+    "Metric": Metric,
+    "KPITarget": KPITarget,
+    "Process": Process,
+    "Team": None,  # None = use default EntityNode (name only)
+    "System": None,
+}
+```
 
-**What changes:**
-1. `database.py` keeps `get_engine()` / `get_session_factory()` / `reset_database()` for backward compat, but `main.py` lifespan creates the canonical instances on `app.state`
-2. `deps.py` `get_db()` uses `request.app.state.session_factory` instead of importing `async_session_factory`
-3. `task_manager.py` functions accept `session_factory` as an explicit parameter
-4. `ingest.py` route passes `request.app.state.session_factory` to task_manager
+### Pattern 4: group_id for Document Isolation
 
-**Test impact:** ~10-15 tests across API and task_manager tests. Existing `dependency_overrides[get_db]` pattern continues working.
+**What:** Use Graphiti's `group_id` parameter set to the PAM `source_id` (document path or Google Doc ID) when calling `add_episode()`.
 
-**Preserve backward compat:** Keep `database.py` proxy objects working for any code that imports them directly. They still work via lru_cache. The new path through app.state is additive.
+**Why:** `group_id` partitions graph data so re-ingesting a single document only conflicts with that document's existing edges. Without this, temporal invalidation would compare a new segment's facts against all knowledge in the graph, causing spurious conflicts.
 
-### Phase 3: Service Singletons to app.state (Medium Risk)
+### Pattern 5: New Agent Tool Following Existing Dispatch Pattern
 
-**What:** Move embedder, reranker, search_service, and duckdb_service from `deps.py` module globals to `app.state`.
+**What:** Add `search_knowledge_graph` to `ALL_TOOLS` in `tools.py` and add a `graph_service` optional dependency to `RetrievalAgent.__init__()`. Dispatch in `_execute_tool()` matches the existing pattern for all five current tools.
 
-**Why third:** These depend on the patterns established in Phases 1-2 (settings passed explicitly, DB engine on app.state). The search service depends on ES client, cache, and reranker -- all of which need to be available before it is constructed.
+**Why:** The agent tool loop in `agent.py` is already extensible — `_execute_tool()` is a simple if/elif dispatch. Adding a new branch for `search_knowledge_graph` follows the established pattern with no architectural changes required.
 
-**Blast radius:** `deps.py` (major rewrite of singleton getters) + `main.py` (lifespan creates services) + all API route tests that override these dependencies.
+```python
+# agent/tools.py addition
+SEARCH_KNOWLEDGE_GRAPH_TOOL = {
+    "name": "search_knowledge_graph",
+    "description": (
+        "Search the knowledge graph for entity relationships and facts. "
+        "Returns structured facts with temporal validity (when they were true). "
+        "Use this for: entity relationships, historical changes, 'how has X changed', "
+        "'what team owns Y', 'what is the relationship between A and B'."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Natural language question about entities and relationships.",
+            },
+            "include_history": {
+                "type": "boolean",
+                "description": "Include invalidated (historical) facts. Default false.",
+                "default": False,
+            },
+        },
+        "required": ["query"],
+    },
+}
+```
 
-**What changes:**
-1. Remove module-level `_embedder`, `_reranker`, `_search_service`, `_duckdb_service` and their locks from `deps.py`
-2. `main.py` lifespan creates these services with explicit config:
-   ```python
-   app.state.embedder = OpenAIEmbedder(api_key=s.openai_api_key, ...)
-   app.state.reranker = CrossEncoderReranker(model_name=s.rerank_model) if s.rerank_enabled else None
-   app.state.search_service = HybridSearchService(app.state.es_client, ..., reranker=app.state.reranker)
-   app.state.duckdb_service = DuckDBService(data_dir=s.duckdb_data_dir, ...) if s.duckdb_data_dir else None
-   ```
-3. `deps.py` getters become simple `request.app.state.X` lookups
-4. Remove `from pam.common.config import settings` from `deps.py`
+```python
+# agent.py RetrievalAgent modifications
+class RetrievalAgent:
+    def __init__(
+        self,
+        search_service: SearchService,
+        embedder: BaseEmbedder,
+        api_key: str,
+        model: str,
+        cost_tracker: CostTracker | None = None,
+        db_session: AsyncSession | None = None,
+        duckdb_service: DuckDBService | None = None,
+        graph_service: GraphitiService | None = None,  # NEW, optional
+    ) -> None:
+        ...
+        self.graph_service = graph_service  # None = tool returns "not configured"
 
-**Test impact:** ~5-10 tests. The existing `dependency_overrides` pattern already works for these -- the main change is that tests no longer need to worry about stale module-level singletons leaking across tests.
+    async def _execute_tool(self, tool_name: str, tool_input: dict):
+        ...
+        if tool_name == "search_knowledge_graph":
+            return await self._search_knowledge_graph(tool_input)
+        ...
 
-### Phase 4: Remove Settings Imports from Services (Low Risk)
+    async def _search_knowledge_graph(self, input_: dict) -> tuple[str, list[Citation]]:
+        if not self.graph_service:
+            return "Knowledge graph not configured.", []
+        query = input_["query"]
+        include_history = input_.get("include_history", False)
+        facts = await self.graph_service.search_facts(query, include_invalidated=include_history)
+        # format EntityEdge results with validity timestamps
+        ...
+```
 
-**What:** Remove `from pam.common.config import settings` from service modules that already accept config via constructor params but still have fallback reads.
+### Pattern 6: NVL React Component as Sidebar/Panel
 
-**Why last:** This is a cleanup pass after Phases 1-3 ensure all config is passed explicitly. Each service already has constructor params for its config values; we just need to remove the `or settings.X` fallbacks and make the params required.
+**What:** Add a `GraphExplorer` React component using `@neo4j-nvl/react` `InteractiveNvlWrapper`. Render it as a collapsible side panel in the existing layout, not a separate page.
 
-**Blast radius:** Individual service files + their unit tests. Each can be done independently.
+**Why:** The existing frontend uses React Router with a layout pattern. A side panel keeps the graph explorer contextual to the current chat/document without requiring navigation. NVL's `InteractiveNvlWrapper` provides pan/zoom/click interactions out of the box.
 
-**Target modules and changes:**
-| Module | Current `settings` Reads | Change |
-|--------|------------------------|--------|
-| `hybrid_search.py` | `settings.elasticsearch_index` in `__init__` fallback | Make `index_name` required (or keep default) |
-| `haystack_search.py` | `settings.elasticsearch_url`, `settings.elasticsearch_index`, `settings.rerank_model` in `__init__` fallback | Make params required |
-| `openai_embedder.py` | `settings.openai_api_key`, `settings.embedding_model`, `settings.embedding_dims` in `__init__` fallback | Make params required |
-| `agent.py` | `settings.anthropic_api_key`, `settings.agent_model` in `__init__` fallback | Make params required |
-| `duckdb_service.py` | `settings.duckdb_data_dir`, `settings.duckdb_max_rows` in `__init__` fallback | Make params required |
-| `entity_extractor.py` | `settings.anthropic_api_key` | Pass via constructor |
-| `hybrid_chunker.py` | `settings.chunk_size_tokens` | Pass via function param |
-| `elasticsearch_store.py` | `settings.elasticsearch_index`, `settings.embedding_dims` | Pass via constructor |
+```typescript
+// web/src/components/graph/GraphExplorer.tsx
+import { InteractiveNvlWrapper } from '@neo4j-nvl/react'
+import type { Node, Relationship } from '@neo4j-nvl/base'
 
-**Test impact:** Minimal. Most unit tests already construct services with explicit params. Tests that relied on settings fallbacks need to pass values explicitly.
+interface GraphExplorerProps {
+  entityQuery?: string   // pre-populate from chat context
+}
+
+export function GraphExplorer({ entityQuery }: GraphExplorerProps) {
+  const { nodes, rels, isLoading } = useGraph(entityQuery)
+  return (
+    <InteractiveNvlWrapper
+      nodes={nodes}
+      rels={rels}
+      mouseEventCallbacks={{
+        onNodeClick: handleNodeClick,
+        onNodeDoubleClick: handleExpand,
+      }}
+    />
+  )
+}
+```
+
+```typescript
+// web/src/hooks/useGraph.ts
+// Fetches /api/graph/subgraph?query=... and adapts to NVL format
+// NVL Node: { id: string, captions: [{value: string}], color: string }
+// NVL Rel: { id: string, from: string, to: string, captions: [{value: string}] }
+```
+
+---
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: One Episode Per Full Document
+
+**What:** Calling `graphiti.add_episode(episode_body=full_document_content)` with the entire document as one episode.
+
+**Why bad:** Graphiti's entity extraction runs LLM calls proportional to content length. Full documents will hit token limits, produce inaccurate extraction, and slow ingestion. The bi-temporal tracking granularity is also too coarse — a section change invalidates the entire document's edges.
+
+**Instead:** One episode per `KnowledgeSegment` (chunked). Use `group_id=source_id` to logically group episodes from the same document.
+
+### Anti-Pattern 2: Creating Graphiti Instance Per Request
+
+**What:** Initializing `Graphiti(...)` inside `get_agent()` in `deps.py`.
+
+**Why bad:** `Graphiti.__init__()` creates a Neo4j bolt driver connection pool and instantiates LLM clients. This is a heavyweight operation that would dominate request latency.
+
+**Instead:** Single `GraphitiService` instance on `app.state`, initialized in lifespan, closed in shutdown.
+
+### Anti-Pattern 3: Blocking the Ingestion Pipeline on Graph Extraction
+
+**What:** Putting `await graphiti.add_episode()` inside the PG transaction (before `session.commit()`).
+
+**Why bad:** Each `add_episode()` call makes 4-8 LLM calls for entity extraction, deduplication, and temporal invalidation. A document with 20 segments would make 80-160 LLM calls before PG commits. This creates a catastrophically long transaction window and makes PG the bottleneck.
+
+**Instead:** Graph extraction runs after `session.commit()` (step 11 in the pipeline). A graph failure logs an error but never rolls back PG data. The PG data is always authoritative.
+
+### Anti-Pattern 4: Replacing ExtractedEntity with Graph Only
+
+**What:** Removing the existing `ExtractedEntity` PG table and routing `search_entities` tool calls to Neo4j instead.
+
+**Why bad:** The PG entity table stores structured business entities (metrics, events, KPIs) as searchable JSONB. It's fast, simple, and proven. The knowledge graph serves a different purpose: capturing relationships and temporal changes between any entity types, including free-form ones the LLM discovers.
+
+**Instead:** Both coexist. `search_entities` tool → PG `extracted_entities` (precise structured lookup). `search_knowledge_graph` tool → Neo4j (relationship discovery and temporal history). The agent uses both as needed.
+
+### Anti-Pattern 5: Hardwiring NVL in Core Layout
+
+**What:** Adding the graph explorer as a permanent fixture in the app shell layout.
+
+**Why bad:** The graph explorer is only useful when there's graph data. Making it always visible wastes screen real estate and confuses users when `graph_enabled=false`.
+
+**Instead:** Conditionally render based on `VITE_GRAPH_ENABLED` env variable or an API feature flag endpoint. Use a toggle button that reveals the explorer panel.
+
+### Anti-Pattern 6: Sharing Graphiti's Internal Embedder with PAM's OpenAIEmbedder
+
+**What:** Passing PAM's existing `OpenAIEmbedder` instance into Graphiti's constructor.
+
+**Why bad:** Graphiti's `embedder` parameter accepts a `graphiti_core.embedder.openai.OpenAIEmbedder`, not PAM's `pam.ingestion.embedders.openai_embedder.OpenAIEmbedder`. These are different classes from different packages with different interfaces.
+
+**Instead:** Let Graphiti manage its own embedder instance. Both use the same OpenAI API key but operate independently. This is two API clients to OpenAI, which is acceptable.
+
+---
+
+## Build Order
+
+Build order is determined by dependency direction. Each stage can be tested independently before the next.
+
+### Stage 1: Infrastructure (blocking everything else)
+
+**Deliverables:**
+- Add Neo4j 5.26 to `docker-compose.yml` with health check
+- Add `graphiti-core[anthropic]>=0.28` to `pyproject.toml`
+- Add `neo4j_uri`, `neo4j_user`, `neo4j_password`, `graph_enabled` to `config.py` Settings
+- Add `@neo4j-nvl/react` and `@neo4j-nvl/base` to `web/package.json`
+
+**Why first:** Nothing else can be built or tested without the graph database running and the Python package installed.
+
+**Test:** `docker-compose up neo4j` + `from graphiti_core import Graphiti` imports without error.
+
+### Stage 2: GraphitiService + Lifespan Wiring
+
+**Deliverables:**
+- `src/pam/graph/__init__.py`, `src/pam/graph/graphiti_service.py`
+- `GraphitiService` class wrapping `Graphiti` with `initialize()`, `close()`, `add_episode_for_segment()`, `search_facts()`, `get_subgraph()`
+- `src/pam/graph/pam_entity_types.py` — PAM-specific Pydantic entity schemas
+- `main.py` lifespan: conditional `GraphitiService` init/close
+- `deps.py`: `get_graph_service()` dependency function
+
+**Why second:** This is the foundation all other components depend on. Agent tools, ingestion extension, and REST endpoints all need a working `GraphitiService`.
+
+**Test:** Unit test `GraphitiService` with mocked `Graphiti` client. Integration test against running Neo4j.
+
+### Stage 3: Ingestion Pipeline Extension
+
+**Deliverables:**
+- `src/pam/graph/entity_extractor.py` — `GraphEntityExtractor` bridges pipeline → Graphiti
+- `src/pam/ingestion/pipeline.py` — add step 11 (graph extraction after commit)
+- `src/pam/ingestion/task_manager.py` — accept `graph_service` param
+- `src/pam/api/routes/ingest.py` — pass `graph_service` from `app.state` to task spawner
+
+**Why third:** Depends on `GraphitiService` (Stage 2). The ingestion pipeline modification is independent of the agent and UI.
+
+**Test:** Ingest a test markdown document; verify entities appear in Neo4j. Re-ingest a modified document; verify old facts are temporally invalidated.
+
+### Stage 4: Change Detection / Diff Engine
+
+**Deliverables:**
+- `src/pam/graph/diff_engine.py` — `GraphDiffEngine` with `diff_document()` method
+- Write changed fact summaries to `SyncLog.details` JSONB (no new PG schema changes)
+- Extend `get_change_history` agent tool to optionally include graph diff data
+
+**Why fourth:** Requires Neo4j to be populated (Stage 3) before meaningful diffs can be generated. Can be built and tested independently of the UI.
+
+**Test:** Ingest v1 of a document → modify facts → re-ingest v2 → assert diff engine reports correct changed edges.
+
+### Stage 5: Agent Graph Tool
+
+**Deliverables:**
+- `src/pam/agent/tools.py` — add `SEARCH_KNOWLEDGE_GRAPH_TOOL`
+- `src/pam/agent/agent.py` — add `graph_service` param, `_search_knowledge_graph()` dispatch
+- `src/pam/api/deps.py` — update `get_agent()` to pass `graph_service`
+- Update `SYSTEM_PROMPT` to mention `search_knowledge_graph` tool
+
+**Why fifth:** Requires `GraphitiService` (Stage 2) and working graph data (Stage 3). The agent tool is the primary user-facing integration point.
+
+**Test:** End-to-end: ingest → ask "what team owns MRR?" → verify agent uses `search_knowledge_graph` tool and returns entity relationship from Neo4j.
+
+### Stage 6: REST Graph Endpoints
+
+**Deliverables:**
+- `src/pam/api/routes/graph.py` — `GET /api/graph/nodes`, `GET /api/graph/edges`, `GET /api/graph/subgraph`
+- Register router in `main.py`
+- Pydantic response models for graph data
+
+**Why sixth:** The REST endpoints are consumed by the frontend (Stage 7). They can be built independently of the UI and tested with curl.
+
+**API shape:**
+```
+GET /api/graph/nodes?query=MRR&limit=20
+  → [{ id, name, labels, attributes, created_at }]
+
+GET /api/graph/subgraph?entity_id=<uuid>&depth=2
+  → { nodes: [...], edges: [{id, from, to, fact, valid_at, invalid_at}] }
+
+GET /api/graph/entities?entity_type=Metric&limit=50
+  → paginated list of entity nodes
+```
+
+### Stage 7: Graph Explorer UI
+
+**Deliverables:**
+- `web/src/hooks/useGraph.ts` — React Query hook for graph API
+- `web/src/components/graph/GraphExplorer.tsx` — `InteractiveNvlWrapper` component
+- `web/src/components/graph/EntityPanel.tsx` — click-to-expand entity detail sidebar
+- `web/src/components/graph/TemporalTimeline.tsx` — visualize t_valid/t_invalid periods
+- Toggle button in main chat layout to show/hide graph panel
+
+**Why last:** All backend work must be complete and the REST API must be returning valid data before the UI can be built meaningfully.
+
+**Dependencies:** `@neo4j-nvl/react ^1.0.0`, `@neo4j-nvl/base ^1.0.0`
+
+---
 
 ## Scalability Considerations
 
-| Concern | Current (450 tests) | After Refactoring | At 1000+ tests |
-|---------|---------------------|-------------------|----------------|
-| Test isolation | Module globals leak across tests | app.state per test app instance | Clean isolation |
-| Startup time | Lazy init on first request | Eager init in lifespan (slightly faster first request) | Predictable |
-| Config override | `reset_settings()` + `monkeypatch` | `dependency_overrides` + explicit constructor params | Composable |
-| Async safety | asyncio.Lock guards (correct but global) | No locks needed (lifespan is single-threaded) | Simpler |
-| Resource cleanup | Partial (ES and Redis yes, engine no) | Full cleanup in lifespan shutdown | Reliable |
+| Concern | At 100 docs (initial) | At 1K docs | At 10K docs |
+|---------|----------------------|------------|-------------|
+| Neo4j memory | 512MB sufficient | 2GB recommended | Dedicated instance, index tuning |
+| Graphiti add_episode LLM cost | ~$0.05/segment (Claude Haiku) | Bulk ingestion adds up; consider async queue | Background worker process |
+| Graph query latency | <300ms (Graphiti docs claim P95) | Acceptable with Neo4j indexes | May need Neo4j vector index tuning |
+| NVL rendering | Fine for <500 nodes | Force-directed layout degrades | Limit subgraph depth to 2; paginate |
+| Re-ingestion diff | O(edges in document group) | O(edges in document group), unaffected by total graph size | Same, group_id isolation prevents cross-document scan |
 
-## Build Order for Roadmap
-
-Based on the dependency analysis above, the recommended build order is:
-
-1. **CacheService constructor cleanup** -- standalone, zero dependency on other changes
-2. **Database engine to app.state** -- requires no other changes, unblocks task_manager cleanup
-3. **Service singletons to app.state** -- requires DB engine on app.state (for search service wiring)
-4. **Remove settings fallbacks from services** -- requires Phases 1-3 complete, can be done per-module
-
-Each phase should include:
-- The code change
-- Updated unit tests
-- Verification that all 450+ tests still pass
-- No API contract changes
+---
 
 ## Sources
 
-- [FastAPI Settings and Environment Variables (official docs)](https://fastapi.tiangolo.com/advanced/settings/) -- HIGH confidence: recommended `@lru_cache` + `Depends` + `dependency_overrides` pattern
-- [FastAPI Discussion #8054: Dependency Injection - Singleton?](https://github.com/fastapi/fastapi/discussions/8054) -- HIGH confidence: community consensus on `app.state` + lifespan for singletons
-- [Python asyncio.Lock documentation](https://docs.python.org/3/library/asyncio-sync.html) -- HIGH confidence: asyncio.Lock is NOT thread-safe, only coroutine-safe within single event loop
-- [FastAPI Discussion #8239: Storing object instances in the app context](https://github.com/fastapi/fastapi/discussions/8239) -- MEDIUM confidence: endorses `app.state` over globals
-- Codebase analysis of `src/pam/` -- HIGH confidence: direct reading of source code
+- Codebase read directly (`src/pam/api/main.py`, `deps.py`, `agent/agent.py`, `ingestion/pipeline.py`, `common/models.py`, `common/config.py`, `ingestion/extractors/entity_extractor.py`) — HIGH confidence
+- [Graphiti GitHub: getzep/graphiti](https://github.com/getzep/graphiti) — HIGH confidence
+- [graphiti-core on PyPI (v0.28.0, released 2026-02-17)](https://pypi.org/project/graphiti-core/) — HIGH confidence
+- [Graphiti Quick Start Documentation](https://help.getzep.com/graphiti/getting-started/quick-start) — HIGH confidence
+- [Graphiti Custom Entity and Edge Types](https://help.getzep.com/graphiti/core-concepts/custom-entity-and-edge-types) — HIGH confidence
+- [Graphiti LLM Configuration — Anthropic](https://help.getzep.com/graphiti/configuration/llm-configuration) — HIGH confidence
+- [Graphiti Core Client — DeepWiki](https://deepwiki.com/getzep/graphiti/4.1-graphiti-core) — MEDIUM confidence (community wiki)
+- [Graphiti change detection and temporal invalidation](https://blog.getzep.com/beyond-static-knowledge-graphs/) — HIGH confidence
+- [Zep Temporal Knowledge Graph paper (arxiv 2501.13956)](https://arxiv.org/abs/2501.13956) — HIGH confidence (peer-reviewed)
+- [@neo4j-nvl/react npm package (v1.0.0)](https://www.npmjs.com/package/@neo4j-nvl/react) — HIGH confidence
+- [NVL React Wrappers documentation](https://neo4j.com/docs/nvl/current/react-wrappers/) — HIGH confidence
+- [Neo4j Python Driver Async API (v6.x)](https://neo4j.com/docs/api/python-driver/current/async_api.html) — HIGH confidence
+- [Neo4j Docker Hub](https://hub.docker.com/_/neo4j) — HIGH confidence

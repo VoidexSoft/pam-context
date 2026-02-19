@@ -1,347 +1,141 @@
-# Technology Stack: Code Quality & Cleanup Milestone
+# Technology Stack: Knowledge Graph & Temporal Reasoning Milestone
 
 **Project:** PAM Context
-**Researched:** 2026-02-15
-**Focus:** Tooling and patterns for safe refactoring of an existing Python/FastAPI + React codebase
+**Domain:** Neo4j knowledge graph + Graphiti bi-temporal model + graph-aware agent + NVL graph explorer
+**Researched:** 2026-02-19
+**Confidence:** HIGH (core libraries verified via official docs and PyPI; NVL version HIGH; graphiti version HIGH)
 
 ---
 
-## Current Stack Baseline
+## Scope: Additions and Changes Only
 
-Already in place -- these are not being changed, only cleaned up:
-
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| Runtime | Python 3.12 | 3.12+ |
-| API | FastAPI | >=0.115 |
-| ORM | SQLAlchemy (async) | >=2.0 |
-| Migrations | Alembic | >=1.13 |
-| Validation | Pydantic v2 + pydantic-settings | >=2.0 |
-| Database | PostgreSQL 16, Elasticsearch 8.x | - |
-| Frontend | React 18, TypeScript 5.6, Vite 6, Tailwind 4 | - |
-| Tests | pytest 8 + pytest-asyncio, Vitest 4 (frontend) | - |
-| Linting | Ruff 0.14.11 (installed), pre-commit | - |
-| Type Checking | mypy 1.16.1 (installed) | - |
+This milestone adds the following capabilities to an existing Python 3.12 + FastAPI + SQLAlchemy async + ES 8.x + PG 16 + React 18 + TypeScript + Vite + Tailwind stack. Everything below is NEW — the existing stack is not changed.
 
 ---
 
-## Recommended Tooling for This Milestone
+## New Backend Dependencies
 
-### 1. Ruff -- Expand Rule Coverage
+### Core Graph Technologies
 
-**Confidence:** HIGH (official docs verified)
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| `neo4j` (Python driver) | `>=6.1` | Async Bolt connection to Neo4j; session/transaction management | v6.x is the current release (Jan 2026); v5.x is deprecated. `AsyncGraphDatabase.driver()` integrates cleanly with FastAPI lifespan pattern already in use. The project's existing `app.state` pattern applies directly. |
+| `graphiti-core` | `>=0.28` | Bi-temporal knowledge graph engine; LLM-driven entity extraction; edge invalidation on change | The library that does everything: ingests episodes, extracts entities with OpenAI/Anthropic, maintains dual-timeline (event time + ingestion time), resolves entity duplicates, and queries via hybrid BM25 + vector search. Managed by Zep AI, Apache-2.0 licensed, ~14K GitHub stars as of mid-2025. |
+| `graphiti-core[anthropic]` | same | Anthropic Claude as the LLM provider for entity extraction | The project already uses `anthropic>=0.40`. Installing with `[anthropic]` extra wires Claude into Graphiti's LLM interface without pulling in a second LLM provider. Graphiti defaults to OpenAI — use the Anthropic extra to keep the project vendor-consistent. |
 
-The project currently uses a narrow rule set: `select = ["E", "F", "I", "N", "W", "UP"]`. This misses several rule categories that directly catch the exact issues found in the 7 open GitHub issues.
+### graphiti-core Transitive Dependencies Pulled In
 
-**Recommended expanded configuration:**
+These arrive automatically via graphiti-core. Document them for version-pinning awareness:
 
-```toml
-[tool.ruff.lint]
-select = [
-    # Currently enabled
-    "E",     # pycodestyle errors
-    "F",     # Pyflakes
-    "I",     # isort
-    "N",     # pep8-naming
-    "W",     # pycodestyle warnings
-    "UP",    # pyupgrade
+| Package | Version Pulled | Notes |
+|---------|----------------|-------|
+| `pydantic` | `>=2.11.5` | Already in project at `>=2.0`; no conflict |
+| `openai` | `>=1.91.0` | Already in project at `>=1.50`; graphiti requires newer version — upgrade floor |
+| `tenacity` | `>=9.0.0` | Already in project at `>=8.0`; graphiti requires v9 — upgrade floor |
+| `numpy` | `>=1.0.0` | Not currently in project; pulled transitively |
+| `diskcache` | `>=5.6.3` | Not currently in project; used by graphiti for embedding caching |
+| `posthog` | `>=3.0.0` | Not currently in project; graphiti telemetry (can be silenced) |
 
-    # Add for this milestone
-    "B",     # flake8-bugbear -- catches common bugs (unused loop vars, mutable defaults)
-    "S",     # flake8-bandit -- security issues (bare except, hardcoded passwords)
-    "SIM",   # flake8-simplify -- simplifiable code patterns
-    "C4",    # flake8-comprehensions -- dict/list comprehension improvements
-    "RET",   # flake8-return -- return statement best practices
-    "PT",    # flake8-pytest-style -- pytest patterns
-    "ARG",   # flake8-unused-arguments -- catches unused function args (Issue #36 item 5)
-    "PERF",  # Perflint -- performance anti-patterns
-    "FAST",  # FastAPI-specific -- redundant response_model, non-Annotated deps, unused path params
-    "RUF",   # Ruff-specific -- catch-all for Ruff's own rules
-]
+**Action required in pyproject.toml:** Bump `openai>=1.91.0` and `tenacity>=9.0.0` to satisfy graphiti's stricter floors.
 
-# Suppress rules that conflict with existing patterns
-ignore = [
-    "S101",  # assert usage OK in tests
-    "B008",  # Depends() in function args is a FastAPI pattern, not a bug
-]
+---
 
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ARG001", "ARG002"]  # asserts and fixtures use unused args
-"alembic/**" = ["E501"]  # migration files can have long lines
+## New Infrastructure: Neo4j
+
+### Docker Compose Addition
+
+Add Neo4j 5.26 Community to `docker-compose.yml`. Version 5.26 is the **minimum required by graphiti-core** (verified from graphiti pyproject.toml: `neo4j>=5.26.0`).
+
+```yaml
+neo4j:
+  image: neo4j:5.26-community
+  environment:
+    NEO4J_AUTH: neo4j/pam_password
+    NEO4J_PLUGINS: '[]'          # No APOC needed; graphiti uses native indexes
+    NEO4J_dbms_memory_heap_max__size: 1G
+    NEO4J_dbms_memory_pagecache_size: 512M
+  ports:
+    - "7474:7474"   # HTTP browser UI
+    - "7687:7687"   # Bolt (driver connects here)
+  volumes:
+    - neo4jdata:/data
+  healthcheck:
+    test: ["CMD-SHELL", "cypher-shell -u neo4j -p pam_password 'RETURN 1' || exit 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
 ```
 
-**Why each addition matters for the open issues:**
+**APOC is NOT required.** Graphiti uses Neo4j 5.x native vector indexes and native full-text indexes (both available in Community Edition). APOC full-text procedures are deprecated in Neo4j 5.x. Confirmed by Zep documentation: the three required env vars are only `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`.
 
-| Rule | Catches | Relevant Issue |
-|------|---------|----------------|
-| `B` (bugbear) | Bare except, mutable default args, unused loop vars | #36 (unused `orig_idx`), #43 (bare except) |
-| `S` (bandit) | Hardcoded credentials, bare except blocks | #43 (swallowed exceptions) |
-| `SIM` | Simplifiable conditionals, unnecessary nesting | General cleanup |
-| `ARG` | Unused function arguments | #36 (unused `orig_idx`) |
-| `FAST` | FastAPI-specific: redundant response_model, non-Annotated deps | #43 (missing response_model) |
-| `PT` | Pytest style issues (fixture scope, parametrize patterns) | #39 (test improvements) |
-| `RET` | Unnecessary else after return, implicit returns | General cleanup |
-| `PERF` | Unnecessary list() in iteration, dict copy patterns | General cleanup |
+**Enterprise Edition is NOT needed.** The `USE_PARALLEL_RUNTIME` flag (Enterprise-only) is an optional optimization, not a requirement. Community Edition handles all Graphiti operations.
 
-**Version:** Keep ruff >=0.14 (installed 0.14.11). Ruff 0.15.0 introduces the 2026 style guide which changes formatting; adopt that only if ready for a formatting diff across the codebase. Not required for this milestone.
+---
 
-**Source:** [Ruff Rules Documentation](https://docs.astral.sh/ruff/rules/), [Ruff Configuration](https://docs.astral.sh/ruff/configuration/)
+## New Frontend Dependencies
 
+### Graph Explorer UI
 
-### 2. mypy -- Tighten Configuration
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| `@neo4j-nvl/base` | `^1.0.0` | Core GPU-accelerated graph rendering engine (WebGL) | Required peer dependency of the React wrapper. Canvas-based, HNSW-accelerated layout. Free for commercial use without separate license when connecting to Neo4j. |
+| `@neo4j-nvl/react` | `^1.0.0` | React components: `BasicNvlWrapper` and `InteractiveNvlWrapper` | Official React wrapper around NVL. Provides prop-driven graph updates, external refs, and `mouseEventCallbacks`. Ships with TypeScript types. Latest version: 1.0.0 (published ~5 months ago; stable API). |
+| `@neo4j-nvl/interaction-handlers` | `^1.0.0` | Pan, zoom, drag, hover interactions | Optional but needed for an explorable graph UI. Without it, the graph is static. `InteractiveNvlWrapper` bundles these automatically; install if using `BasicNvlWrapper` with manual interaction wiring. |
 
-**Confidence:** HIGH (official docs + installed version verified)
+**License:** NVL is freely available on npm with no additional licensing fees when connecting to Neo4j. Confirmed by official Neo4j documentation.
 
-The current mypy config is minimal:
+**No frontend Neo4j driver needed.** The graph explorer fetches data through the PAM FastAPI backend, not directly from Neo4j. The frontend receives nodes/relationships as JSON from a new `/api/graph/*` endpoint. NVL accepts plain `{ id, labels, properties }` objects — no Neo4j connection required in the browser.
 
-```toml
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
+### Frontend Installation
+
+```bash
+# In web/ directory
+npm install @neo4j-nvl/base @neo4j-nvl/react @neo4j-nvl/interaction-handlers
 ```
 
-**Recommended expansion for this milestone:**
+---
 
-```toml
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-warn_unreachable = true
-disallow_any_generics = true
-check_untyped_defs = true
-no_implicit_reexport = true
+## New Python Module: `src/pam/graph/`
 
-# Plugin support for SQLAlchemy and Pydantic
-plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
+Add a new top-level module alongside existing `ingestion`, `retrieval`, `agent`, `api`. This is where all graph-specific logic lives.
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false  # tests don't need full typing
+### Recommended internal structure
 
-[[tool.mypy.overrides]]
-module = "alembic.*"
-ignore_errors = true
+```
+src/pam/graph/
+    __init__.py
+    client.py          # Async Neo4j driver singleton (lifespan-managed via app.state)
+    graphiti_service.py # Wraps Graphiti instance; exposes add_episode(), search()
+    entity_extractor.py # Custom Pydantic entity schemas for PAM domain
+    change_engine.py   # Diff logic: compare new doc vs existing episodes, trigger re-ingestion
+    router.py          # FastAPI routes: GET /graph/nodes, GET /graph/edges, GET /graph/search
 ```
 
-**Why:** The current config does not enable `check_untyped_defs`, meaning functions without type annotations are silently skipped. Several issues (#43 item 1 -- missing response_model, #32 -- singleton typing) would surface with these settings.
-
-**Do NOT enable `strict = true`** for this milestone. That would require adding type annotations to every function signature across the entire codebase -- a much larger effort. The settings above add meaningful safety without requiring a full annotation pass.
-
-**Source:** [mypy Configuration](https://mypy.readthedocs.io/en/stable/config_file.html)
-
-
-### 3. Alembic -- Index Migration Strategy
-
-**Confidence:** HIGH (official SQLAlchemy/Alembic docs verified)
-
-Issue #39 identifies missing database indexes on `Document.content_hash`, `Document.source_type+source_id` (composite), and `Segment.document_id`.
-
-**Pattern: Define indexes in SQLAlchemy models, generate migration with autogenerate.**
-
-For single-column indexes, use `index=True` on the column:
+### Integration with existing FastAPI lifespan
 
 ```python
-content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
-document_id: Mapped[uuid.UUID] = mapped_column(
-    UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), index=True
-)
-```
-
-For composite indexes, use `__table_args__`:
-
-```python
-__table_args__ = (
-    UniqueConstraint("source_type", "source_id", name="uq_documents_source"),
-    Index("ix_documents_source_lookup", "source_type", "source_id"),
-    {"comment": "Source document registry"},
-)
-```
-
-Then generate: `alembic revision --autogenerate -m "add_missing_indexes"`
-
-**Important:** The `UniqueConstraint` on `(source_type, source_id)` already exists. A unique constraint implicitly creates an index in PostgreSQL, so the composite lookup index already exists. Only `content_hash` and `Segment.document_id` actually need new indexes.
-
-**Use `CREATE INDEX CONCURRENTLY`** in the migration to avoid table locks on production data. Alembic migration:
-
-```python
-from alembic import op
-
-def upgrade():
-    # CONCURRENTLY requires autocommit
-    op.execute("COMMIT")
-    op.execute("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_documents_content_hash ON documents (content_hash)")
-    op.execute("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_segments_document_id ON segments (document_id)")
-```
-
-**Source:** [SQLAlchemy 2.0 Constraints and Indexes](https://docs.sqlalchemy.org/en/20/core/constraints.html), [Alembic Autogenerate](https://alembic.sqlalchemy.org/en/latest/autogenerate.html)
-
-
-### 4. FastAPI Dependency Injection -- Singleton Refactoring Pattern
-
-**Confidence:** HIGH (FastAPI official docs + community consensus)
-
-Issue #32 (the only "important" issue) concerns module-level singletons in `deps.py` using global variables with asyncio locks. This is the most impactful change in the milestone.
-
-**Recommended pattern: FastAPI lifespan + app.state**
-
-```python
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
+# In src/pam/api/app.py lifespan:
+from neo4j import AsyncGraphDatabase
+from graphiti_core import Graphiti
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create singletons once
-    app.state.embedder = OpenAIEmbedder()
-    app.state.search_service = await create_search_service(app.state.es_client)
-    app.state.duckdb_service = create_duckdb_service()
+    # Existing startup...
+    app.state.neo4j_driver = AsyncGraphDatabase.driver(
+        settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password)
+    )
+    app.state.graphiti = Graphiti(
+        settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password
+    )
+    await app.state.graphiti.build_indices_and_constraints()
     yield
-    # Shutdown: cleanup
-    await app.state.es_client.close()
-
-app = FastAPI(lifespan=lifespan)
+    # Existing shutdown...
+    await app.state.neo4j_driver.close()
+    await app.state.graphiti.close()
 ```
 
-Then in deps.py, replace globals with `request.app.state`:
-
-```python
-def get_embedder(request: Request) -> OpenAIEmbedder:
-    return request.app.state.embedder
-```
-
-**Why lifespan over globals:**
-- Testability: Override `app.state` in test fixtures without monkeypatching globals
-- Lifecycle management: Clean startup/shutdown guarantees
-- No asyncio.Lock complexity: Initialization happens once before first request
-- Already partially used: `es_client` and `redis_client` already use `app.state`
-
-**What to preserve:** The existing `config.py` lazy proxy pattern (`_SettingsProxy`) and `database.py` lazy pattern (`_EngineProxy`) are fine. They use `lru_cache` correctly and have `reset_*()` functions for testing. Issue #32 is specifically about the _deps.py_ globals, not these.
-
-**Source:** [FastAPI Lifespan Events](https://fastapi.tiangolo.com/advanced/events/), [FastAPI Dependencies](https://fastapi.tiangolo.com/tutorial/dependencies/)
-
-
-### 5. Pure ASGI Middleware -- Replace BaseHTTPMiddleware
-
-**Confidence:** HIGH (Starlette official docs + well-documented issue)
-
-Issue #43 item 8 flags that `BaseHTTPMiddleware` buffers streaming responses, which breaks SSE streaming used by the chat endpoint.
-
-**Replace with pure ASGI middleware:**
-
-```python
-class CorrelationIdMiddleware:
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        headers = dict(scope.get("headers", []))
-        cid = headers.get(b"x-correlation-id", b"").decode() or None
-        cid = set_correlation_id(cid)
-
-        async def send_wrapper(message):
-            if message["type"] == "http.response.start":
-                headers = list(message.get("headers", []))
-                headers.append((b"x-correlation-id", cid.encode()))
-                message["headers"] = headers
-            await send(message)
-
-        await self.app(scope, receive, send_wrapper)
-```
-
-**Why:** BaseHTTPMiddleware reads the entire response body into memory before returning. For SSE streaming (chat endpoint), this means the client receives nothing until the entire response is complete, defeating the purpose of streaming. Pure ASGI middleware passes through chunks as they arrive.
-
-**Source:** [Starlette Middleware Docs](https://starlette.dev/middleware/), [BaseHTTPMiddleware Deprecation Discussion](https://github.com/Kludex/starlette/discussions/2160)
-
-
-### 6. Pydantic Response Models -- API Cleanup
-
-**Confidence:** HIGH (FastAPI official docs)
-
-Issue #43 item 1 identifies several endpoints returning plain dicts without `response_model`. This prevents OpenAPI documentation generation and response validation.
-
-**Pattern: Use `response_model` parameter or return type annotations (FastAPI supports both since 0.95+):**
-
-```python
-# Preferred: return type annotation (cleaner, validated same as response_model)
-@router.get("/documents")
-async def list_documents(db: AsyncSession = Depends(get_db)) -> list[DocumentResponse]:
-    ...
-
-# Alternative: response_model parameter (use when return type differs from response)
-@router.get("/documents/{id}", response_model=DocumentResponse)
-async def get_document(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    ...
-```
-
-**Naming convention for new schemas:**
-- Response schemas: `*Response` (e.g., `StatsResponse`, `SegmentDetailResponse`)
-- All schemas in `src/pam/common/models.py` (where existing schemas live)
-
-**Source:** [FastAPI Response Model](https://fastapi.tiangolo.com/tutorial/response-model/)
-
-
-### 7. Dead Code Detection -- vulture
-
-**Confidence:** MEDIUM (multiple sources, well-established tool)
-
-Issue #40 item 3 identifies `CitationLink.tsx` as dead code. For systematic dead code detection across the Python codebase:
-
-**Use vulture** for a one-time sweep:
-
-```bash
-pip install vulture
-vulture src/pam/ --min-confidence 80
-```
-
-**Why vulture over alternatives:**
-- Well-established (10+ years), low false positive rate at 80% confidence
-- Does not require runtime execution (unlike coverage-based approaches)
-- Single-purpose: find dead code, not a framework
-- Alternative `deadcode` offers `--fix` flag but is newer and less battle-tested
-
-**Do NOT add vulture to CI** -- it has false positives with dynamic dispatch (FastAPI route handlers, SQLAlchemy event listeners). Use it as a one-time sweep, verify findings manually, then remove confirmed dead code.
-
-For the React frontend, TypeScript's `noUnusedLocals` is already enabled in tsconfig.json. Adding ESLint would help but is outside this milestone's Python-focused scope.
-
-**Source:** [vulture on GitHub](https://github.com/jendrikseipp/vulture)
-
-
-### 8. complexipy -- Cognitive Complexity Analysis
-
-**Confidence:** MEDIUM (well-documented, but not in Context7)
-
-Use `complexipy` for identifying functions that need refactoring before touching them:
-
-```bash
-pip install complexipy
-complexipy src/pam/ --max-complexity 15
-```
-
-**Why:** Cognitive complexity (not cyclomatic complexity) measures how hard code is to _understand_. Functions above 15 are candidates for extraction/simplification. Run before refactoring to prioritize which functions to break apart.
-
-**Do NOT add to CI** for this milestone. Use as a diagnostic tool to guide refactoring priorities.
-
-**Source:** [complexipy on PyPI](https://pypi.org/project/complexipy/)
-
-
-### 9. pytest-cov -- Coverage Safety Net
-
-**Confidence:** HIGH (already installed, just needs enforcing)
-
-The project already has pytest-cov configured with `fail_under = 80`. Before any refactoring:
-
-```bash
-pytest --cov=src/pam --cov-report=html --cov-report=term-missing
-```
-
-**Rule for this milestone:** Run coverage before AND after each refactoring step. Coverage must not decrease. The project has 450+ tests -- this is the safety net.
-
-**Source:** [pytest-cov on PyPI](https://pypi.org/project/pytest-cov/)
+**Note:** Graphiti manages its own internal Neo4j connection. The separate `neo4j` driver is only needed for raw Cypher queries in the graph explorer API (e.g., fetching subgraph neighborhoods, running custom traversals outside Graphiti's search API).
 
 ---
 
@@ -349,70 +143,75 @@ pytest --cov=src/pam --cov-report=html --cov-report=term-missing
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| Linting | Ruff (expand rules) | Pylint | Ruff already installed, 100x faster, covers same rules via B/SIM/RET |
-| Type checking | mypy (tighten config) | pyright/pytype | mypy already installed with 1.16.1, mature SQLAlchemy plugin support |
-| Dead code | vulture (one-time) | deadcode, Skylos | vulture is battle-tested; deadcode's `--fix` is tempting but riskier for existing code |
-| Complexity | complexipy (diagnostic) | radon, wily | complexipy uses cognitive complexity (better metric), written in Rust (fast) |
-| Formatting | Ruff formatter (keep current) | Black | Ruff replaces Black, already configured |
-| Security | Ruff S rules | standalone bandit | Ruff's S rules are the same checks, integrated, faster |
-| Middleware | Pure ASGI | Keep BaseHTTPMiddleware | BaseHTTPMiddleware buffers streaming -- confirmed issue with SSE |
-| DI pattern | lifespan + app.state | dependency-injector library | Adds unnecessary complexity; FastAPI's built-in DI is sufficient |
-| Frontend lint | TypeScript strict (already on) | Add ESLint | ESLint is valuable but scope creep for a Python-focused cleanup milestone |
+| Graph engine | graphiti-core | neo4j-graphrag-python (SimpleKGPipeline) | graphiti handles bi-temporal tracking, incremental episode ingestion, and LLM entity deduplication out of the box. neo4j-graphrag is better for static batch pipelines, not live document update detection. |
+| Graph engine | graphiti-core | LangGraph + Neo4j | The project explicitly uses a simple tool-use loop, NOT LangGraph. Introducing LangGraph for the graph layer contradicts the architectural decision and adds significant complexity. |
+| Graph DB | Neo4j 5.26 Community | FalkorDB, Kuzu | graphiti supports all three, but Neo4j has the deepest integration, best tooling, HNSW native vector index, and the NVL visualization library is Neo4j-native. FalkorDB/Kuzu are valid alternatives only if Neo4j licensing becomes a concern. |
+| Graph visualization | @neo4j-nvl/react | react-force-graph, Sigma.js, Cytoscape.js | NVL is purpose-built for Neo4j data, GPU-accelerated, already used in Neo4j Bloom/Explore, and the simplest integration path. react-force-graph is fine for simple graphs but requires custom data transformation and has no Neo4j-native type support. |
+| Neo4j driver | neo4j v6.x | neo4j-driver (legacy) | `neo4j-driver` package is deprecated as of v6.0 with no further updates. Use the `neo4j` package only. |
+| LLM for entity extraction | Anthropic (via graphiti extra) | OpenAI | The project is already Anthropic-first. Using `graphiti-core[anthropic]` avoids a second vendor dependency. OpenAI is still pulled in as graphiti's default — but the Anthropic provider is used via `AnthropicClient` wrapper. |
 
 ---
 
-## What NOT to Do
+## What NOT to Add
 
-### Do NOT upgrade to Ruff 0.15+ during this milestone
-Ruff 0.15.0 (released 2026-02-03) introduces the "2026 style guide" which changes formatting. This would produce a massive formatting diff across every file. Do formatting upgrades in a separate, dedicated PR.
-
-### Do NOT enable mypy `strict = true`
-Strict mode requires type annotations on every function, including all test helpers. This is a large separate effort. The targeted settings above add safety without the annotation burden.
-
-### Do NOT refactor config.py or database.py proxy patterns
-Issue #32 mentions these, but they already use `lru_cache` with `reset_*()` functions. The proxy pattern is fine. The real problem is the module-level globals in `deps.py`.
-
-### Do NOT add ESLint to the frontend in this milestone
-The open frontend issues (#40) are specific fixes (array keys, useCallback, dead component). They don't require new tooling -- just code changes guided by React best practices.
-
-### Do NOT run vulture in CI
-False positives with FastAPI route decorators, SQLAlchemy event listeners, and Pydantic model fields. Use as a one-time diagnostic only.
-
-### Do NOT change test runner or framework
-pytest + pytest-asyncio + pytest-cov is the correct stack. Don't switch to anything else.
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| LangChain / LangGraph | Architectural decision already made: simple tool-use loop, not orchestration framework. Adding LangChain for graph traversal would split the codebase into two philosophies. | graphiti-core's built-in `search()` + raw Cypher via neo4j driver |
+| `neo4j-driver` package | Deprecated as of v6.0, no further updates | `neo4j` package (v6.x) |
+| APOC plugin | Not required for graphiti. Neo4j 5.x native full-text and vector indexes handle everything. Adds deployment complexity for no benefit. | Native Neo4j indexes |
+| GDS (Graph Data Science) plugin | Only needed for graph ML algorithms (PageRank, community detection at scale). Out of scope for this milestone. | Add only if a future milestone needs graph analytics. |
+| Frontend Neo4j Bolt WebSocket connection | Exposes database credentials in the browser; security anti-pattern | Backend API endpoints that return graph JSON |
+| `neo4j-graphrag-python` | Overlaps with graphiti-core for this use case; batch-oriented not incremental; adds a redundant library | graphiti-core handles entity extraction, search, and temporal tracking in one package |
+| `spacy` / standalone NER | graphiti-core uses LLM-based entity extraction via structured outputs — more flexible than spaCy's pretrained models for business document domains | graphiti's built-in LLM extraction with custom Pydantic schemas |
 
 ---
 
-## Installation
+## Version Compatibility
 
-```bash
-# Already installed (just update ruff config in pyproject.toml):
-# ruff, mypy, pytest, pytest-cov, pytest-asyncio, pre-commit
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| `graphiti-core>=0.28` | `neo4j>=5.26.0` (server), `neo4j>=6.1` (Python driver) | Graphiti's own pyproject.toml pins `neo4j>=5.26.0` as the Python driver constraint. The driver version and server version are separate; driver 6.x connects to server 5.26. |
+| `graphiti-core>=0.28` | `openai>=1.91.0` | Higher than the project's current `>=1.50` floor; bump pyproject.toml |
+| `graphiti-core>=0.28` | `tenacity>=9.0.0` | Higher than the project's current `>=8.0` floor; bump pyproject.toml |
+| `graphiti-core>=0.28` | `pydantic>=2.11.5` | Compatible with project's `pydantic>=2.0` |
+| `@neo4j-nvl/react@1.0.0` | React 18 | Confirmed peer dependency; existing project uses React 18.3.x |
+| `@neo4j-nvl/base@1.0.0` | TypeScript 5.x | Ships with types; project uses TypeScript 5.6.3 |
 
-# One-time diagnostic tools (NOT added to dependencies):
-pip install vulture complexipy
+---
 
-# Pre-commit hooks (already configured, no changes needed):
-# .pre-commit-config.yaml already has ruff + ruff-format
+## pyproject.toml Changes
+
+```toml
+dependencies = [
+    # ... existing deps ...
+
+    # Graph — new additions
+    "neo4j>=6.1",
+    "graphiti-core[anthropic]>=0.28",
+
+    # Version floor bumps required by graphiti-core
+    "openai>=1.91.0",      # was >=1.50
+    "tenacity>=9.0.0",     # was >=8.0
+]
 ```
-
-No new production dependencies. No new dev dependencies in pyproject.toml. The expanded ruff rules and mypy config are pure configuration changes.
 
 ---
 
 ## Sources
 
-- [Ruff Rules Reference](https://docs.astral.sh/ruff/rules/) -- HIGH confidence
-- [Ruff Configuration Guide](https://docs.astral.sh/ruff/configuration/) -- HIGH confidence
-- [Ruff v0.15.0 Blog Post](https://astral.sh/blog/ruff-v0.15.0) -- HIGH confidence
-- [mypy Configuration File](https://mypy.readthedocs.io/en/stable/config_file.html) -- HIGH confidence
-- [SQLAlchemy 2.0 Constraints and Indexes](https://docs.sqlalchemy.org/en/20/core/constraints.html) -- HIGH confidence
-- [Alembic Autogenerate Docs](https://alembic.sqlalchemy.org/en/latest/autogenerate.html) -- HIGH confidence
-- [FastAPI Lifespan Events](https://fastapi.tiangolo.com/advanced/events/) -- HIGH confidence
-- [FastAPI Response Model](https://fastapi.tiangolo.com/tutorial/response-model/) -- HIGH confidence
-- [Starlette Middleware](https://starlette.dev/middleware/) -- HIGH confidence
-- [BaseHTTPMiddleware Deprecation Discussion](https://github.com/Kludex/starlette/discussions/2160) -- MEDIUM confidence
-- [vulture on GitHub](https://github.com/jendrikseipp/vulture) -- MEDIUM confidence
-- [complexipy on PyPI](https://pypi.org/project/complexipy/) -- MEDIUM confidence
-- [Python Typing Survey 2025 (Meta)](https://engineering.fb.com/2025/12/22/developer-tools/python-typing-survey-2025-code-quality-flexibility-typing-adoption/) -- MEDIUM confidence
-- [How to configure recommended Ruff defaults](https://pydevtools.com/handbook/how-to/how-to-configure-recommended-ruff-defaults/) -- MEDIUM confidence
+- [graphiti-core PyPI](https://pypi.org/project/graphiti-core/) — version 0.28.0 current, HIGH confidence
+- [getzep/graphiti GitHub pyproject.toml](https://github.com/getzep/graphiti/blob/main/pyproject.toml) — exact dependency versions, HIGH confidence
+- [Zep Graphiti Neo4j Configuration docs](https://help.getzep.com/graphiti/configuration/neo-4-j-configuration) — minimum Neo4j version (5.26), APOC not required, HIGH confidence
+- [Zep Graphiti Custom Entities docs](https://help.getzep.com/graphiti/core-concepts/custom-entity-and-edge-types) — Pydantic schema patterns for entity extraction, HIGH confidence
+- [Neo4j Python Driver 6.1 docs](https://neo4j.com/docs/api/python-driver/current/) — async API, AsyncGraphDatabase, HIGH confidence
+- [Neo4j Python Driver PyPI](https://pypi.org/project/neo4j/) — version 6.1.0 released Jan 2026; `neo4j-driver` deprecated, HIGH confidence
+- [@neo4j-nvl/react npm](https://www.npmjs.com/package/@neo4j-nvl/react) — version 1.0.0, MEDIUM confidence (npm page inaccessible but confirmed via WebSearch)
+- [Neo4j NVL React wrappers docs](https://neo4j.com/docs/nvl/current/react-wrappers/) — BasicNvlWrapper, InteractiveNvlWrapper components, HIGH confidence
+- [Neo4j NVL Installation docs](https://neo4j.com/docs/nvl/current/installation/) — npm install @neo4j-nvl/base, free licensing, HIGH confidence
+- [Neo4j Docker Hub](https://hub.docker.com/_/neo4j) — 5.26-community image tag, HIGH confidence
+- [Zep temporal KG architecture paper (arxiv 2501.13956)](https://arxiv.org/html/2501.13956v1) — bi-temporal model details, HIGH confidence
+
+---
+
+*Stack research for: PAM Context — Knowledge Graph & Temporal Reasoning Milestone*
+*Researched: 2026-02-19*

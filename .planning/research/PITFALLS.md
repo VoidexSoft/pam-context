@@ -1,267 +1,254 @@
 # Pitfalls Research
 
-**Domain:** Code cleanup/refactoring of Python/FastAPI + React knowledge retrieval system
-**Researched:** 2026-02-15
-**Confidence:** HIGH (based on direct codebase analysis + established patterns in SQLAlchemy, FastAPI, React, Alembic ecosystems)
+**Domain:** Adding Neo4j + Graphiti knowledge graph, LLM-driven entity extraction, change detection, and graph visualization to an existing PG + ES RAG system
+**Researched:** 2026-02-19
+**Confidence:** HIGH (direct codebase analysis + verified against official Graphiti docs, Neo4j driver docs, Anthropic tool-use docs, and community post-mortems)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Singleton Reset Leaks Between Tests
+### Pitfall 1: Using add_episode_bulk for Document Re-ingestion — Temporal Invalidation Is Silently Skipped
 
 **What goes wrong:**
-The codebase has 7+ module-level singletons spread across `deps.py`, `cache.py`, `database.py`, and `config.py`. Refactoring these to lazy initialization (lru_cache + proxy pattern, which `config.py` and `database.py` already use) is the right direction. But the critical mistake is failing to reset ALL singletons between tests. Currently `deps.py` uses raw `global` variables (`_embedder`, `_reranker`, `_search_service`, `_duckdb_service`) with no reset function. If one test initializes a singleton with a mock and another test expects a different configuration, the stale singleton leaks across test boundaries.
+The Graphiti library has two ingestion paths: `add_episode()` (sequential, full validation) and `add_episode_bulk()` (batch, high throughput). `add_episode_bulk` explicitly skips edge invalidation and temporal contradiction detection. If you use the bulk path for document re-ingestion — which is tempting because it's faster — you get a graph with stale edges that were never invalidated. A document that changed its "Q3 revenue target" from $2M to $3M will have BOTH edges in the graph simultaneously, each with valid temporal metadata. Queries that don't filter on `t_invalid` will return contradictory facts.
 
 **Why it happens:**
-When converting from `global` + `asyncio.Lock()` (current pattern in `deps.py`) to `lru_cache` (current pattern in `database.py` and `config.py`), developers add `lru_cache` but forget to expose a `reset_*()` function. Or they expose it but don't call it in test fixtures. With 450+ tests, a leaked singleton may only manifest as a flaky test that depends on execution order.
+The bulk path is advertised for performance ("significantly outperforming add_episode for large datasets") and developers use it during initial ingestion. When documents are re-ingested on update, they reuse the same path. The temporal invalidation silently not happening is not obvious at the API call site — both methods have the same signature.
 
 **How to avoid:**
-1. Every module that holds a singleton MUST export a `reset_*()` function (follow the pattern already in `database.py:reset_database()` and `config.py:reset_settings()`).
-2. Create a single `conftest.py` fixture that calls ALL reset functions as teardown. Example:
-   ```python
-   @pytest.fixture(autouse=True)
-   def _reset_singletons():
-       yield
-       reset_settings()
-       reset_database()
-       reset_deps()  # new: resets embedder, reranker, search_service, duckdb
-       reset_redis()  # new: clears _redis_client
-   ```
-3. Run the full test suite with `pytest --randomly-seed=...` after the refactor to catch ordering-dependent failures.
+Use `add_episode()` (sequential) for ALL document ingestion — both initial and re-ingestion. The bulk path is only appropriate for a one-time empty-graph bootstrap where you do not care about temporal consistency. Document this constraint in the ingestion pipeline's docstring. Route document updates through `add_episode()` unconditionally. If performance is a concern, control concurrency via `SEMAPHORE_LIMIT` environment variable rather than switching to bulk mode.
 
 **Warning signs:**
-- Tests pass individually but fail when run in a specific order
-- `pytest -x` passes but `pytest` (full run) has failures
-- Test output shows unexpected config values (e.g., wrong `database_url`)
+- Graph queries return two contradictory values for the same fact at the same point in time
+- `t_invalid` is null on edges that should have been superseded by newer ingestion
+- Re-ingesting the same document twice results in doubled edges rather than temporal transitions
 
 **Phase to address:**
-Phase 1 (Singleton Refactoring) -- this is the first thing to fix because all subsequent phases depend on test reliability.
+Phase 1 (Neo4j + Graphiti Infrastructure) — bake the `add_episode()` requirement into the pipeline integration before writing any ingestion code.
 
 ---
 
-### Pitfall 2: Alembic Migration Locks Production Tables During Index Creation
+### Pitfall 2: Neo4j Driver AsyncSession Is Not Concurrency-Safe — Sharing Across Coroutines Causes Undefined Behavior
 
 **What goes wrong:**
-Adding indexes to existing PostgreSQL tables (content_hash on documents, document_id FK on segments, source_type+source_id composite) via a standard Alembic migration uses `CREATE INDEX`, which takes an `ACCESS EXCLUSIVE` lock on the table for the duration of index building. On a table with thousands of segments, this blocks all reads and writes for seconds to minutes. In production with active users, this causes request timeouts and 500 errors.
+The Neo4j Python driver's `AsyncSession` is explicitly documented as not safe for concurrent use across multiple coroutines. The existing codebase already uses SQLAlchemy's `AsyncSession` with per-request scoping (correctly initialized in deps.py). If the Neo4j driver is initialized once and sessions are shared across FastAPI request handlers — especially in a pattern mirroring the current SQLAlchemy singleton pattern — concurrent requests will corrupt each other's state. The symptoms are non-deterministic: race conditions that only appear under load, silent result corruption, or cryptic driver errors.
 
 **Why it happens:**
-Alembic's `op.create_index()` generates a standard `CREATE INDEX` statement by default. Developers test migrations on empty or small databases where it completes instantly, never noticing the lock. The segments table is the largest (one document can generate hundreds of segments), making it the most dangerous table to index.
+SQLAlchemy async sessions can be scoped per-request through dependency injection and developers port that pattern directly. But Neo4j's session semantics are different: sessions are cheap to create/close, the driver itself (connection pool) is the expensive singleton. The `asyncio.wait_for()` and `asyncio.shield()` wrappers that FastAPI uses internally can wrap work in `asyncio.Task`, which introduces the concurrency that breaks `AsyncSession`.
 
 **How to avoid:**
-1. Use `CREATE INDEX CONCURRENTLY` for all index additions on existing tables. In Alembic, this requires special handling:
-   ```python
-   from alembic import op
+Initialize a single `AsyncGraphDatabase.driver()` instance during FastAPI lifespan startup and store it on `app.state.neo4j_driver`. Create a new session per request via dependency injection, just like the existing `get_db_session` pattern. Close the session in a `finally` block. Never pass an `AsyncSession` to a background task or store it in a shared variable. The driver (not the session) is the singleton.
 
-   def upgrade() -> None:
-       # CONCURRENTLY cannot run inside a transaction
-       op.execute("COMMIT")
-       op.create_index(
-           "idx_documents_content_hash",
-           "documents",
-           ["content_hash"],
-           postgresql_concurrently=True,
-       )
-   ```
-2. Alternatively, set `transaction_per_migration=False` in `env.py` for this specific migration.
-3. Check which indexes already exist before creating (the initial migration `001_initial_schema.py` already created `idx_segments_document_id`, `idx_segments_content_hash`, and `idx_documents_source`). Creating a duplicate index will error.
-4. Test the migration against a database with realistic data volume, not just an empty schema.
+```python
+# Correct pattern
+async def get_neo4j_session(request: Request):
+    async with request.app.state.neo4j_driver.session() as session:
+        yield session
+```
 
 **Warning signs:**
-- Migration takes more than 1 second on development database
-- `alembic upgrade head` hangs when other connections are active
-- Duplicate index errors (some indexes may already exist from `001_initial_schema.py`)
+- Neo4j errors that only appear under concurrent load (not in tests)
+- `asyncio.Task` in the call stack when session errors occur
+- Non-deterministic failures that pass when run with `--workers 1`
 
 **Phase to address:**
-Phase 2 (Database Indexes) -- must check existing indexes in `001_initial_schema.py` before writing new migration. Some "needed" indexes may already exist.
+Phase 1 (Neo4j + Graphiti Infrastructure) — driver lifecycle must be established before any graph write code is written.
 
 ---
 
-### Pitfall 3: Breaking the Proxy Pattern Contract During Singleton Refactoring
+### Pitfall 3: Graphiti's LLM Extraction Cost Per Document Is Multiplicative — 5-10 LLM Calls Per Chunk
 
 **What goes wrong:**
-The codebase already uses a proxy pattern for `settings` (`_SettingsProxy`) and `engine`/`async_session_factory` (`_EngineProxy`, `_SessionFactoryProxy`). These proxies are imported at module level throughout the codebase (`from pam.common.config import settings`, `from pam.common.database import async_session_factory`). Refactoring the underlying `lru_cache` functions can silently break the proxy if the reset function doesn't also clear the proxy's cached state, or if the proxy's `__getattr__` stops delegating correctly after a reset.
+Every call to `add_episode()` triggers multiple LLM calls internally: entity extraction (`extract_nodes()`), edge extraction (`extract_edges()`), deduplication resolution for ambiguous matches, and temporal metadata extraction. The Zep paper documents a three-stage deduplication pipeline (fast hashing → MinHash → LLM resolution). For a document with 50 chunks, this can mean 150-300 LLM API calls during a single ingestion run. At Claude claude-sonnet-4-6 pricing, ingesting a 100-document corpus becomes expensive enough to notice on the bill. Re-ingestion on document change multiplies this again.
 
 **Why it happens:**
-The proxy objects themselves are module-level constants. Calling `reset_settings()` clears the `lru_cache`, but existing code that already evaluated `settings.database_url` at import time (not through the proxy, but by storing the value) will retain the stale value. This is subtle: `from pam.common.config import settings` is fine (imports the proxy), but `DB_URL = settings.database_url` at module level captures the value eagerly.
+Graphiti defaults to OpenAI but the system uses Anthropic (Claude). The cost math that Graphiti's examples show is OpenAI-priced. Claude claude-sonnet-4-6 is more expensive per token than GPT-4o-mini (which Graphiti examples commonly use). Developers don't model the total LLM call count before writing the integration.
 
 **How to avoid:**
-1. Grep for any module-level attribute access on `settings` or `engine` that captures a value: `grep -rn "= settings\." src/pam/` -- these are the dangerous patterns.
-2. Ensure no module stores `settings.X` in a module-level variable. All access must go through the proxy at call time.
-3. After refactoring, verify that `reset_settings()` followed by attribute access returns new values:
-   ```python
-   def test_settings_reset():
-       old_url = settings.database_url
-       os.environ["DATABASE_URL"] = "postgresql+psycopg://new:new@localhost/new"
-       reset_settings()
-       assert settings.database_url != old_url
-   ```
+1. Profile the actual LLM call count on a sample document before building the integration (run with structured logging on the Graphiti client, count `LLM call` log entries per episode).
+2. Use `SEMAPHORE_LIMIT` environment variable to control parallel LLM calls and avoid rate-limit errors (default is 10; lower this if hitting Claude's rate limits).
+3. Consider using a cheaper model for extraction (e.g., Claude Haiku) and reserving claude-sonnet-4-6 for agent answering. Graphiti supports configurable LLM clients.
+4. Implement extraction budgeting: only run graph extraction on documents that changed (content hash check in the existing pipeline already provides this — integrate the hash check before calling `add_episode()`).
+5. Prompt caching via the Anthropic API reduces cost by 90% on cache hits for repeated system prompts.
 
 **Warning signs:**
-- Tests that set environment variables and call `reset_settings()` still see old config
-- `_SettingsProxy.__getattr__` raises `AttributeError` for valid settings
-- Circular import errors when adding new proxy classes
+- Ingestion runs significantly slower after adding graph extraction
+- Anthropic API cost spike after testing with a real document corpus
+- Rate limit errors from the Anthropic API during bulk ingestion
 
 **Phase to address:**
-Phase 1 (Singleton Refactoring) -- verify before and after refactoring each module.
+Phase 1 (Neo4j + Graphiti Infrastructure) — establish cost ceiling per document before wiring into ingestion pipeline. Phase 2 (Ingestion Integration) — validate actual costs on real corpus before full rollout.
 
 ---
 
-### Pitfall 4: SSE Streaming Endpoint Swallows Errors Silently
+### Pitfall 4: Entity Type Explosion from Schema-Free Extraction — Graph Becomes Unqueryable
 
 **What goes wrong:**
-The `/chat/stream` endpoint in `chat.py` wraps an async generator in `StreamingResponse`. If the generator raises an exception mid-stream (e.g., Anthropic API error, DB connection dropped), FastAPI/Starlette has already sent the 200 status code and headers. The client receives a truncated SSE stream with no error indication. The frontend's `useChat.ts` hook shows a partial response that looks like a complete answer -- the user never knows the response was cut short.
+LLM-driven "auto-discover" entity extraction with no predefined schema generates a different entity type vocabulary for every document. One document produces `Person`, another produces `Employee`, another `Staff Member`, another `Individual`. These are semantically equivalent but structurally distinct in the graph. Traversal queries that ask "find all people who approved this process" fail because they match only one entity type. The graph accumulates hundreds of label variants that are synonyms of a smaller canonical set.
 
 **Why it happens:**
-HTTP streaming inherently cannot change the status code after the first byte is sent. The current `event_generator()` in `chat.py` has no try/except around the `agent.answer_streaming()` call. The frontend `useChat.ts` does handle an `"error"` event type, but the backend never sends one when an exception occurs mid-stream -- the connection just drops.
+The LLM generates entity types based on the context of each document independently. Without a constraint list, it will name types using whatever phrasing is most natural for that document's content. Graphiti's Pydantic-based entity type system (custom entity types via subclassing `BaseNode`) mitigates this, but only if used — the default untyped extraction produces unconstrained labels.
 
 **How to avoid:**
-1. Wrap the streaming generator in try/except and yield an SSE error event before closing:
-   ```python
-   async def event_generator():
-       try:
-           async for chunk in agent.answer_streaming(...):
-               yield f"data: {json.dumps(chunk)}\n\n"
-       except Exception as exc:
-           logger.exception("stream_error")
-           error_event = {"type": "error", "message": str(exc)}
-           yield f"data: {json.dumps(error_event)}\n\n"
-   ```
-2. The frontend already handles the `"error"` event type in `useChat.ts` lines 114-128, so the backend fix is sufficient.
-3. Add a `"done"` sentinel event at the end of successful streams so the frontend can distinguish "stream ended normally" from "stream dropped."
+Define a bounded list of entity types before writing any extraction code. For PAM Context's business knowledge domain, this list is probably: `Organization`, `Person`, `Metric`, `Process`, `Product`, `System`, `Policy`, `Team`, `Project`. Use Graphiti's custom entity type API (subclass `BaseNode` with a `name` field and Pydantic validators) to pass this type list to the LLM as a constraint. The extraction prompt becomes "extract entities of ONLY these types, ignoring others." Enforce this in the `ExtractorConfig` passed to `Graphiti()`.
 
 **Warning signs:**
-- Users report truncated answers that look complete
-- No error logs when users experience partial responses
-- The frontend's catch block in `useChat.ts` (line 131-158) fires more often than expected (indicates stream failures falling through to non-streaming fallback)
+- `MATCH (n) RETURN DISTINCT labels(n)` in Neo4j returns more than 15 distinct label types
+- Entity type names have spaces or multiple words (e.g., `"Product Manager"` as a type rather than a label)
+- Queries for person-related entities must enumerate 5+ label variants
 
 **Phase to address:**
-Phase 3 (API Route Improvements) -- fix before any response_model or pagination work since streaming is the primary user-facing endpoint.
+Phase 2 (Ingestion Integration) — define the entity type taxonomy BEFORE writing the extraction config. Do not iterate on it during integration.
 
 ---
 
-### Pitfall 5: React Array Index Keys Cause Stale State on Message List Updates
+### Pitfall 5: Document Re-ingestion Leaves Orphan Nodes in the Graph — Entities from Deleted Content Persist
 
 **What goes wrong:**
-`ChatInterface.tsx` line 68 uses `key={i}` (array index) for `MessageBubble` components. During streaming, the messages array is updated frequently (every token). When a new message is added at the end, React may incorrectly reuse DOM elements from the previous render because the key for the last element changes. This manifests as: (1) the streaming message briefly flashing the previous message's content, (2) `isStreaming` prop being applied to the wrong message after edits/deletions, and (3) broken scroll-to-bottom behavior.
+When a document is re-ingested after a change, the existing system (PG + ES) handles this by deleting old segments and replacing them with new ones. The graph layer has no equivalent delete: `add_episode()` adds new nodes and temporally invalidates stale edges, but it does not delete nodes whose source document no longer contains the entity. A document that previously mentioned "Project Orion" but now no longer does will leave a `Project Orion` node in the graph with no active edges, permanently. Over many re-ingestion cycles, the graph accumulates orphan nodes that inflate entity counts and confuse deduplication.
 
 **Why it happens:**
-Array index keys work fine for static lists but break when items are added, removed, or reordered. In a chat interface where messages are appended frequently (every streaming token triggers a state update), the index-based key means React cannot distinguish between "message at position 5 changed content" and "a new message was inserted at position 5."
+Graphiti's temporal model is non-lossy by design — it preserves history. This is correct for its primary use case (agent memory across conversations). For document knowledge bases, where a re-ingested document should replace the old one's extracted facts, the non-lossy design works against you unless you build explicit tombstoning logic.
 
 **How to avoid:**
-1. Add a stable `id` field to the `ChatMessage` type. Generate it client-side when creating messages:
-   ```typescript
-   const userMsg: ChatMessage = {
-     id: crypto.randomUUID(),
-     role: "user",
-     content
-   };
-   ```
-2. Use `key={msg.id}` instead of `key={i}` in the `.map()` call.
-3. Do NOT use `content` as a key -- streaming messages start empty and change every token.
-4. Also check `DocumentList.tsx` -- it correctly uses `key={doc.id}` (line 46), so that one is fine.
+Before calling `add_episode()` for a re-ingested document, run a cleanup Cypher query that soft-deletes (sets `t_invalid = now()` on) all edges sourced from that document's prior episodes. Link each `add_episode()` call to a `source_document_id` in the episode metadata so you can filter by it. Store the document's UUID (from PG) in the episode's `group_id` or `metadata` field. This creates a document-scoped episode namespace that can be cleaned up on re-ingestion.
 
 **Warning signs:**
-- Flickering during message streaming
-- Wrong message gets the streaming indicator
-- React DevTools shows unexpected component remounts during streaming
+- Node count grows monotonically even when re-ingesting the same documents repeatedly
+- Entities appear in graph queries that no longer appear in any current document
+- Deduplication LLM calls rise with each re-ingestion cycle because there are more candidates to resolve
 
 **Phase to address:**
-Phase 4 (React Component Fixes) -- low effort, high impact fix.
+Phase 2 (Ingestion Integration) — design the episode-to-document linking scheme before first write, not as a retrofit.
 
 ---
 
-### Pitfall 6: Refactoring Global Singletons in deps.py Breaks FastAPI Dependency Injection Graph
+### Pitfall 6: The query_graph Agent Tool Returns Raw Graph Data That Blows the Context Window
 
 **What goes wrong:**
-`deps.py` has 4 separate global+lock patterns (`_embedder`, `_reranker`, `_search_service`, `_duckdb_service`). The natural refactoring is to move these into app.state (set during lifespan) or use `lru_cache`. But `get_search_service` depends on `get_es_client(request)` and `get_cache_service(request)` which both require the `Request` object. You cannot use `lru_cache` for a function that takes `Request` as an argument -- the cache key would be the request object itself, which is different for every request, making the cache useless.
+A graph query for "all entities related to the compliance process" can return hundreds of nodes and edges. If the `query_graph` tool serializes this result naively into the agent's context (e.g., as a JSON list of node/edge dicts), it consumes thousands of tokens in a single tool result. The existing agent has `MAX_TOOL_ITERATIONS = 5`. With 5 tools now instead of 5, and each tool result potentially consuming 2-5k tokens, the context fills before the agent reaches a synthesis step. Anthropic's tool-use research shows tool definitions alone can consume 134k tokens with many tools defined.
 
 **Why it happens:**
-The dependency chain is: `get_agent` -> `get_search_service` -> `get_es_client(request)` + `get_cache_service(request)`. The `request` dependency means these cannot be simple cached functions. Moving to `app.state` is the right pattern (already used for `es_client` and `redis_client`), but it requires restructuring how `HybridSearchService` is initialized.
+Developers write the tool result formatter to be comprehensive ("return everything") rather than agent-friendly ("return the minimum needed to answer"). Graph data is especially verbose when serialized: each node has properties, labels, and relationship data. The existing tools (`search_knowledge`, `search_entities`) are already formatted to be concise — the graph tool inherits that discipline only if explicitly designed for it.
 
 **How to avoid:**
-1. Initialize services in the `lifespan` handler and store on `app.state`, following the existing pattern for `es_client` and `redis_client`.
-2. For services that need other services (like `HybridSearchService` needs `es_client`), initialize them in order during lifespan startup.
-3. Change dependency functions to pull from `request.app.state.search_service` (like `get_es_client` already does).
-4. For testing, override via `app.dependency_overrides[get_search_service] = lambda: mock_service`.
-5. Do NOT try to use `@lru_cache` on functions that accept `Request` -- it will either cache the first request forever (if you strip `Request` from the key) or cache nothing (if you include it).
+1. Cap graph query results hard: return at most 20 nodes and 30 edges per tool call, with a note if results were truncated.
+2. Format results as prose summaries, not raw JSON: "Found 3 entities related to Compliance Process: Risk Assessment (Process), SOC2 Framework (Policy), Jane Smith (Person, owner)."
+3. Add a `depth` parameter to the tool input (default 1 hop) to prevent unbounded traversal.
+4. The tool description should explicitly instruct the LLM to use targeted queries, not broad traversals.
+5. Keep the `query_graph` tool description concise — tool definitions are paid tokens in every request.
 
 **Warning signs:**
-- `lru_cache` decorated function with `Request` parameter
-- Service initialized once with first request's state, then serves stale config for subsequent requests
-- Test overrides via `app.dependency_overrides` stop working after refactoring
+- Agent hits `MAX_TOOL_ITERATIONS` before providing an answer when graph queries are involved
+- Tool result length exceeds 3000 characters for any single graph call
+- The agent is calling `query_graph` repeatedly with slightly different queries (it's stuck trying to fit results into context)
 
 **Phase to address:**
-Phase 1 (Singleton Refactoring) -- plan the target architecture before starting. Not all singletons should use the same pattern.
+Phase 3 (Agent Tool Integration) — design the result formatter for the `query_graph` tool with explicit token budgets from day one.
 
 ---
 
-## Moderate Pitfalls
-
-### Pitfall 7: Adding response_model to Existing Endpoints Breaks Clients
+### Pitfall 7: Adding query_graph Tool Changes Agent Routing Behavior for Existing Tools
 
 **What goes wrong:**
-Three endpoints in `documents.py` (`/documents`, `/segments/{segment_id}`, `/stats`) return raw dicts without a `response_model`. Adding a Pydantic `response_model` retroactively can change the response shape -- Pydantic validation filters out extra fields, converts types, and may reject data that the raw dict endpoint was happily returning. For example, the `/stats` endpoint returns a manually constructed dict with nested structures. If the Pydantic model doesn't exactly match, fields get silently dropped.
+The existing 5 tools are carefully balanced: `search_knowledge` is the workhorse, others handle specific cases. Adding `query_graph` as tool 6 does not just add capability — it changes how the LLM selects between all 6 tools on every request. Claude may now route questions that previously went to `search_entities` to `query_graph` instead (both can answer "what metrics does Team X own?"). If the graph data is incomplete (early phases), this routing shift produces worse answers than the old path. The problem is invisible without A/B testing.
+
+**Why it happens:**
+The tool-use router is the LLM itself, and it optimizes across the full tool list on every call. Adding a tool that superficially overlaps with existing tools degrades routing precision proportional to the overlap. The `search_entities` and `query_graph` tools both handle structured entity queries.
 
 **How to avoid:**
-1. First, snapshot the current response for each endpoint (run the endpoint, save the JSON).
-2. Build the Pydantic model to match the CURRENT response shape exactly.
-3. Diff the before/after responses to catch any field name mismatches or type coercions.
-4. The `model_config = {"from_attributes": True}` pattern (already used in `DocumentResponse`) is needed for ORM objects but not for dict responses.
+1. Write the `query_graph` tool description to be clearly distinct: emphasize relationship traversal, not entity lookup. "Use when the question requires following connections between entities — e.g., 'who approved this process?' or 'what systems does this team own?'"
+2. Update the `search_entities` description to de-emphasize relationship queries: "Use for direct entity attribute lookups — e.g., 'what is the formula for Metric X?'"
+3. Add an explicit routing note to the system prompt: "Use query_graph only when the question requires traversal. For simple entity lookups, use search_entities."
+4. Run regression tests on the existing question set from `eval/questions.json` after adding the tool, comparing answer quality.
+
+**Warning signs:**
+- `search_entities` call frequency drops to near-zero after adding `query_graph`
+- Eval score on entity-specific questions degrades after tool addition
+- Agent calls both `search_entities` and `query_graph` on the same question (tool overlap confusion)
 
 **Phase to address:**
-Phase 3 (API Route Improvements).
+Phase 3 (Agent Tool Integration) — write and validate tool descriptions before wiring the tool into `ALL_TOOLS`. Run eval suite after every tool addition.
 
 ---
 
-### Pitfall 8: useCallback Dependencies Cause Stale Closures or Infinite Re-renders
+### Pitfall 8: Neo4j Memory Configuration Defaults Are Unsuitable for Coexistence with PG + ES
 
 **What goes wrong:**
-Adding `useCallback` to optimize React event handlers is a common cleanup task. But incorrect dependency arrays cause either stale closures (missing deps) or infinite re-render loops (including objects/arrays that are recreated every render). In `useChat.ts`, `sendMessage` correctly includes `[conversationId, filters]` as dependencies, but `filters` is an object -- if `setFilters` creates a new object reference each time, `sendMessage` gets a new identity every render, causing any `useEffect` that depends on it to fire repeatedly.
+The current `docker-compose.yml` allocates 2GB heap to Elasticsearch (`-Xms2g -Xmx2g`). Adding Neo4j with default Docker image settings gives it only 512MB heap and 512MB page cache. With PG + ES + Redis + Neo4j all running on the same host (development), this creates memory pressure. Neo4j degrades silently under low memory: slower queries, increased GC pauses, and eventually OOM kills that corrupt the graph store. The default Neo4j Docker configuration is explicitly documented as "intended for learning, not production."
+
+**Why it happens:**
+Neo4j's Docker image defaults to conservative settings to allow co-location during development demos. These same defaults are copied into production-like docker-compose files without adjustment. The OOM failure is intermittent (depends on host memory and concurrent load), making it hard to diagnose.
 
 **How to avoid:**
-1. When wrapping callbacks with `useCallback`, audit every dependency:
-   - Primitives (strings, numbers, booleans) -- safe
-   - Objects/arrays -- must be stable references (use `useMemo` or ensure state setter produces same reference when value hasn't changed)
-2. For `useChat.ts`, the current `filters` state is an object. Changes to unrelated state should NOT recreate the `sendMessage` callback. Verify that `filters` only changes when `setFilters` is called.
-3. Test: open React DevTools Profiler, interact with the chat, verify that `ChatInterface` doesn't re-render when it shouldn't.
-4. Do NOT add `useCallback` to every function "just because" -- only wrap callbacks passed as props to child components or used as `useEffect` dependencies.
+Add explicit memory configuration to the Neo4j docker-compose service. For a development environment with 16GB host RAM and existing PG + ES + Redis services, target: heap initial/max = 1GB, page cache = 512MB. For production (dedicated Neo4j), run `neo4j-admin server memory-recommendation --docker` to generate accurate settings. Do not share Neo4j's data volume with other services.
+
+```yaml
+neo4j:
+  image: neo4j:5.26
+  environment:
+    NEO4J_AUTH: neo4j/password
+    NEO4J_server_memory_heap_initial__size: 1g
+    NEO4J_server_memory_heap_max__size: 1g
+    NEO4J_server_memory_pagecache__size: 512m
+```
+
+**Warning signs:**
+- Neo4j query latency increases over a test session even for small graphs
+- `docker stats` shows Neo4j container memory at 80%+ of its limit
+- Intermittent Neo4j connection errors that resolve after container restart
 
 **Phase to address:**
-Phase 4 (React Component Fixes).
+Phase 1 (Neo4j + Graphiti Infrastructure) — configure memory in docker-compose before first data is written. Data written with wrong memory config may require graph rebuild after fixing.
 
 ---
 
-### Pitfall 9: Concurrent Alembic Migrations in CI/CD
+### Pitfall 9: @neo4j-nvl/react Graph Renders Every Node on Every State Update — React Reconciliation Performance
 
 **What goes wrong:**
-If multiple CI jobs or deployment processes run `alembic upgrade head` simultaneously against the same database, Alembic's `alembic_version` table can get into a corrupt state or deadlock. This is especially risky with `CREATE INDEX CONCURRENTLY` which cannot run inside a transaction.
+`@neo4j-nvl/react` renders a canvas-based graph (WebGL). When the parent React component's state changes — e.g., the user sends a chat message and the conversation list re-renders — if the graph component is not properly memoized, NVL reinitializes the canvas on every parent re-render. This causes visible flicker, loss of user's pan/zoom position, and 100-300ms render freezes. The existing frontend already has the `key={i}` anti-pattern in `ChatInterface.tsx` (addressed in v1 cleanup); applying similar non-stable references to graph data props has the same failure mode.
+
+**Why it happens:**
+Canvas-based graph libraries reinitialize when their root React element is remounted. React remounts elements when keys change or when parent components replace them with new JSX nodes. If graph data is passed as `nodes={computedNodes}` where `computedNodes` is recomputed on every parent render (not memoized), NVL receives a new array reference on every render, triggering a full reinitialize.
 
 **How to avoid:**
-1. Use PostgreSQL advisory locks in the Alembic `env.py` to serialize migrations:
-   ```python
-   connection.execute(text("SELECT pg_advisory_lock(1234567)"))
-   ```
-2. In CI, run migrations as a separate job that completes before deployment starts.
-3. Never run `alembic upgrade head` from multiple app instances on startup.
+1. Wrap the graph component in `React.memo()` so it only re-renders when its props actually change.
+2. Memoize the nodes and relationships arrays with `useMemo()`, using stable node IDs as dependency keys.
+3. Place the graph component in a route that is not the parent of the chat interface — keep them as sibling routes, not nested.
+4. Implement a stable `graphData` state object that is only replaced when graph content changes (not on every chat message).
+
+**Warning signs:**
+- Graph resets pan/zoom position when user types in the chat input
+- React DevTools Profiler shows the graph component re-rendering on every keystroke
+- Canvas flicker visible during conversation streaming
 
 **Phase to address:**
-Phase 2 (Database Indexes) -- if the migration uses `CONCURRENTLY`, it's especially important to handle this.
+Phase 4 (Graph Visualization) — architect the component hierarchy before adding NVL. The graph explorer should live on a dedicated route, not embedded in the chat view.
 
 ---
 
-### Pitfall 10: Polling Timer Leak When Component Unmounts During Ingestion
+### Pitfall 10: Dual-Write Consistency Between PG/ES and Neo4j Without Transactions
 
 **What goes wrong:**
-`useIngestionTask.ts` uses `setInterval` for polling and cleans up on unmount (line 44-49). However, if the user navigates away from the documents page while an ingestion is running, the poll stops. When they navigate back, `useIngestionTask` reinitializes with `task: null` and the user sees no progress. The ingestion is still running in the backend but the frontend lost track of it.
+The existing pipeline commits to PG first, then writes to ES — with ES as a recoverable secondary (if ES fails, re-ingestion catches up). Adding Neo4j as a third store with no distributed transaction support means all three can diverge. The common failure mode: PG commit succeeds, ES write succeeds, Neo4j `add_episode()` fails mid-extraction (LLM timeout). The document is in PG and ES but missing from the graph. The next ingestion (content hash unchanged) is skipped by the existing hash check, so the graph entry is permanently absent.
+
+**Why it happens:**
+The existing pipeline's "PG is authoritative, ES is recoverable" pattern works because ES writes are idempotent — rerun the ingest and ES catches up. Graphiti's `add_episode()` is not cleanly idempotent: re-running it creates new temporal episodes rather than being a no-op for unchanged content. There is no equivalent of "check if this document's graph is current" before calling `add_episode()`.
 
 **How to avoid:**
-1. Store the active `task_id` in a parent component or context that persists across route changes.
-2. On the DocumentsPage mount, check if there are any active tasks via `GET /api/ingest/tasks?limit=1` and resume polling.
-3. This is a UX improvement, not a bug -- but users will perceive it as "ingestion stopped" when it didn't.
+1. Add a `graph_synced` boolean flag (or `graph_synced_at` timestamp) to the `documents` PG table. Set it to `False` on every ingest, set to `True` only after `add_episode()` succeeds.
+2. Build a reconciliation job (`/ingest/sync-graph` endpoint or a scheduled task) that finds documents where `graph_synced = False` and retries the graph extraction.
+3. The content hash check in the pipeline must be paired with a `graph_synced` check: skip PG/ES re-write if hash unchanged AND `graph_synced = True`.
+4. Log `pipeline_graph_write_failed` separately from PG/ES failures so the reconciliation job can identify targets.
+
+**Warning signs:**
+- Graph entity count is lower than document count would predict (some documents have no graph representation)
+- Re-ingesting a document with unchanged content does not appear to add graph nodes (skipped by hash check before graph write)
+- `graph_synced` flag never gets set to True for documents that failed during LLM extraction
 
 **Phase to address:**
-Phase 4 (React Component Fixes) -- lower priority, but good to address with the other React work.
+Phase 2 (Ingestion Integration) — the `graph_synced` flag pattern must be in place before any production ingestion.
 
 ---
 
@@ -269,93 +256,119 @@ Phase 4 (React Component Fixes) -- lower priority, but good to address with the 
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Raw dicts as API responses (current in `/documents`, `/segments`, `/stats`) | Fast to implement, flexible | No validation, no OpenAPI schema, client-side type guessing | Never in a mature API -- should always have response_model |
-| Global + asyncio.Lock in deps.py | Works, thread-safe-ish | Untestable, no reset path, leaks between tests | During prototyping only. Current codebase has outgrown this. |
-| `key={i}` in React lists | Quick, stops React warnings | Broken reconciliation on dynamic lists | Only for truly static lists that never change |
-| Missing `response_model` on streaming endpoint | Streaming responses can't use response_model | No OpenAPI documentation for SSE events | Acceptable (FastAPI doesn't support SSE response models), but document the event schema manually |
+| Using `add_episode_bulk` for initial ingestion then `add_episode` for updates | Faster initial graph build | Temporal consistency gap: initial graph has no invalidation baseline, so first update creates spurious "contradictions" | Only if the initial graph is a true bootstrap of an empty system with no subsequent updates expected — in practice, never |
+| Storing Neo4j connection string in plain env var alongside PG/ES/Redis | Consistent with existing config pattern | No credential rotation path; all four store credentials in same `.env` file — one compromise exposes all | Acceptable in development; production should use a secrets manager |
+| Querying Neo4j directly from FastAPI route handlers without a service layer | Fewer files to create | Cypher queries scattered across handler files; no testable abstraction; impossible to swap graph backends | Never — create a `GraphService` abstraction from day one, even if thin |
+| Skipping entity type constraints ("let the LLM decide") | Faster to prototype | Entity type explosion (see Pitfall 4); graph becomes unqueryable within 20 documents | Prototype only, never in integration |
+| Embedding graph node IDs from Neo4j directly in API responses | Avoids mapping layer | Neo4j internal IDs are not stable across database rebuilds; clients cache stale IDs | Never — always expose stable UUIDs (PAM's own document/segment IDs) |
+
+---
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Alembic + existing indexes | Creating an index that `001_initial_schema.py` already created, causing migration failure | Run `SELECT indexname FROM pg_indexes WHERE tablename = 'segments'` to check existing indexes before writing migration |
-| SQLAlchemy async + lru_cache | Using `lru_cache` on async functions (it caches the coroutine, not the result) | Use `lru_cache` on sync factory functions that return the engine/session-factory (as `database.py` already correctly does), not on async functions |
-| pytest-asyncio `auto` mode + global state | `asyncio_mode = "auto"` means each test gets its own event loop by default (pytest-asyncio 0.23+). `asyncio.Lock()` objects created in one event loop are invalid in another | Create locks lazily or use the `lru_cache` pattern which avoids locks entirely |
-| FastAPI `app.dependency_overrides` + global singletons | Overriding a dep function doesn't reset the global singleton it already cached | Either override at the singleton level, or ensure deps read from `app.state` which IS per-app-instance |
+| Graphiti + Anthropic | Graphiti defaults to OpenAI; developers set `OPENAI_API_KEY` and miss that `LLMClient` must be explicitly overridden to use Claude | Pass `LLMClient` and `EmbedderClient` instances to `Graphiti()` constructor explicitly; do not rely on env var auto-detection |
+| Neo4j driver + FastAPI lifespan | Creating driver in module scope (like old `deps.py` singleton pattern) instead of in `lifespan` | Use `@asynccontextmanager` lifespan, create driver on startup, close on shutdown, store on `app.state` |
+| Graphiti episodes + PAM documents | Graphiti's `group_id` is for session/conversation grouping; developers overload it as document ID | Use `group_id` for document ID scoping AND store document metadata in episode `source` field for independent querying |
+| Neo4j + ES vector search | Both support vector similarity search; developers route all vector queries to Neo4j after adding it | Keep semantic/hybrid search in ES (it's already optimized); use Neo4j only for graph traversal; never replace ES with Neo4j for embedding search |
+| `@neo4j-nvl/react` + Vite | NVL uses canvas/WebGL; some Vite configurations have issues with canvas-heavy libraries in SSR or test environments | Add NVL to Vite's `optimizeDeps.exclude` or `ssr.noExternal` as needed; never import NVL in server-side code or test files |
+| PG document_id + Neo4j node identity | Developers use Neo4j's internal numeric element IDs as foreign keys back to PG | Store PAM's UUID (`document_id`, `segment_id`) as properties on Neo4j nodes; use these as the join key, never the Neo4j internal ID |
+
+---
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Missing index on `documents.content_hash` for dedup lookups | Slow ingestion pipeline (full table scan on every document) | Already indexed in `001_initial_schema.py` as `idx_segments_content_hash` on segments, but documents.content_hash is NOT indexed | At 10k+ documents |
-| `list_documents()` with no pagination | Response payload grows linearly with document count, slowing page load | Add `limit`/`offset` parameters to `/api/documents`, return total count in headers | At 500+ documents |
-| `setMessages(prev => [...prev, ...])` on every streaming token | Creates a new array on every token (50-100 times per response), triggering React reconciliation each time | Throttle state updates (e.g., batch tokens every 50ms via `requestAnimationFrame`) or use `useRef` for accumulation with periodic state flush | Noticeable lag at 1000+ tokens in a single response |
-| Full-table scan in `/stats` endpoint | Multiple `SELECT count(*)` across 3 tables on every dashboard load | Add server-side caching (Redis) or materialized counts. Current implementation does 4 queries per `/stats` call | At 100k+ segments |
+| Graphiti `add_episode()` called synchronously in the ingestion request handler | HTTP request times out (3-5 min per document) because LLM extraction blocks the response | Run graph extraction as a background task after PG/ES commit; update `graph_synced` flag when done | Immediately on any document > 5 chunks |
+| Unbounded Cypher graph traversal in `query_graph` tool | Tool result is thousands of nodes, blows context window, agent loops | Hard-cap LIMIT clauses in all Cypher queries; add traversal depth parameter (default 1 hop, max 3) | On any graph with more than 50 nodes |
+| No index on Neo4j node properties used in entity lookup | Full graph scan on every `MATCH (n {name: $name})` query | Add Neo4j property indexes during schema setup: `CREATE INDEX entity_name FOR (n:Entity) ON (n.name)` | At 500+ nodes |
+| Re-querying Neo4j on every chat message to populate graph explorer | Graph explorer flickers and re-loads on every message send | Cache graph data in React state; only refresh on explicit user action or on new ingestion completion | Immediately — N+1 API calls pattern |
+| Sequential `add_episode()` with default `SEMAPHORE_LIMIT=10` against Claude API | Rate limit errors during bulk ingestion | Lower `SEMAPHORE_LIMIT` to 3-5 for Claude; use Anthropic Batch API for initial corpus ingestion | At 20+ documents ingested simultaneously |
+
+---
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Streaming endpoint has no error detail sanitization | Internal error messages (DB connection strings, file paths) could leak via SSE error events | Catch exceptions in the generator, log the full error server-side, send only a generic message to the client |
-| `/stats` endpoint exposes system internals | Folder paths from ingestion tasks visible to all authenticated users | Check if `recent_tasks` should be restricted to admin users only (currently uses `get_current_user` not `require_admin`) |
-| Index migration may expose timing attack surface | If `content_hash` index improves lookup speed, it could theoretically be used to check if a specific hash exists faster | Low risk for this application, but note it |
+| Passing raw user query strings as Cypher query parameters without validation | Cypher injection (analogous to SQL injection); attacker can traverse or modify graph | Never construct Cypher from user input; the `query_graph` tool should generate Cypher from structured parameters, not freeform strings |
+| Exposing Neo4j Bolt port (7687) in docker-compose without authentication | Direct graph database access from any container on the Docker network | Always set `NEO4J_AUTH` in docker-compose; never expose port 7687 to the host interface in production |
+| Storing extracted entities that include PII (names, emails from documents) in Neo4j without access control | Graph query tool returns PII to any authenticated user | Audit extracted entity types before production deployment; redact PII fields from entity extraction prompts; restrict `query_graph` tool results to non-PII properties |
+| Returning full Graphiti episode content in API responses | Internal document structure, chunk content, and LLM-generated intermediate data exposed | Graph API endpoints should return only node metadata (type, name, relationships), never episode content |
+
+---
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| No loading state for `/documents` list when over 100 items | Page appears frozen while fetching large document lists | Add skeleton loading state, implement pagination |
-| Ingestion progress lost on navigation | User thinks ingestion failed when they navigate away and back | Persist active task ID, resume polling on mount |
-| Streaming error shows as partial response | User believes truncated answer is complete | Add visual "error" indicator on incomplete streaming responses |
-| No document count in page title/header | User can't quickly see how many documents are in the system | Show count in header: "All documents (47)" |
+| Graph explorer shows all nodes at once for a large corpus | Canvas is unreadable; 500+ nodes overlapping | Default to ego-graph view (selected entity + 1 hop); paginate or cluster beyond 50 nodes |
+| Graph not populated during initial ingestion (graph extraction is async/background) | User sees empty graph immediately after ingesting documents | Show "Graph indexing in progress" state with progress; disable graph explorer tab until `graph_synced` count > 0 |
+| Change detection diff shown as raw JSON | Users can't parse `{"added": [...], "removed": [...], "modified": [...]}` | Render diffs as readable prose: "3 new entities added, 1 relationship changed: Q3 Revenue Target updated from $2M to $3M" |
+| query_graph tool failure returns empty agent answer | User sees "I couldn't find that information" when the graph is simply not populated yet | Distinguish "graph empty" from "entity not found"; show "Graph index still building" if graph has < 10 nodes |
+
+---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Singleton refactoring:** Often missing reset functions for test isolation -- verify every singleton has a `reset_*()` function AND it's called in conftest.py teardown
-- [ ] **Index migration:** Often creates indexes that already exist from initial migration -- verify by checking `001_initial_schema.py` and running `\di` in psql
-- [ ] **response_model addition:** Often silently drops fields -- verify by comparing raw dict response before vs. Pydantic-validated response after
-- [ ] **useCallback wrapping:** Often introduces stale closures -- verify by testing with React StrictMode (double-renders catch stale closure bugs)
-- [ ] **Streaming error handling:** Often only tested on happy path -- verify by killing the LLM API mid-stream and checking client behavior
-- [ ] **Pagination:** Often missing total count -- verify that paginated endpoints return total count in headers or response body for the UI to show "page X of Y"
-- [ ] **Test suite stability:** Often passes once but flakes -- verify by running `pytest --count=3` (pytest-repeat) or `pytest -p randomly` after ALL changes
+- [ ] **Graphiti integration:** Often missing entity type constraints — verify `labels(n)` returns fewer than 15 distinct types after ingesting 10+ documents
+- [ ] **Document re-ingestion:** Often leaves orphan nodes — verify node count does not grow when re-ingesting the same document with minor changes 3+ times
+- [ ] **Neo4j driver lifecycle:** Often initialized at module scope — verify driver is created in lifespan handler and stored on `app.state`, not as a global
+- [ ] **graph_synced flag:** Often the reconciliation path is missing — verify documents with failed graph extraction are retried on next ingestion run, not silently skipped
+- [ ] **query_graph tool result size:** Often unbounded — verify that querying a 200-node graph returns fewer than 3000 characters of tool result text
+- [ ] **Graph explorer memoization:** Often causes full canvas reinit — verify with React DevTools Profiler that NVL component does not re-render on chat message send
+- [ ] **Tool routing regression:** Often degrades existing tool accuracy — verify eval/questions.json scores are not lower after adding query_graph to ALL_TOOLS
+- [ ] **Neo4j property indexes:** Often not created — verify `SHOW INDEXES` in Neo4j returns at least entity name and document_id indexes before first query
+- [ ] **Cypher injection guard:** Often overlooked — verify `query_graph` tool never passes freeform user strings directly into a Cypher string (use parameterized queries only)
+
+---
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Singleton leak breaks 50+ tests | MEDIUM | Add `autouse` fixture that resets all singletons. Run `pytest --randomly-seed=12345` to verify. May need to fix test-specific setup that relied on leaked state. |
-| Migration locks table in production | HIGH | Cannot easily roll back `CREATE INDEX` mid-execution. Kill the migration process, then run the index creation with `CONCURRENTLY` flag during off-hours. |
-| response_model breaks API clients | LOW | Revert the response_model, fix the Pydantic model to match actual response shape, redeploy. Frontend won't need changes if the model matches the original dict. |
-| React key issues cause UI bugs | LOW | Replace `key={i}` with `key={msg.id}`. Add `id` field to ChatMessage type. Single PR, no backend changes needed. |
-| Streaming error swallowed | LOW | Add try/except to generator function. Frontend already handles error events. Single backend change. |
-| Stale closure from useCallback | MEDIUM | Identify which callbacks have wrong deps. Fix by adding missing deps or stabilizing object references with useMemo. Requires careful testing. |
+| Bulk ingestion path used, temporal edges are wrong | HIGH | Drop and rebuild graph from scratch using `add_episode()` sequential path; this means a full re-ingestion of all documents |
+| Entity type explosion (200+ label types) | HIGH | Clear all nodes/edges, redefine entity type list, re-ingest all documents with constrained extraction |
+| Orphan nodes accumulated over many re-ingestions | MEDIUM | Write a Cypher cleanup query: `MATCH (n) WHERE NOT (n)--() DELETE n`; run graph reconciliation job; add orphan prevention to pipeline |
+| Neo4j session concurrency corruption | MEDIUM | Restart Neo4j container to clear corrupted in-flight transactions; fix session scoping in deps.py; verify with concurrent load test before re-deploying |
+| graph_synced gap (documents missing from graph) | LOW | Run reconciliation endpoint against all documents where `graph_synced = False`; monitor completion |
+| query_graph tool context overflow | LOW | Add hard LIMIT clause to all Cypher queries in tool implementation; update tool description; no data loss |
+| NVL graph explorer reinit on every render | LOW | Add `React.memo()` and `useMemo()` wrappers; no data loss; purely a frontend fix |
+
+---
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Singleton reset leaks (Pitfall 1) | Phase 1: Singleton Refactoring | `pytest -p randomly --randomly-seed=42` passes, all singletons have reset functions |
-| Proxy pattern breaks (Pitfall 3) | Phase 1: Singleton Refactoring | Test that `reset_settings()` + re-access returns new values; grep for module-level `= settings.X` captures |
-| deps.py DI graph break (Pitfall 6) | Phase 1: Singleton Refactoring | `app.dependency_overrides` works in all test files; no `lru_cache` on Request-accepting functions |
-| Migration locks tables (Pitfall 2) | Phase 2: Database Indexes | Migration uses `CONCURRENTLY`; tested against populated database; no duplicate indexes |
-| Concurrent migrations (Pitfall 9) | Phase 2: Database Indexes | Advisory lock in env.py; CI runs migration as separate step |
-| response_model breaks clients (Pitfall 7) | Phase 3: API Improvements | Before/after response snapshots match; OpenAPI schema generates correctly |
-| Streaming swallows errors (Pitfall 4) | Phase 3: API Improvements | Kill LLM API mid-stream; frontend shows error indicator |
-| React key issues (Pitfall 5) | Phase 4: React Fixes | Messages have stable IDs; no flickering during streaming; React DevTools shows stable keys |
-| useCallback stale closures (Pitfall 8) | Phase 4: React Fixes | React StrictMode enabled; Profiler shows expected re-render count |
-| Polling timer leak (Pitfall 10) | Phase 4: React Fixes | Navigate away during ingestion, navigate back, progress resumes |
+| bulk vs sequential ingestion (Pitfall 1) | Phase 1: Infrastructure + Phase 2: Ingestion | Re-ingest same doc twice; verify edges have `t_invalid` set on superseded relationships |
+| Neo4j AsyncSession concurrency (Pitfall 2) | Phase 1: Infrastructure | Load test with 10 concurrent requests; no driver errors; session created/closed per request |
+| LLM extraction cost per document (Pitfall 3) | Phase 1: Infrastructure + Phase 2: Ingestion | Count LLM calls per document in CI smoke test; set budget alert on Anthropic API |
+| Entity type explosion (Pitfall 4) | Phase 2: Ingestion | After ingesting 20 docs, `MATCH (n) RETURN DISTINCT labels(n)` returns <= 15 labels |
+| Orphan nodes on re-ingestion (Pitfall 5) | Phase 2: Ingestion | Re-ingest modified doc 3 times; node count for that document's entities does not grow |
+| query_graph context window bloat (Pitfall 6) | Phase 3: Agent Tool | Tool result for any query is <= 3000 chars; MAX_TOOL_ITERATIONS not hit on graph questions |
+| query_graph routing shift (Pitfall 7) | Phase 3: Agent Tool | Eval score on `eval/questions.json` matches or exceeds pre-graph-tool baseline |
+| Neo4j memory under co-location (Pitfall 8) | Phase 1: Infrastructure | `docker stats` shows all containers stable under 5-minute load test |
+| NVL render performance (Pitfall 9) | Phase 4: Visualization | React Profiler shows NVL not re-rendering during chat interaction |
+| Dual-write consistency (Pitfall 10) | Phase 2: Ingestion | Simulate Neo4j failure mid-ingestion; verify `graph_synced=False` document is retried; verify content hash check does not skip it |
+
+---
 
 ## Sources
 
-- Direct codebase analysis of `/Users/datnguyen/Projects/AI-Projects/pam-context/src/pam/` (HIGH confidence)
-- SQLAlchemy 2.0 async engine documentation -- `lru_cache` pattern for engine/session factory is the documented approach (HIGH confidence)
-- Alembic documentation on `CREATE INDEX CONCURRENTLY` requiring non-transactional context (HIGH confidence)
-- PostgreSQL documentation on `ACCESS EXCLUSIVE` lock during `CREATE INDEX` (HIGH confidence)
-- React documentation on keys and reconciliation (HIGH confidence)
-- FastAPI documentation on `StreamingResponse` -- status code sent before body, cannot change mid-stream (HIGH confidence)
-- pytest-asyncio 0.23+ documentation on event loop scope and `asyncio_mode = "auto"` (HIGH confidence)
-- Existing migration file `alembic/versions/001_initial_schema.py` lines 74-78 confirming indexes `idx_segments_document_id`, `idx_segments_content_hash`, `idx_documents_source` already exist (HIGH confidence -- direct code evidence)
+- Graphiti official documentation — `add_episode_bulk` warning: "Use only for populating empty graphs or when edge invalidation is not required" (HIGH confidence, fetched 2026-02-19)
+- Zep temporal knowledge graph architecture paper (arXiv:2501.13956) — bi-temporal model (t_valid, t_invalid, t_created, t_expired) (HIGH confidence)
+- Neo4j Python Driver documentation — "AsyncSession is not concurrency-safe; must not span multiple asyncio Tasks" (HIGH confidence)
+- Neo4j driver best practices — "Create one driver instance per DBMS; sessions are cheap, create and close freely" (HIGH confidence)
+- Graphiti GitHub issues #871 (Invalid JSON errors in bulk ingestion), #879 (ValidationError in bulk upload), #223 (KeyError in bulk ingest) — documented instability in bulk path (MEDIUM confidence)
+- Neo4j Operations Manual — Docker memory defaults (512MB heap/pagecache), explicit note that defaults are "for learning, not production" (HIGH confidence)
+- Anthropic tool-use engineering blog — tool definitions consuming 55K-134K tokens in large tool sets (HIGH confidence)
+- GDELT Project entity extraction experiments — "LLM extractors are massively more brittle than traditional extractors; single apostrophe changes results" (MEDIUM confidence — WebSearch verified)
+- Knowledge graph update challenges — Stanford CS520 notes on evolution, orphan nodes, and schema versioning (MEDIUM confidence)
+- Direct codebase analysis of `src/pam/agent/agent.py`, `src/pam/agent/tools.py`, `src/pam/ingestion/pipeline.py`, `src/pam/common/models.py`, `docker-compose.yml`, `web/package.json` (HIGH confidence — direct code evidence)
 
 ---
-*Pitfalls research for: PAM Context code cleanup/refactoring milestone*
-*Researched: 2026-02-15*
+*Pitfalls research for: PAM Context — Knowledge Graph + Temporal Reasoning milestone*
+*Researched: 2026-02-19*
