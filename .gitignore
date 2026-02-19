@@ -50,8 +50,6 @@ test_docs/
 web/test-results/
 web/playwright-report/
 
-# Planning
-.planning/
 
 # Worktrees
 .worktrees/
