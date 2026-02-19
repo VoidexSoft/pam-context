@@ -11,8 +11,8 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 
 - [x] **INFRA-01**: Neo4j 5.26+ Community runs in Docker Compose with explicit memory config and health check
 - [x] **INFRA-02**: graphiti-core[anthropic] installed with Anthropic LLM + OpenAI embedder configured
-- [ ] **INFRA-03**: GraphitiService singleton created in FastAPI lifespan and stored on app.state
-- [ ] **INFRA-04**: get_graph_service() dependency function in deps.py with cast() typing
+- [x] **INFRA-03**: GraphitiService singleton created in FastAPI lifespan and stored on app.state
+- [x] **INFRA-04**: get_graph_service() dependency function in deps.py with cast() typing
 - [x] **INFRA-05**: Entity type taxonomy defined as bounded Pydantic models (<=10 types) in config
 - [x] **INFRA-06**: @neo4j-nvl/react, @neo4j-nvl/base, @neo4j-nvl/interaction-handlers installed in web/
 
@@ -76,8 +76,8 @@ Deferred to future milestone. Tracked but not in current roadmap.
 |-------------|-------|--------|
 | INFRA-01 | Phase 6 | Complete |
 | INFRA-02 | Phase 6 | Complete |
-| INFRA-03 | Phase 6 | Pending |
-| INFRA-04 | Phase 6 | Pending |
+| INFRA-03 | Phase 6 | Complete |
+| INFRA-04 | Phase 6 | Complete |
 | INFRA-05 | Phase 6 | Complete |
 | INFRA-06 | Phase 6 | Complete |
 | EXTRACT-01 | Phase 7 | Pending |
@@ -109,4 +109,4 @@ Deferred to future milestone. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-02-19*
-*Last updated: 2026-02-19 after roadmap creation*
+*Last updated: 2026-02-19 after phase 6 completion*

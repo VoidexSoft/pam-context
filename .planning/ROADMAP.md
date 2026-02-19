@@ -22,7 +22,7 @@ Full details: `.planning/milestones/v1-ROADMAP.md`
 
 ### v2.0 Knowledge Graph & Temporal Reasoning
 
-- [ ] **Phase 6: Neo4j + Graphiti Infrastructure** - Graph database, Graphiti engine, entity schema, and service lifecycle
+- [x] **Phase 6: Neo4j + Graphiti Infrastructure** - Graph database, Graphiti engine, entity schema, and service lifecycle
 - [ ] **Phase 7: Ingestion Pipeline Extension + Diff Engine** - Graph extraction step, dual-write safety, change detection
 - [ ] **Phase 8: Agent Graph Tool + REST Graph Endpoints** - Natural language graph queries via agent, REST API for graph data
 - [ ] **Phase 9: Graph Explorer UI** - Visual graph explorer with neighborhood view, entity details, temporal timeline
@@ -41,9 +41,9 @@ Full details: `.planning/milestones/v1-ROADMAP.md`
   5. Frontend `@neo4j-nvl` packages are installed and importable in the web/ project (verified by a trivial import in a test file)
 **Plans:** 3 plans
 Plans:
-- [ ] 06-01-PLAN.md — Docker Compose Neo4j + graphiti-core dependency + entity type taxonomy + GraphitiService class
-- [ ] 06-02-PLAN.md — FastAPI lifespan integration + deps.py + health check + graph status endpoint + tests
-- [ ] 06-03-PLAN.md — NVL packages + feature-flagged /graph route + placeholder graph status page
+- [x] 06-01-PLAN.md — Docker Compose Neo4j + graphiti-core dependency + entity type taxonomy + GraphitiService class
+- [x] 06-02-PLAN.md — FastAPI lifespan integration + deps.py + health check + graph status endpoint + tests
+- [x] 06-03-PLAN.md — NVL packages + feature-flagged /graph route + placeholder graph status page
 
 ### Phase 7: Ingestion Pipeline Extension + Diff Engine
 **Goal**: Every ingested document produces entity nodes and relationship edges in Neo4j with correct bi-temporal timestamps, graph failures never corrupt PG/ES data, and re-ingestion detects entity-level changes — so that the graph contains queryable knowledge before any user-facing feature is built.
@@ -89,7 +89,7 @@ Plans:
 | 3. API + Agent Hardening | v1 | 3/3 | Complete | 2026-02-18 |
 | 4. Frontend + Dead Code Cleanup | v1 | 2/2 | Complete | 2026-02-18 |
 | 5. Audit Gap Closure | v1 | 2/2 | Complete | 2026-02-18 |
-| 6. Neo4j + Graphiti Infrastructure | v2.0 | 0/3 | Planned | - |
+| 6. Neo4j + Graphiti Infrastructure | v2.0 | 3/3 | Complete | 2026-02-19 |
 | 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 0/? | Not started | - |
 | 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 0/? | Not started | - |
 | 9. Graph Explorer UI | v2.0 | 0/? | Not started | - |
