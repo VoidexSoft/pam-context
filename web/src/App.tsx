@@ -3,6 +3,7 @@ import { Routes, Route, NavLink } from "react-router-dom";
 import ChatPage from "./pages/ChatPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import AdminDashboard from "./pages/AdminDashboard";
+import GraphPage from "./pages/GraphPage";
 import LoginPage from "./pages/LoginPage";
 import { useAuth } from "./hooks/useAuth";
 
@@ -40,7 +41,24 @@ const NAV_ITEMS = [
   },
 ];
 
-function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+const graphIcon = (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <circle cx="6" cy="6" r="2.5" strokeWidth={1.5} />
+    <circle cx="18" cy="12" r="2.5" strokeWidth={1.5} />
+    <circle cx="8" cy="18" r="2.5" strokeWidth={1.5} />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M8.5 6.5L15.5 11M10.5 17L15.5 13" />
+  </svg>
+);
+
+function Sidebar({
+  open,
+  onClose,
+  graphEnabled,
+}: {
+  open: boolean;
+  onClose: () => void;
+  graphEnabled: boolean;
+}) {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
       isActive
@@ -81,6 +99,25 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               {item.label}
             </NavLink>
           ))}
+          {graphEnabled ? (
+            <NavLink
+              to="/graph"
+              className={linkClass}
+              onClick={onClose}
+            >
+              {graphIcon}
+              Graph
+            </NavLink>
+          ) : (
+            <span
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-300 cursor-not-allowed"
+              title="Graph explorer not yet enabled"
+              aria-label="Graph navigation disabled"
+            >
+              {graphIcon}
+              Graph
+            </span>
+          )}
         </nav>
       </aside>
     </>
@@ -90,6 +127,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, authRequired, checked, login, logout } = useAuth();
+  const graphEnabled = import.meta.env.VITE_GRAPH_ENABLED === "true";
 
   // Wait for auth check before rendering
   if (!checked) return null;
@@ -101,7 +139,7 @@ export default function App() {
 
   return (
     <div className="flex h-full">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} graphEnabled={graphEnabled} />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Mobile header with hamburger */}
         <div className="md:hidden flex items-center px-4 py-2 border-b border-gray-200 bg-white">
@@ -130,6 +168,7 @@ export default function App() {
             <Route path="/" element={<ChatPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/graph" element={<GraphPage />} />
           </Routes>
         </main>
       </div>
