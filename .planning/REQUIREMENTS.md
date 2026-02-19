@@ -74,39 +74,39 @@ Deferred to future milestone. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Pending | Pending |
-| INFRA-02 | Pending | Pending |
-| INFRA-03 | Pending | Pending |
-| INFRA-04 | Pending | Pending |
-| INFRA-05 | Pending | Pending |
-| INFRA-06 | Pending | Pending |
-| EXTRACT-01 | Pending | Pending |
-| EXTRACT-02 | Pending | Pending |
-| EXTRACT-03 | Pending | Pending |
-| EXTRACT-04 | Pending | Pending |
-| EXTRACT-05 | Pending | Pending |
-| EXTRACT-06 | Pending | Pending |
-| GRAPH-01 | Pending | Pending |
-| GRAPH-02 | Pending | Pending |
-| GRAPH-03 | Pending | Pending |
-| GRAPH-04 | Pending | Pending |
-| GRAPH-05 | Pending | Pending |
-| GRAPH-06 | Pending | Pending |
-| DIFF-01 | Pending | Pending |
-| DIFF-02 | Pending | Pending |
-| DIFF-03 | Pending | Pending |
-| VIZ-01 | Pending | Pending |
-| VIZ-02 | Pending | Pending |
-| VIZ-03 | Pending | Pending |
-| VIZ-04 | Pending | Pending |
-| VIZ-05 | Pending | Pending |
-| VIZ-06 | Pending | Pending |
+| INFRA-01 | Phase 6 | Pending |
+| INFRA-02 | Phase 6 | Pending |
+| INFRA-03 | Phase 6 | Pending |
+| INFRA-04 | Phase 6 | Pending |
+| INFRA-05 | Phase 6 | Pending |
+| INFRA-06 | Phase 6 | Pending |
+| EXTRACT-01 | Phase 7 | Pending |
+| EXTRACT-02 | Phase 7 | Pending |
+| EXTRACT-03 | Phase 7 | Pending |
+| EXTRACT-04 | Phase 7 | Pending |
+| EXTRACT-05 | Phase 7 | Pending |
+| EXTRACT-06 | Phase 7 | Pending |
+| GRAPH-01 | Phase 8 | Pending |
+| GRAPH-02 | Phase 8 | Pending |
+| GRAPH-03 | Phase 8 | Pending |
+| GRAPH-04 | Phase 8 | Pending |
+| GRAPH-05 | Phase 8 | Pending |
+| GRAPH-06 | Phase 8 | Pending |
+| DIFF-01 | Phase 7 | Pending |
+| DIFF-02 | Phase 7 | Pending |
+| DIFF-03 | Phase 7 | Pending |
+| VIZ-01 | Phase 9 | Pending |
+| VIZ-02 | Phase 9 | Pending |
+| VIZ-03 | Phase 9 | Pending |
+| VIZ-04 | Phase 9 | Pending |
+| VIZ-05 | Phase 9 | Pending |
+| VIZ-06 | Phase 9 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 27 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 27
+- Mapped to phases: 27
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-19*
-*Last updated: 2026-02-19 after initial definition*
+*Last updated: 2026-02-19 after roadmap creation*
