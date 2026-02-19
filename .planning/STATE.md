@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 6 of 9 (Neo4j + Graphiti Infrastructure)
-Plan: 3 of 3 (Complete)
-Status: Phase 6 complete
-Last activity: 2026-02-19 — Completed 06-03-PLAN.md (Frontend Graph Stub)
+Plan: 2 of 3 (06-01 and 06-03 complete, 06-02 remaining)
+Status: Executing
+Last activity: 2026-02-19 — Completed 06-01-PLAN.md (Neo4j + Graphiti Foundation)
 
 Progress: [#############.................] 72% (13/~18 plans across all milestones)
 
@@ -34,11 +34,14 @@ Progress: [#############.................] 72% (13/~18 plans across all mileston
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
+| 06-01 | 4min | 2 | 8 |
 | 06-03 | 3min | 2 | 4 |
 
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
+- Phase 6-01: graphiti-core 0.28.1 with async classmethod factory pattern for GraphitiService
+- Phase 6-01: Entity type fields all Optional with Field(None, description=...) per Graphiti best-effort extraction
 - Phase 6-03: Used --legacy-peer-deps for NVL (peer dep on react 18.0.0 exact)
 - Phase 6-03: Feature flag VITE_GRAPH_ENABLED for conditional nav rendering
 - Phase 6-03: /graph route registered unconditionally for dev convenience
@@ -54,8 +57,8 @@ Progress: [#############.................] 72% (13/~18 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed 06-03-PLAN.md (Frontend Graph Stub)
-Resume file: .planning/phases/06-neo4j-graphiti-infrastructure/06-03-SUMMARY.md
+Stopped at: Completed 06-01-PLAN.md (Neo4j + Graphiti Foundation)
+Resume file: .planning/phases/06-neo4j-graphiti-infrastructure/06-01-SUMMARY.md
 
 ---
-Next step: `/gsd:plan-phase 7` (or execute remaining Phase 6 plans if 06-01, 06-02 not yet done)
+Next step: `/gsd:execute-phase 06` — plan 06-02 remaining
