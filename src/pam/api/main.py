@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
-from pam.api.routes import admin, auth, chat, documents, ingest, search
+from pam.api.routes import admin, auth, chat, documents, graph, ingest, search
 from pam.common.cache import CacheService
 from pam.common.config import settings
 from pam.common.logging import configure_logging
@@ -122,6 +122,24 @@ async def lifespan(app: FastAPI):
         duckdb_service.register_files()
     app.state.duckdb_service = duckdb_service
 
+    # --- Graphiti / Neo4j ---
+    graph_service = None
+    try:
+        from pam.graph.service import GraphitiService
+
+        graph_service = await GraphitiService.create(
+            neo4j_uri=settings.neo4j_uri,
+            neo4j_user=settings.neo4j_user,
+            neo4j_password=settings.neo4j_password,
+            anthropic_api_key=settings.anthropic_api_key,
+            openai_api_key=settings.openai_api_key,
+            anthropic_model=settings.graphiti_model,
+            embedding_model=settings.graphiti_embedding_model,
+        )
+    except Exception:
+        logger.warning("graphiti_connect_failed", exc_info=True)
+    app.state.graph_service = graph_service
+
     # --- Store config values on app.state for deps.py agent creation ---
     app.state.anthropic_api_key = settings.anthropic_api_key
     app.state.agent_model = settings.agent_model
@@ -146,6 +164,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    if graph_service:
+        await graph_service.close()
     if redis_client:
         await redis_client.aclose()
     await app.state.es_client.close()
@@ -178,6 +198,7 @@ def create_app() -> FastAPI:
     app.include_router(ingest.router, prefix="/api", tags=["ingest"])
     app.include_router(auth.router, prefix="/api", tags=["auth"])
     app.include_router(admin.router, prefix="/api", tags=["admin"])
+    app.include_router(graph.router, prefix="/api", tags=["graph"])
 
     @app.get("/api/health")
     async def health(
@@ -218,6 +239,19 @@ def create_app() -> FastAPI:
                 services["redis"] = "down"
         else:
             services["redis"] = "down"
+
+        # Check Neo4j
+        graph_service = getattr(request.app.state, "graph_service", None)
+        if graph_service:
+            try:
+                async with graph_service.client.driver.session() as session:
+                    await session.run("RETURN 1")
+                services["neo4j"] = "up"
+            except Exception:
+                logger.warning("health_check_neo4j_failed", exc_info=True)
+                services["neo4j"] = "down"
+        else:
+            services["neo4j"] = "down"
 
         all_up = all(v == "up" for v in services.values())
         status_code = 200 if all_up else 503

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pam.agent.agent import RetrievalAgent
 from pam.common.cache import CacheService
 from pam.common.logging import CostTracker
+from pam.graph.service import GraphitiService
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
 from pam.retrieval.rerankers.base import BaseReranker
 from pam.retrieval.search_protocol import SearchService
@@ -52,6 +53,10 @@ def get_duckdb_service(request: Request) -> DuckDBService | None:
 
 def get_cache_service(request: Request) -> CacheService | None:
     return cast(CacheService | None, request.app.state.cache_service)
+
+
+def get_graph_service(request: Request) -> GraphitiService:
+    return cast(GraphitiService, request.app.state.graph_service)
 
 
 async def get_agent(
