@@ -14,7 +14,7 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 - [ ] **INFRA-03**: GraphitiService singleton created in FastAPI lifespan and stored on app.state
 - [ ] **INFRA-04**: get_graph_service() dependency function in deps.py with cast() typing
 - [ ] **INFRA-05**: Entity type taxonomy defined as bounded Pydantic models (<=10 types) in config
-- [ ] **INFRA-06**: @neo4j-nvl/react, @neo4j-nvl/base, @neo4j-nvl/interaction-handlers installed in web/
+- [x] **INFRA-06**: @neo4j-nvl/react, @neo4j-nvl/base, @neo4j-nvl/interaction-handlers installed in web/
 
 ### Entity Extraction
 
@@ -79,7 +79,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | INFRA-03 | Phase 6 | Pending |
 | INFRA-04 | Phase 6 | Pending |
 | INFRA-05 | Phase 6 | Pending |
-| INFRA-06 | Phase 6 | Pending |
+| INFRA-06 | Phase 6 | Complete |
 | EXTRACT-01 | Phase 7 | Pending |
 | EXTRACT-02 | Phase 7 | Pending |
 | EXTRACT-03 | Phase 7 | Pending |
