@@ -31,6 +31,8 @@ dependencies = [
     # Haystack (retrieval pipeline)
     "haystack-ai>=2.9",
     "elasticsearch-haystack>=2.0",
+    # Graph
+    "graphiti-core[anthropic]>=0.27",
     # Reranking
     "sentence-transformers>=3.0",
     # Utilities
