@@ -72,6 +72,7 @@ def app(mock_agent, mock_search_service, mock_api_embedder, mock_api_db_session,
     application.state.session_factory = MagicMock()
     application.state.cache_service = None
     application.state.redis_client = None
+    application.state.graph_service = None
 
     return application
 
