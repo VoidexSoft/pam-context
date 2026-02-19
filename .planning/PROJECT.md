@@ -43,7 +43,12 @@ Users can ask natural-language questions about their business documents and get 
 
 ### Active
 
-(None — next milestone TBD)
+- [ ] Neo4j + Graphiti bi-temporal knowledge graph — v2.0
+- [ ] LLM-driven entity extraction with auto-discovered schemas — v2.0
+- [ ] Entity-to-graph pipeline mapping extracted entities to Neo4j nodes and temporal edges — v2.0
+- [ ] Graph-aware retrieval agent tool (query_graph) for relationship and temporal queries — v2.0
+- [ ] Change detection diff engine with semantic change classification and graph edge versioning — v2.0
+- [ ] Visual graph explorer UI via @neo4j-nvl/react — v2.0
 
 ### Out of Scope
 
@@ -84,4 +89,4 @@ Tech stack: Python 3.12 + FastAPI + SQLAlchemy async + Elasticsearch 8.x + Postg
 | conversation_id generated at API layer | Keeps agent stateless; chat.py generates UUID, not agent.py | ✓ Good |
 
 ---
-*Last updated: 2026-02-19 after v1 milestone*
+*Last updated: 2026-02-19 after v2.0 milestone start*
