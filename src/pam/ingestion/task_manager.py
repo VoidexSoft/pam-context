@@ -3,10 +3,13 @@
 Uses PostgreSQL to track task state and asyncio.create_task() for background execution.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json as json_module
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import structlog
 from elasticsearch import AsyncElasticsearch
@@ -23,6 +26,9 @@ from pam.ingestion.embedders.base import BaseEmbedder
 from pam.ingestion.parsers.docling_parser import DoclingParser
 from pam.ingestion.pipeline import IngestionPipeline, IngestionResult
 from pam.ingestion.stores.elasticsearch_store import ElasticsearchStore
+
+if TYPE_CHECKING:
+    from pam.graph.service import GraphitiService
 
 logger = structlog.get_logger()
 
@@ -59,10 +65,15 @@ def spawn_ingestion_task(
     embedder: BaseEmbedder,
     session_factory: async_sessionmaker,
     cache_service: CacheService | None = None,
+    graph_service: GraphitiService | None = None,
+    skip_graph: bool = False,
 ) -> None:
     """Spawn a background asyncio task for ingestion."""
     asyncio_task = asyncio.create_task(
-        run_ingestion_background(task_id, folder_path, es_client, embedder, session_factory, cache_service),
+        run_ingestion_background(
+            task_id, folder_path, es_client, embedder, session_factory,
+            cache_service, graph_service, skip_graph,
+        ),
         name=f"ingest-{task_id}",
     )
     _running_tasks[task_id] = asyncio_task
@@ -76,6 +87,8 @@ async def run_ingestion_background(
     embedder: BaseEmbedder,
     session_factory: async_sessionmaker,
     cache_service: CacheService | None = None,
+    graph_service: GraphitiService | None = None,
+    skip_graph: bool = False,
 ) -> None:
     """Background coroutine that runs the ingestion pipeline and updates task state."""
     try:
@@ -118,6 +131,8 @@ async def run_ingestion_background(
                         "segments_created": result.segments_created,
                         "skipped": result.skipped,
                         "error": result.error,
+                        "graph_synced": result.graph_synced,
+                        "graph_entities_extracted": result.graph_entities_extracted,
                     }
                 ]
                 succeeded_inc = 1 if not result.error and not result.skipped else 0
@@ -157,6 +172,8 @@ async def run_ingestion_background(
                     session=pipeline_session,
                     source_type="markdown",
                     progress_callback=on_progress,
+                    graph_service=graph_service,
+                    skip_graph=skip_graph,
                 )
                 await pipeline.ingest_all()
 
