@@ -18,12 +18,12 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 
 ### Entity Extraction
 
-- [ ] **EXTRACT-01**: Ingestion pipeline calls add_episode() (never add_episode_bulk) after PG commit for each segment
-- [ ] **EXTRACT-02**: Entity nodes and relationship edges created in Neo4j with bi-temporal timestamps sourced from document modified_at
-- [ ] **EXTRACT-03**: graph_synced boolean added to PG documents table via Alembic migration
+- [x] **EXTRACT-01**: Ingestion pipeline calls add_episode() (never add_episode_bulk) after PG commit for each segment
+- [x] **EXTRACT-02**: Entity nodes and relationship edges created in Neo4j with bi-temporal timestamps sourced from document modified_at
+- [x] **EXTRACT-03**: graph_synced boolean added to PG documents table via Alembic migration
 - [ ] **EXTRACT-04**: Graph extraction runs as background step — failure never rolls back PG/ES data
 - [ ] **EXTRACT-05**: Reconciliation endpoint /ingest/sync-graph retries documents with graph_synced=False
-- [ ] **EXTRACT-06**: Orphan node prevention via group_id-scoped episode tombstoning before re-ingestion
+- [x] **EXTRACT-06**: Orphan node prevention via group_id-scoped episode tombstoning before re-ingestion
 
 ### Graph Querying
 
@@ -36,8 +36,8 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 
 ### Change Detection
 
-- [ ] **DIFF-01**: Diff engine detects entity-level changes on re-ingestion (added/modified/removed entities)
-- [ ] **DIFF-02**: Superseded edges have t_invalid set via Graphiti conflict resolution
+- [x] **DIFF-01**: Diff engine detects entity-level changes on re-ingestion (added/modified/removed entities)
+- [x] **DIFF-02**: Superseded edges have t_invalid set via Graphiti conflict resolution
 - [ ] **DIFF-03**: Entity-level diff summaries written to SyncLog.details as structured JSON
 
 ### Visualization
@@ -80,20 +80,20 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | INFRA-04 | Phase 6 | Complete |
 | INFRA-05 | Phase 6 | Complete |
 | INFRA-06 | Phase 6 | Complete |
-| EXTRACT-01 | Phase 7 | Pending |
-| EXTRACT-02 | Phase 7 | Pending |
-| EXTRACT-03 | Phase 7 | Pending |
+| EXTRACT-01 | Phase 7 | Complete |
+| EXTRACT-02 | Phase 7 | Complete |
+| EXTRACT-03 | Phase 7 | Complete |
 | EXTRACT-04 | Phase 7 | Pending |
 | EXTRACT-05 | Phase 7 | Pending |
-| EXTRACT-06 | Phase 7 | Pending |
+| EXTRACT-06 | Phase 7 | Complete |
 | GRAPH-01 | Phase 8 | Pending |
 | GRAPH-02 | Phase 8 | Pending |
 | GRAPH-03 | Phase 8 | Pending |
 | GRAPH-04 | Phase 8 | Pending |
 | GRAPH-05 | Phase 8 | Pending |
 | GRAPH-06 | Phase 8 | Pending |
-| DIFF-01 | Phase 7 | Pending |
-| DIFF-02 | Phase 7 | Pending |
+| DIFF-01 | Phase 7 | Complete |
+| DIFF-02 | Phase 7 | Complete |
 | DIFF-03 | Phase 7 | Pending |
 | VIZ-01 | Phase 9 | Pending |
 | VIZ-02 | Phase 9 | Pending |
