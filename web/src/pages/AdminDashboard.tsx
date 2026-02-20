@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getStats, SystemStats } from "../api/client";
+import { getStats, syncGraph, SyncGraphResult, SystemStats } from "../api/client";
 
 function StatCard({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
   return (
@@ -16,6 +16,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncGraphResult | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -28,6 +31,20 @@ export default function AdminDashboard() {
 
   const handleRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
+  }, []);
+
+  const handleSyncGraph = useCallback(async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    setSyncError(null);
+    try {
+      const result = await syncGraph();
+      setSyncResult(result);
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
   }, []);
 
   if (loading) {
@@ -147,6 +164,59 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* Graph Sync */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-700">Graph Sync</h3>
+            <button
+              onClick={handleSyncGraph}
+              disabled={syncing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {syncing ? (
+                <>
+                  <span className="inline-block w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                "Sync Graph"
+              )}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">
+            Retry graph extraction for documents that failed or haven't been synced to Neo4j.
+          </p>
+          {syncError && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+              {syncError}
+            </div>
+          )}
+          {syncResult && (
+            <div className="space-y-2">
+              <div className="flex gap-4 text-xs">
+                <span className="text-green-600 font-medium">
+                  Synced: {syncResult.synced.length}
+                </span>
+                <span className="text-red-600 font-medium">
+                  Failed: {syncResult.failed.length}
+                </span>
+                <span className="text-gray-500">
+                  Remaining: {syncResult.remaining}
+                </span>
+              </div>
+              {syncResult.failed.length > 0 && (
+                <div className="text-xs text-gray-500 space-y-1">
+                  {syncResult.failed.map((f) => (
+                    <div key={f.doc_id} className="truncate">
+                      <span className="text-red-500">{f.doc_id}:</span> {f.error}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Recent ingestion tasks */}
         {stats.recent_tasks.length > 0 && (

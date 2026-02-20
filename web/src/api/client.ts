@@ -261,6 +261,19 @@ export function getGraphStatus(): Promise<GraphStatus> {
   return request<GraphStatus>("/graph/status");
 }
 
+export interface SyncGraphResult {
+  synced: Array<{ doc_id: string; status: string; entities_added: number }>;
+  failed: Array<{ doc_id: string; error: string }>;
+  remaining: number;
+}
+
+export async function syncGraph(limit?: number): Promise<SyncGraphResult> {
+  const params = limit ? `?limit=${limit}` : "";
+  return request<SyncGraphResult>(`/ingest/sync-graph${params}`, {
+    method: "POST",
+  });
+}
+
 export function devLogin(email: string, name: string): Promise<TokenResponse> {
   return request<TokenResponse>("/auth/dev-login", {
     method: "POST",
