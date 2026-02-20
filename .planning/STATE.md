@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 7 of 9 (Ingestion Pipeline Extension + Diff Engine)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-20 — Completed 07-01-PLAN.md (Graph Extraction + Diff Engine)
+Plan: 2 of 2 complete
+Status: Complete
+Last activity: 2026-02-20 — Completed 07-02-PLAN.md (Pipeline Integration + Sync API)
 
-Progress: [#################.............] 83% (15/~18 plans across all milestones)
+Progress: [##################............] 89% (16/~18 plans across all milestones)
 
 ## Milestone Progress
 
 | Milestone | Phases | Plans | Status |
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
-| v2.0 Knowledge Graph | 2/4 | 5/? | Phase 7 in progress |
+| v2.0 Knowledge Graph | 2/4 | 7/? | Phase 7 complete |
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ Progress: [#################.............] 83% (15/~18 plans across all mileston
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | 07-01 | 4min | 2 | 6 |
+| 07-02 | 7min | 2 | 5 |
 
 ## Accumulated Context
 
@@ -56,6 +57,9 @@ Progress: [#################.............] 83% (15/~18 plans across all mileston
 - Phase 6-02: Graph status endpoint returns 200 with status field rather than error HTTP codes
 - Phase 7-01: get_episode() for old entity info before removal is best-effort with try/except fallback
 - Phase 7-01: Clear segment metadata on rollback regardless of remove_episode success to prevent stale references
+- Phase 7-02: Graph extraction is non-blocking: failure sets graph_synced=False without affecting PG/ES data
+- Phase 7-02: Old segments retrieved BEFORE save_segments() for chunk-level diff on re-ingestion
+- Phase 7-02: MAX_GRAPH_SYNC_RETRIES=3 as constant in ingest routes
 **Blockers:** None
 **Tech Debt:** 12 items (0 critical) — see `milestones/v1-MILESTONE-AUDIT.md`
 
@@ -68,8 +72,8 @@ Progress: [#################.............] 83% (15/~18 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 07-01-PLAN.md (Graph Extraction + Diff Engine)
-Resume file: .planning/phases/07-ingestion-pipeline-extension-diff-engine/07-01-SUMMARY.md
+Stopped at: Completed 07-02-PLAN.md (Pipeline Integration + Sync API)
+Resume file: .planning/phases/07-ingestion-pipeline-extension-diff-engine/07-02-SUMMARY.md
 
 ---
-Next step: Execute 07-02-PLAN.md (Pipeline Integration + Sync API).
+Next step: Begin Phase 8 planning (Agent Graph Tool).
