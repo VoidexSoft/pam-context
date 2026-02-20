@@ -5,7 +5,18 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -42,6 +53,8 @@ class Document(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    graph_synced: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
+    graph_sync_retries: Mapped[int] = mapped_column(Integer, server_default=text("0"), nullable=False)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -197,6 +210,7 @@ class DocumentResponse(BaseModel):
     title: str
     owner: str | None
     status: str
+    graph_synced: bool = False
     content_hash: str | None
     last_synced_at: datetime | None
     created_at: datetime

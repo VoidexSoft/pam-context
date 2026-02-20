@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -132,3 +132,45 @@ class PostgresStore:
             }
             for doc, count in rows
         ]
+
+    async def set_graph_synced(
+        self, document_id: uuid.UUID, synced: bool, increment_retries: bool = False
+    ) -> None:
+        """Update graph_synced flag for a document.
+
+        If synced=True, resets graph_sync_retries to 0.
+        If increment_retries=True, increments graph_sync_retries by 1.
+        """
+        values: dict = {"graph_synced": synced}
+        if synced:
+            values["graph_sync_retries"] = 0
+        elif increment_retries:
+            values["graph_sync_retries"] = Document.graph_sync_retries + 1
+
+        stmt = update(Document).where(Document.id == document_id).values(**values)
+        await self.session.execute(stmt)
+        await self.session.flush()
+
+    async def get_unsynced_documents(
+        self, max_retries: int = 3, limit: int | None = None
+    ) -> list[Document]:
+        """Get documents that need graph sync (not synced and under retry limit)."""
+        stmt = select(Document).where(
+            Document.graph_synced == False,  # noqa: E712
+            Document.graph_sync_retries < max_retries,
+        )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_segments_for_document(self, document_id: uuid.UUID) -> list[Segment]:
+        """Get all segments for a document, ordered by position."""
+        stmt = (
+            select(Segment)
+            .where(Segment.document_id == document_id)
+            .order_by(Segment.position)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
