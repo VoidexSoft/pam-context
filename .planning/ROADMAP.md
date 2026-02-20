@@ -55,7 +55,10 @@ Plans:
   3. If Neo4j is unreachable during ingestion, the document still commits to PG and ES successfully, with `graph_synced=False` recorded in PostgreSQL
   4. Calling `POST /ingest/sync-graph` retries graph extraction for all documents where `graph_synced=False` and updates the flag on success
   5. Entity-level diff summaries (added/modified/removed entities) are written to `SyncLog.details` as structured JSON after each re-ingestion
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 07-01-PLAN.md — Alembic migration + Document model + Graph extraction orchestrator + Diff engine
+- [ ] 07-02-PLAN.md — Pipeline integration + Sync recovery endpoint + skip_graph API support
 
 ### Phase 8: Agent Graph Tool + REST Graph Endpoints
 **Goal**: Users can ask the Claude agent relationship and temporal questions that are answered from the knowledge graph, and REST endpoints serve graph data for the upcoming UI — so that graph knowledge is accessible through natural language and API before any frontend work begins.
@@ -90,6 +93,6 @@ Plans:
 | 4. Frontend + Dead Code Cleanup | v1 | 2/2 | Complete | 2026-02-18 |
 | 5. Audit Gap Closure | v1 | 2/2 | Complete | 2026-02-18 |
 | 6. Neo4j + Graphiti Infrastructure | v2.0 | 3/3 | Complete | 2026-02-19 |
-| 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 0/? | Not started | - |
+| 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 0/2 | Not started | - |
 | 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 0/? | Not started | - |
 | 9. Graph Explorer UI | v2.0 | 0/? | Not started | - |
