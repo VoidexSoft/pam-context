@@ -38,7 +38,8 @@ class PostgresStore:
             project_id=project_id,
             last_synced_at=datetime.now(UTC),
         )
-        stmt = stmt.on_conflict_on_constraint("uq_documents_source").do_update(  # type: ignore[attr-defined]
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_documents_source",
             set_={
                 "title": stmt.excluded.title,
                 "content_hash": stmt.excluded.content_hash,
@@ -46,7 +47,7 @@ class PostgresStore:
                 "owner": stmt.excluded.owner,
                 "last_synced_at": stmt.excluded.last_synced_at,
                 "updated_at": func.now(),
-            }
+            },
         )
         stmt = stmt.returning(Document.id)
         result = await self.session.execute(stmt)

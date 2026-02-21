@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Anthropic (agent)
     anthropic_api_key: str = ""
-    agent_model: str = "claude-sonnet-4-5-20250514"
+    agent_model: str = "claude-sonnet-4-6"
 
     # Auth
     auth_required: bool = False  # Optional in dev mode; set True in production
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "pam_graph"  # noqa: S105
-    graphiti_model: str = "claude-sonnet-4-5-20250514"
+    graphiti_model: str = "claude-sonnet-4-6"
     graphiti_embedding_model: str = "text-embedding-3-small"
 
     # DuckDB (analytics queries)

@@ -100,14 +100,14 @@ class CostTracker:
     def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
         # Approximate pricing per 1M tokens (as of 2025)
         pricing = {
-            "claude-sonnet-4-5-20250514": {"input": 3.0, "output": 15.0},
+            "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
             "claude-opus-4-6": {"input": 15.0, "output": 75.0},
         }
         rates = pricing.get(model)
         if rates is None:
             log = structlog.get_logger()
             log.warning("unknown_model_cost", message=f"Unknown model '{model}': using default cost estimate")
-            rates = pricing["claude-sonnet-4-5-20250514"]
+            rates = pricing["claude-sonnet-4-6"]
         return (input_tokens * rates["input"] + output_tokens * rates["output"]) / 1_000_000
 
     @staticmethod
