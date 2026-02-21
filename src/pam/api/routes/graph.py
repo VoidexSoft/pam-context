@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-import structlog
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+import re
 
-from pam.api.deps import get_graph_service
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from pam.api.deps import get_db, get_graph_service
 from pam.api.pagination import decode_cursor, encode_cursor
+from pam.common.models import SyncLog
 from pam.graph.entity_types import ENTITY_TYPES
 from pam.graph.service import GraphitiService
 
@@ -65,6 +70,24 @@ class EntityListResponse(BaseModel):
 
     entities: list[EntityListItem]
     next_cursor: str | None = None
+
+
+class EntityHistoryResponse(BaseModel):
+    """All edges (including invalidated) for a single entity, ordered by valid_at."""
+
+    entity: GraphNode
+    edges: list[GraphEdge]
+
+
+class SyncLogResponse(BaseModel):
+    """A sync log entry with diff details."""
+
+    id: str
+    document_id: str | None = None
+    action: str
+    segments_affected: int | None = None
+    details: dict
+    created_at: str
 
 
 @router.get("/graph/status")
@@ -328,4 +351,127 @@ async def graph_entities(
         raise HTTPException(
             status_code=503,
             detail="Graph database unavailable",
+        ) from exc
+
+
+@router.get(
+    "/graph/entity/{entity_name}/history",
+    response_model=EntityHistoryResponse,
+)
+async def entity_history(
+    entity_name: str,
+    graph_service: GraphitiService = Depends(get_graph_service),
+) -> EntityHistoryResponse:
+    """Return all edges (including invalidated) for a named entity.
+
+    Edges are ordered by ``valid_at ASC`` so callers can render a temporal
+    timeline.  Returns 404 if the entity is not found and 503 if Neo4j
+    is unreachable.
+    """
+    try:
+        escaped_name = re.escape(entity_name)
+        async with graph_service.client.driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (n:Entity)
+                WHERE n.name =~ $name_pattern
+                WITH n LIMIT 1
+                OPTIONAL MATCH (n)-[e:RELATES_TO]-(m:Entity)
+                RETURN n.uuid AS n_uuid, n.name AS n_name,
+                       labels(n) AS n_labels, n.summary AS n_summary,
+                       e.uuid AS e_uuid, e.fact AS e_fact, e.name AS e_name,
+                       e.valid_at AS e_valid, e.invalid_at AS e_invalid,
+                       startNode(e).name AS e_source, endNode(e).name AS e_target
+                ORDER BY e.valid_at ASC
+                LIMIT 50
+                """,
+                name_pattern=f"(?i){escaped_name}",
+            )
+            records = await result.data()
+
+        if not records or records[0]["n_uuid"] is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Entity '{entity_name}' not found",
+            )
+
+        first = records[0]
+        entity = GraphNode(
+            uuid=first["n_uuid"],
+            name=first["n_name"],
+            entity_type=_extract_entity_type(first["n_labels"]),
+            summary=first["n_summary"],
+        )
+
+        seen_edges: set[str] = set()
+        edges: list[GraphEdge] = []
+        for record in records:
+            if record["e_uuid"] is None:
+                continue
+            e_uuid = record["e_uuid"]
+            if e_uuid not in seen_edges:
+                seen_edges.add(e_uuid)
+                edges.append(
+                    GraphEdge(
+                        uuid=e_uuid,
+                        source_name=record["e_source"],
+                        target_name=record["e_target"],
+                        relationship_type=record["e_name"] or "",
+                        fact=record["e_fact"] or "",
+                        valid_at=str(record["e_valid"]) if record["e_valid"] else None,
+                        invalid_at=(
+                            str(record["e_invalid"]) if record["e_invalid"] else None
+                        ),
+                    )
+                )
+
+        return EntityHistoryResponse(entity=entity, edges=edges)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("entity_history_failed", entity=entity_name, error=str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="Graph database unavailable",
+        ) from exc
+
+
+_MAX_SYNC_LOGS = 50
+
+
+@router.get("/graph/sync-logs", response_model=list[SyncLogResponse])
+async def graph_sync_logs(
+    document_id: str | None = Query(default=None),
+    limit: int = Query(default=10),
+    db: AsyncSession = Depends(get_db),
+) -> list[SyncLogResponse]:
+    """Return recent sync-log entries with diff details.
+
+    Optionally filter by ``document_id``.  Limit capped at 50.
+    """
+    effective_limit = min(limit, _MAX_SYNC_LOGS)
+    try:
+        stmt = select(SyncLog).order_by(SyncLog.created_at.desc()).limit(effective_limit)
+        if document_id:
+            stmt = stmt.where(SyncLog.document_id == document_id)
+
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
+
+        return [
+            SyncLogResponse(
+                id=str(row.id),
+                document_id=str(row.document_id) if row.document_id else None,
+                action=row.action,
+                segments_affected=row.segments_affected,
+                details=row.details or {},
+                created_at=row.created_at.isoformat() if row.created_at else "",
+            )
+            for row in rows
+        ]
+    except Exception as exc:
+        logger.warning("graph_sync_logs_failed", error=str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="Database unavailable",
         ) from exc
