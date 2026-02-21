@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1 Code Quality Cleanup** — Phases 1-5 (shipped 2026-02-19)
-- **v2.0 Knowledge Graph & Temporal Reasoning** — Phases 6-9 (in progress)
+- ✅ **v2.0 Knowledge Graph & Temporal Reasoning** — Phases 6-9 (complete 2026-02-21)
 
 ## Phases
 
@@ -25,7 +25,7 @@ Full details: `.planning/milestones/v1-ROADMAP.md`
 - [x] **Phase 6: Neo4j + Graphiti Infrastructure** - Graph database, Graphiti engine, entity schema, and service lifecycle
 - [ ] **Phase 7: Ingestion Pipeline Extension + Diff Engine** - Graph extraction step, dual-write safety, change detection
 - [x] **Phase 8: Agent Graph Tool + REST Graph Endpoints** - Natural language graph queries via agent, REST API for graph data (completed 2026-02-21)
-- [ ] **Phase 9: Graph Explorer UI** - Visual graph explorer with neighborhood view, entity details, temporal timeline
+- [x] **Phase 9: Graph Explorer UI** - Visual graph explorer with neighborhood view, entity details, temporal timeline (completed 2026-02-21)
 
 ## Phase Details
 
@@ -87,9 +87,9 @@ Plans:
   5. The NVL graph component does not re-render during chat message streaming, and pan/zoom state is preserved when the user types in the chat input
 **Plans:** 3 plans
 Plans:
-- [ ] 09-01-PLAN.md — Backend REST endpoints (entity history + sync-logs) + frontend API client types and functions
-- [ ] 09-02-PLAN.md — Graph explorer page with NVL canvas, entity sidebar (search + details + temporal timeline), route and feature-flag gating
-- [ ] 09-03-PLAN.md — Ingestion diff preview with color-coded canvas + chat entity deep-links
+- [x] 09-01-PLAN.md — Backend REST endpoints (entity history + sync-logs) + frontend API client types and functions
+- [x] 09-02-PLAN.md — Graph explorer page with NVL canvas, entity sidebar (search + details + temporal timeline), route and feature-flag gating
+- [x] 09-03-PLAN.md — Ingestion diff preview with color-coded canvas + chat entity deep-links
 
 ## Progress
 
@@ -102,5 +102,5 @@ Plans:
 | 5. Audit Gap Closure | v1 | 2/2 | Complete | 2026-02-18 |
 | 6. Neo4j + Graphiti Infrastructure | v2.0 | 3/3 | Complete | 2026-02-19 |
 | 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 2/2 | Complete | 2026-02-20 |
-| 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | Complete    | 2026-02-21 | - |
-| 9. Graph Explorer UI | v2.0 | 0/3 | Not started | - |
+| 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 2/2 | Complete | 2026-02-21 |
+| 9. Graph Explorer UI | v2.0 | 3/3 | Complete | 2026-02-21 |
