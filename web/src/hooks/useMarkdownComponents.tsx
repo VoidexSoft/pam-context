@@ -1,8 +1,11 @@
 import React, { useCallback, useMemo } from "react";
 import type { Components } from "react-markdown";
+import { useNavigate } from "react-router-dom";
 import { Citation } from "../api/client";
 import CodeBlock from "../components/chat/CodeBlock";
 import CitationTooltip from "../components/chat/CitationTooltip";
+
+const GRAPH_ENABLED = import.meta.env.VITE_GRAPH_ENABLED === "true";
 
 interface UseMarkdownComponentsOptions {
   citations?: Citation[];
@@ -13,6 +16,8 @@ export function useMarkdownComponents({
   citations,
   onViewSource,
 }: UseMarkdownComponentsOptions = {}): Components {
+  const navigate = useNavigate();
+
   const renderCode = useCallback(
     ({ className, children, ...rest }: React.ComponentPropsWithoutRef<"code"> & { inline?: boolean }) => {
       // react-markdown v6+ passes node; detect inline via absence of className on code inside pre
@@ -46,6 +51,22 @@ export function useMarkdownComponents({
         }
       }
 
+      // Internal graph explorer link: SPA navigation when graph is enabled
+      if (href?.startsWith("/graph/explore") && GRAPH_ENABLED) {
+        return (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              navigate(href);
+            }}
+            className="text-indigo-600 hover:text-indigo-800 underline decoration-indigo-400 cursor-pointer inline font-medium"
+            title="View in Graph Explorer"
+          >
+            {children}
+          </button>
+        );
+      }
+
       return (
         <a
           href={href}
@@ -58,7 +79,7 @@ export function useMarkdownComponents({
         </a>
       );
     },
-    [citations, onViewSource]
+    [citations, onViewSource, navigate]
   );
 
   const renderTable = useCallback(
