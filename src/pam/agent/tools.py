@@ -125,10 +125,74 @@ SEARCH_ENTITIES_TOOL = {
     },
 }
 
+SEARCH_KNOWLEDGE_GRAPH_TOOL: dict[str, Any] = {
+    "name": "search_knowledge_graph",
+    "description": (
+        "Search the knowledge graph for entity RELATIONSHIPS and connections. "
+        "Use this for questions about what entities relate to, depend on, or interact with other entities. "
+        "Examples: 'what depends on AuthService?', 'what is connected to the payments module?'. "
+        "NOT for searching document text -- use search_knowledge for that."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Natural language query describing the relationships to find.",
+            },
+            "entity_name": {
+                "type": "string",
+                "description": "Optional: specific entity name to focus the search on.",
+            },
+            "relationship_type": {
+                "type": "string",
+                "description": "Optional: filter results by relationship type (e.g. 'DEPENDS_ON', 'OWNS').",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
+GET_ENTITY_HISTORY_TOOL: dict[str, Any] = {
+    "name": "get_entity_history",
+    "description": (
+        "Get the temporal change history of a specific entity in the knowledge graph. "
+        "Use this for questions about how an entity has CHANGED OVER TIME, when it was modified, "
+        "or what it looked like at a specific date. Requires an entity name. "
+        "Examples: 'how has AuthService changed since January?', 'what did the API look like last month?'."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "entity_name": {
+                "type": "string",
+                "description": "The name of the entity to get history for.",
+            },
+            "since": {
+                "type": "string",
+                "description": (
+                    "Optional: ISO datetime (e.g. '2026-01-01T00:00:00Z') "
+                    "to filter changes after this date."
+                ),
+            },
+            "reference_time": {
+                "type": "string",
+                "description": (
+                    "Optional: ISO datetime for a point-in-time snapshot. "
+                    "Returns only relationships that were valid at this specific time."
+                ),
+            },
+        },
+        "required": ["entity_name"],
+    },
+}
+
 ALL_TOOLS: list[dict[str, Any]] = [
     SEARCH_KNOWLEDGE_TOOL,
     GET_DOCUMENT_CONTEXT_TOOL,
     GET_CHANGE_HISTORY_TOOL,
     QUERY_DATABASE_TOOL,
     SEARCH_ENTITIES_TOOL,
+    SEARCH_KNOWLEDGE_GRAPH_TOOL,
+    GET_ENTITY_HISTORY_TOOL,
 ]
