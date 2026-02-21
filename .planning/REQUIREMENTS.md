@@ -30,9 +30,9 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 - [ ] **GRAPH-01**: search_knowledge_graph agent tool for relationship queries ("what depends on X?")
 - [ ] **GRAPH-02**: get_entity_history agent tool for temporal queries ("how has X changed since Y?")
 - [ ] **GRAPH-03**: Point-in-time graph query via reference_time parameter ("what did we believe in Q3?")
-- [ ] **GRAPH-04**: REST endpoint GET /api/graph/neighborhood/{entity} returning nodes + edges for 1-hop subgraph
-- [ ] **GRAPH-05**: REST endpoint GET /api/graph/entities listing all entity nodes with type and name
-- [ ] **GRAPH-06**: Tool result size hard-capped at 3000 chars with <=20 nodes per response
+- [x] **GRAPH-04**: REST endpoint GET /api/graph/neighborhood/{entity} returning nodes + edges for 1-hop subgraph
+- [x] **GRAPH-05**: REST endpoint GET /api/graph/entities listing all entity nodes with type and name
+- [x] **GRAPH-06**: Tool result size hard-capped at 3000 chars with <=20 nodes per response
 
 ### Change Detection
 
@@ -89,9 +89,9 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | GRAPH-01 | Phase 8 | Pending |
 | GRAPH-02 | Phase 8 | Pending |
 | GRAPH-03 | Phase 8 | Pending |
-| GRAPH-04 | Phase 8 | Pending |
-| GRAPH-05 | Phase 8 | Pending |
-| GRAPH-06 | Phase 8 | Pending |
+| GRAPH-04 | Phase 8 | Complete |
+| GRAPH-05 | Phase 8 | Complete |
+| GRAPH-06 | Phase 8 | Complete |
 | DIFF-01 | Phase 7 | Complete |
 | DIFF-02 | Phase 7 | Complete |
 | DIFF-03 | Phase 7 | Complete |

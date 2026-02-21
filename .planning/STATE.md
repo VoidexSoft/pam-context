@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v2.0 Knowledge Graph & Temporal Reasoning — Phase 7
+**Current focus:** v2.0 Knowledge Graph & Temporal Reasoning — Phase 8
 
 ## Current Position
 
-Phase: 7 of 9 (Ingestion Pipeline Extension + Diff Engine)
+Phase: 8 of 9 (Agent Graph Tool + REST Graph Endpoints)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-20 — Completed 07-02-PLAN.md (Pipeline Integration + Sync API)
+Last activity: 2026-02-21 — Completed 08-02-PLAN.md (REST Graph Endpoints)
 
-Progress: [##################............] 89% (16/~18 plans across all milestones)
+Progress: [#########################.....] 90% (18/~20 plans across all milestones)
 
 ## Milestone Progress
 
 | Milestone | Phases | Plans | Status |
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
-| v2.0 Knowledge Graph | 2/4 | 7/? | Phase 7 complete |
+| v2.0 Knowledge Graph | 3/4 | 9/? | Phase 8 complete |
 
 ## Performance Metrics
 
@@ -45,6 +45,12 @@ Progress: [##################............] 89% (16/~18 plans across all mileston
 | 07-01 | 4min | 2 | 6 |
 | 07-02 | 7min | 2 | 5 |
 
+**Phase 8 (v2.0):**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 08-02 | 3min | 2 | 1 |
+
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
@@ -60,6 +66,9 @@ Progress: [##################............] 89% (16/~18 plans across all mileston
 - Phase 7-02: Graph extraction is non-blocking: failure sets graph_synced=False without affecting PG/ES data
 - Phase 7-02: Old segments retrieved BEFORE save_segments() for chunk-level diff on re-ingestion
 - Phase 7-02: MAX_GRAPH_SYNC_RETRIES=3 as constant in ingest routes
+- Phase 8-02: Entity type validated against ENTITY_TYPES taxonomy dict to prevent Cypher injection in label clause
+- Phase 8-02: Separate EntityListResponse model instead of reusing PaginatedResponse (different cursor semantics)
+- Phase 8-02: LIMIT 21 in neighborhood query to detect edge overflow beyond 20-edge cap
 **Blockers:** None
 **Tech Debt:** 12 items (0 critical) — see `milestones/v1-MILESTONE-AUDIT.md`
 
@@ -71,9 +80,9 @@ Progress: [##################............] 89% (16/~18 plans across all mileston
 
 ## Session Continuity
 
-Last session: 2026-02-20
-Stopped at: Completed 07-02-PLAN.md (Pipeline Integration + Sync API)
-Resume file: .planning/phases/07-ingestion-pipeline-extension-diff-engine/07-02-SUMMARY.md
+Last session: 2026-02-21
+Stopped at: Completed 08-02-PLAN.md (REST Graph Endpoints)
+Resume file: .planning/phases/08-agent-graph-tool-rest-graph-endpoints/08-02-SUMMARY.md
 
 ---
-Next step: Begin Phase 8 planning (Agent Graph Tool).
+Next step: Execute 08-01-PLAN.md (Agent Graph Tool) or begin Phase 9 planning (Graph Explorer UI).
