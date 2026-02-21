@@ -4,6 +4,7 @@ import ChatPage from "./pages/ChatPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import GraphPage from "./pages/GraphPage";
+import GraphExplorerPage from "./pages/GraphExplorerPage";
 import LoginPage from "./pages/LoginPage";
 import { useAuth } from "./hooks/useAuth";
 
@@ -101,7 +102,7 @@ function Sidebar({
           ))}
           {graphEnabled ? (
             <NavLink
-              to="/graph"
+              to="/graph/explore"
               className={linkClass}
               onClick={onClose}
             >
@@ -115,7 +116,7 @@ function Sidebar({
               aria-label="Graph navigation disabled"
             >
               {graphIcon}
-              Graph
+              Graph (Coming Soon)
             </span>
           )}
         </nav>
@@ -168,6 +169,20 @@ export default function App() {
             <Route path="/" element={<ChatPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route
+              path="/graph/explore"
+              element={
+                graphEnabled ? (
+                  <GraphExplorerPage />
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-sm text-gray-400">
+                      Graph features are not enabled. Set VITE_GRAPH_ENABLED=true to activate.
+                    </p>
+                  </div>
+                )
+              }
+            />
             <Route path="/graph" element={<GraphPage />} />
           </Routes>
         </main>
