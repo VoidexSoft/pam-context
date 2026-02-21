@@ -1,8 +1,11 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
+import type { Node, Relationship } from "@neo4j-nvl/base";
 import { useGraphExplorer } from "../hooks/useGraphExplorer";
 import GraphCanvas from "../components/graph/GraphCanvas";
 import EntitySidebar from "../components/graph/EntitySidebar";
+import IngestionDiff from "../components/graph/IngestionDiff";
+import type { FilterMode } from "../components/graph/IngestionDiff";
 
 export default function GraphExplorerPage() {
   const [searchParams] = useSearchParams();
@@ -20,6 +23,51 @@ export default function GraphExplorerPage() {
     focusEntity,
     deselectEntity,
   } = useGraphExplorer();
+
+  // Diff overlay state
+  const [diffColors, setDiffColors] = useState<Map<string, string> | null>(
+    null
+  );
+  const [diffFilterMode, setDiffFilterMode] = useState<FilterMode>("filtered");
+
+  const handleApplyDiff = useCallback(
+    (colors: Map<string, string> | null, mode: FilterMode) => {
+      setDiffColors(colors);
+      setDiffFilterMode(mode);
+    },
+    []
+  );
+
+  // Compute modified nodes/rels based on diff overlay
+  const displayNodes: Node[] = useMemo(() => {
+    if (!diffColors) return nodes;
+
+    if (diffFilterMode === "filtered") {
+      // Only show nodes whose captions (entity names) are in the diff map
+      return nodes
+        .filter((n) => diffColors.has(n.caption ?? ""))
+        .map((n) => ({
+          ...n,
+          color: diffColors.get(n.caption ?? "") ?? n.color,
+        }));
+    }
+
+    // Highlighted: show all nodes but override colors for affected ones
+    return nodes.map((n) => {
+      const diffColor = diffColors.get(n.caption ?? "");
+      return diffColor ? { ...n, color: diffColor } : n;
+    });
+  }, [nodes, diffColors, diffFilterMode]);
+
+  const displayRels: Relationship[] = useMemo(() => {
+    if (!diffColors || diffFilterMode !== "filtered") return rels;
+
+    // In filtered mode, only show edges between visible (diff-affected) nodes
+    const visibleNodeIds = new Set(displayNodes.map((n) => n.id));
+    return rels.filter(
+      (r) => visibleNodeIds.has(r.from) && visibleNodeIds.has(r.to)
+    );
+  }, [rels, diffColors, diffFilterMode, displayNodes]);
 
   // Deep-link handling: ?entity=name loads that entity's neighborhood
   useEffect(() => {
@@ -133,8 +181,8 @@ export default function GraphExplorerPage() {
         {/* Canvas section */}
         <div className="h-full min-h-0 bg-gray-50">
           <GraphCanvas
-            nodes={nodes}
-            rels={rels}
+            nodes={displayNodes}
+            rels={displayRels}
             onNodeClick={selectEntity}
             onNodeDoubleClick={expandNeighborhood}
             onCanvasClick={deselectEntity}
@@ -148,6 +196,7 @@ export default function GraphExplorerPage() {
           edges={selectedEntityEdges}
           onSearch={focusEntity}
           onEntitySelect={focusEntity}
+          footer={<IngestionDiff onApplyDiff={handleApplyDiff} />}
         />
       </div>
     </div>
