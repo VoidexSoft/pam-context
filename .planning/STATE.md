@@ -49,6 +49,7 @@ Progress: [#########################.....] 90% (18/~20 plans across all mileston
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
+| 08-01 | 4min | 2 | 4 |
 | 08-02 | 3min | 2 | 1 |
 
 ## Accumulated Context
@@ -66,6 +67,10 @@ Progress: [#########################.....] 90% (18/~20 plans across all mileston
 - Phase 7-02: Graph extraction is non-blocking: failure sets graph_synced=False without affecting PG/ES data
 - Phase 7-02: Old segments retrieved BEFORE save_segments() for chunk-level diff on re-ingestion
 - Phase 7-02: MAX_GRAPH_SYNC_RETRIES=3 as constant in ingest routes
+- Phase 8-01: getattr for optional graph_service in deps.py (not Depends) for graceful Neo4j absence
+- Phase 8-01: Source citations embedded in result text (not Citation objects) for graph tools
+- Phase 8-01: Direct Cypher for get_entity_history, Graphiti search() for search_knowledge_graph
+- Phase 8-01: re.escape on entity names in Cypher regex to prevent injection
 - Phase 8-02: Entity type validated against ENTITY_TYPES taxonomy dict to prevent Cypher injection in label clause
 - Phase 8-02: Separate EntityListResponse model instead of reusing PaginatedResponse (different cursor semantics)
 - Phase 8-02: LIMIT 21 in neighborhood query to detect edge overflow beyond 20-edge cap
@@ -81,8 +86,8 @@ Progress: [#########################.....] 90% (18/~20 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 08-02-PLAN.md (REST Graph Endpoints)
-Resume file: .planning/phases/08-agent-graph-tool-rest-graph-endpoints/08-02-SUMMARY.md
+Stopped at: Completed 08-01-PLAN.md (Agent Graph Tools)
+Resume file: .planning/phases/08-agent-graph-tool-rest-graph-endpoints/08-01-SUMMARY.md
 
 ---
-Next step: Execute 08-01-PLAN.md (Agent Graph Tool) or begin Phase 9 planning (Graph Explorer UI).
+Next step: Begin Phase 9 planning (Graph Explorer UI).
