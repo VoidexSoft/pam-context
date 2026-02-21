@@ -70,7 +70,10 @@ Plans:
   3. Passing a `reference_time` parameter to graph queries returns the graph state as it was believed at that point in time
   4. `GET /api/graph/neighborhood/{entity}` returns a 1-hop subgraph (nodes + edges) and `GET /api/graph/entities` returns all entity nodes with type and name
   5. No single graph tool result exceeds 3000 characters or 20 nodes, and existing eval scores on `eval/questions.json` do not regress after adding graph tools
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 08-01-PLAN.md — Agent graph tools (search_knowledge_graph + get_entity_history + graph_service injection)
+- [ ] 08-02-PLAN.md — REST graph endpoints (neighborhood subgraph + entity listing with pagination)
 
 ### Phase 9: Graph Explorer UI
 **Goal**: Users can visually explore the knowledge graph alongside chat, inspect entity details and temporal history, and see graph extraction status — so that graph knowledge is tangible and navigable beyond the chat interface.
@@ -93,6 +96,6 @@ Plans:
 | 4. Frontend + Dead Code Cleanup | v1 | 2/2 | Complete | 2026-02-18 |
 | 5. Audit Gap Closure | v1 | 2/2 | Complete | 2026-02-18 |
 | 6. Neo4j + Graphiti Infrastructure | v2.0 | 3/3 | Complete | 2026-02-19 |
-| 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 0/2 | Not started | - |
-| 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 0/? | Not started | - |
+| 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 2/2 | Complete | 2026-02-20 |
+| 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 0/2 | Not started | - |
 | 9. Graph Explorer UI | v2.0 | 0/? | Not started | - |
