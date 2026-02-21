@@ -44,8 +44,8 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 
 - [ ] **VIZ-01**: Graph explorer using InteractiveNvlWrapper as collapsible side panel with neighborhood view
 - [ ] **VIZ-02**: Entity click expands detail panel showing properties, relationships, and temporal history
-- [ ] **VIZ-03**: Temporal timeline component showing t_valid/t_invalid edge history for selected entity
-- [ ] **VIZ-04**: Ingestion graph preview showing entities added/changed/invalidated per ingestion run
+- [x] **VIZ-03**: Temporal timeline component showing t_valid/t_invalid edge history for selected entity
+- [x] **VIZ-04**: Ingestion graph preview showing entities added/changed/invalidated per ingestion run
 - [ ] **VIZ-05**: VITE_GRAPH_ENABLED env flag gates the graph explorer UI
 - [ ] **VIZ-06**: "Graph indexing in progress" state when graph_synced count is 0
 
@@ -97,8 +97,8 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | DIFF-03 | Phase 7 | Complete |
 | VIZ-01 | Phase 9 | Pending |
 | VIZ-02 | Phase 9 | Pending |
-| VIZ-03 | Phase 9 | Pending |
-| VIZ-04 | Phase 9 | Pending |
+| VIZ-03 | Phase 9 | Complete |
+| VIZ-04 | Phase 9 | Complete |
 | VIZ-05 | Phase 9 | Pending |
 | VIZ-06 | Phase 9 | Pending |
 

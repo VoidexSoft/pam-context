@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v2.0 Knowledge Graph & Temporal Reasoning — Phase 8
+**Current focus:** v2.0 Knowledge Graph & Temporal Reasoning — Phase 9
 
 ## Current Position
 
-Phase: 8 of 9 (Agent Graph Tool + REST Graph Endpoints)
-Plan: 2 of 2 complete
-Status: Complete
-Last activity: 2026-02-21 — Completed 08-02-PLAN.md (REST Graph Endpoints)
+Phase: 9 of 9 (Graph Explorer UI)
+Plan: 1 of 3 complete
+Status: In Progress
+Last activity: 2026-02-21 — Completed 09-01-PLAN.md (Graph Explorer API Layer)
 
-Progress: [#########################.....] 90% (18/~20 plans across all milestones)
+Progress: [###########################...] 93% (19/~21 plans across all milestones)
 
 ## Milestone Progress
 
 | Milestone | Phases | Plans | Status |
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
-| v2.0 Knowledge Graph | 3/4 | 9/? | Phase 8 complete |
+| v2.0 Knowledge Graph | 4/4 | 10/12 | Phase 9 in progress |
 
 ## Performance Metrics
 
@@ -52,6 +52,12 @@ Progress: [#########################.....] 90% (18/~20 plans across all mileston
 | 08-01 | 4min | 2 | 4 |
 | 08-02 | 3min | 2 | 1 |
 
+**Phase 9 (v2.0):**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 09-01 | 2min | 2 | 2 |
+
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
@@ -74,6 +80,9 @@ Progress: [#########################.....] 90% (18/~20 plans across all mileston
 - Phase 8-02: Entity type validated against ENTITY_TYPES taxonomy dict to prevent Cypher injection in label clause
 - Phase 8-02: Separate EntityListResponse model instead of reusing PaginatedResponse (different cursor semantics)
 - Phase 8-02: LIMIT 21 in neighborhood query to detect edge overflow beyond 20-edge cap
+- Phase 9-01: Entity history returns ALL edges including invalidated for temporal timeline rendering
+- Phase 9-01: SyncLog endpoint queries PostgreSQL via AsyncSession (SyncLog is PG model, not Neo4j)
+- Phase 9-01: Mixed Neo4j + PostgreSQL endpoints in same router with appropriate DI
 **Blockers:** None
 **Tech Debt:** 12 items (0 critical) — see `milestones/v1-MILESTONE-AUDIT.md`
 
@@ -86,8 +95,8 @@ Progress: [#########################.....] 90% (18/~20 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 08-01-PLAN.md (Agent Graph Tools)
-Resume file: .planning/phases/08-agent-graph-tool-rest-graph-endpoints/08-01-SUMMARY.md
+Stopped at: Completed 09-01-PLAN.md (Graph Explorer API Layer)
+Resume file: .planning/phases/09-graph-explorer-ui/09-01-SUMMARY.md
 
 ---
-Next step: Begin Phase 9 planning (Graph Explorer UI).
+Next step: Execute 09-02-PLAN.md (Graph Explorer UI components).
