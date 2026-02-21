@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 9 of 9 (Graph Explorer UI)
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: In Progress
-Last activity: 2026-02-21 — Completed 09-01-PLAN.md (Graph Explorer API Layer)
+Last activity: 2026-02-21 — Completed 09-02-PLAN.md (Graph Explorer UI Components)
 
-Progress: [###########################...] 93% (19/~21 plans across all milestones)
+Progress: [############################..] 95% (20/~21 plans across all milestones)
 
 ## Milestone Progress
 
 | Milestone | Phases | Plans | Status |
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
-| v2.0 Knowledge Graph | 4/4 | 10/12 | Phase 9 in progress |
+| v2.0 Knowledge Graph | 4/4 | 11/12 | Phase 9 in progress |
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [###########################...] 93% (19/~21 plans across all mileston
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | 09-01 | 2min | 2 | 2 |
+| 09-02 | 4min | 3 | 8 |
 
 ## Accumulated Context
 
@@ -83,6 +84,10 @@ Progress: [###########################...] 93% (19/~21 plans across all mileston
 - Phase 9-01: Entity history returns ALL edges including invalidated for temporal timeline rendering
 - Phase 9-01: SyncLog endpoint queries PostgreSQL via AsyncSession (SyncLog is PG model, not Neo4j)
 - Phase 9-01: Mixed Neo4j + PostgreSQL endpoints in same router with appropriate DI
+- Phase 9-02: Nav link updated to /graph/explore as primary graph experience
+- Phase 9-02: Canvas renderer (not WebGL) required for edge label captions
+- Phase 9-02: Deep-link via ?entity= URL parameter triggers focusEntity on mount
+- Phase 9-02: Disabled state nav text changed to "Graph (Coming Soon)" for clarity
 **Blockers:** None
 **Tech Debt:** 12 items (0 critical) — see `milestones/v1-MILESTONE-AUDIT.md`
 
@@ -95,8 +100,8 @@ Progress: [###########################...] 93% (19/~21 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-21
-Stopped at: Completed 09-01-PLAN.md (Graph Explorer API Layer)
-Resume file: .planning/phases/09-graph-explorer-ui/09-01-SUMMARY.md
+Stopped at: Completed 09-02-PLAN.md (Graph Explorer UI Components)
+Resume file: .planning/phases/09-graph-explorer-ui/09-02-SUMMARY.md
 
 ---
-Next step: Execute 09-02-PLAN.md (Graph Explorer UI components).
+Next step: Execute 09-03-PLAN.md (Ingestion diff preview and chat entity links).
