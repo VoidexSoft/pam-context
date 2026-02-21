@@ -24,7 +24,7 @@ Full details: `.planning/milestones/v1-ROADMAP.md`
 
 - [x] **Phase 6: Neo4j + Graphiti Infrastructure** - Graph database, Graphiti engine, entity schema, and service lifecycle
 - [ ] **Phase 7: Ingestion Pipeline Extension + Diff Engine** - Graph extraction step, dual-write safety, change detection
-- [ ] **Phase 8: Agent Graph Tool + REST Graph Endpoints** - Natural language graph queries via agent, REST API for graph data
+- [x] **Phase 8: Agent Graph Tool + REST Graph Endpoints** - Natural language graph queries via agent, REST API for graph data (completed 2026-02-21)
 - [ ] **Phase 9: Graph Explorer UI** - Visual graph explorer with neighborhood view, entity details, temporal timeline
 
 ## Phase Details
@@ -70,7 +70,7 @@ Plans:
   3. Passing a `reference_time` parameter to graph queries returns the graph state as it was believed at that point in time
   4. `GET /api/graph/neighborhood/{entity}` returns a 1-hop subgraph (nodes + edges) and `GET /api/graph/entities` returns all entity nodes with type and name
   5. No single graph tool result exceeds 3000 characters or 20 nodes, and existing eval scores on `eval/questions.json` do not regress after adding graph tools
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 08-01-PLAN.md — Agent graph tools (search_knowledge_graph + get_entity_history + graph_service injection)
 - [ ] 08-02-PLAN.md — REST graph endpoints (neighborhood subgraph + entity listing with pagination)
@@ -85,6 +85,11 @@ Plans:
   3. After an ingestion run, a graph preview shows which entities were added, changed, or invalidated in that run
   4. The graph explorer is gated behind `VITE_GRAPH_ENABLED` — when disabled, no graph UI elements render; when `graph_synced` count is 0, a "Graph indexing in progress" state is shown
   5. The NVL graph component does not re-render during chat message streaming, and pan/zoom state is preserved when the user types in the chat input
+**Plans:** 3 plans
+Plans:
+- [ ] 09-01-PLAN.md — Backend REST endpoints (entity history + sync-logs) + frontend API client types and functions
+- [ ] 09-02-PLAN.md — Graph explorer page with NVL canvas, entity sidebar (search + details + temporal timeline), route and feature-flag gating
+- [ ] 09-03-PLAN.md — Ingestion diff preview with color-coded canvas + chat entity deep-links
 
 ## Progress
 
@@ -97,5 +102,5 @@ Plans:
 | 5. Audit Gap Closure | v1 | 2/2 | Complete | 2026-02-18 |
 | 6. Neo4j + Graphiti Infrastructure | v2.0 | 3/3 | Complete | 2026-02-19 |
 | 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 2/2 | Complete | 2026-02-20 |
-| 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 0/2 | Not started | - |
-| 9. Graph Explorer UI | v2.0 | 0/? | Not started | - |
+| 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | Complete    | 2026-02-21 | - |
+| 9. Graph Explorer UI | v2.0 | 0/3 | Not started | - |
