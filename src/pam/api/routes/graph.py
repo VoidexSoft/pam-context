@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from pam.api.deps import get_graph_service
+from pam.api.pagination import decode_cursor, encode_cursor
+from pam.graph.entity_types import ENTITY_TYPES
 from pam.graph.service import GraphitiService
 
 logger = structlog.get_logger()
@@ -47,6 +49,22 @@ class NeighborhoodResponse(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
     total_edges: int  # Total before any limit
+
+
+class EntityListItem(BaseModel):
+    """An entity in the listing."""
+
+    uuid: str
+    name: str
+    entity_type: str
+    summary: str | None = None
+
+
+class EntityListResponse(BaseModel):
+    """Paginated list of entities."""
+
+    entities: list[EntityListItem]
+    next_cursor: str | None = None
 
 
 @router.get("/graph/status")
@@ -207,6 +225,106 @@ async def graph_neighborhood(
         raise
     except Exception as exc:
         logger.warning("graph_neighborhood_failed", entity=entity_name, error=str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="Graph database unavailable",
+        ) from exc
+
+
+_MAX_ENTITIES_PER_PAGE = 50
+
+
+@router.get("/graph/entities", response_model=EntityListResponse)
+async def graph_entities(
+    entity_type: str | None = None,
+    limit: int = _MAX_ENTITIES_PER_PAGE,
+    cursor: str | None = None,
+    graph_service: GraphitiService = Depends(get_graph_service),
+) -> EntityListResponse:
+    """List entity nodes with optional type filter and cursor pagination.
+
+    Query params:
+      - ``entity_type``: Optional label to filter by (must be in ENTITY_TYPES taxonomy).
+      - ``limit``: Page size, capped at 50.
+      - ``cursor``: Opaque cursor from a previous response's ``next_cursor``.
+
+    Returns 400 for unknown entity types and 503 if Neo4j is unreachable.
+    """
+    # Validate entity_type against known taxonomy to prevent Cypher injection
+    if entity_type and entity_type not in ENTITY_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown entity type: {entity_type}. "
+                f"Valid types: {', '.join(sorted(ENTITY_TYPES.keys()))}"
+            ),
+        )
+
+    effective_limit = min(limit, _MAX_ENTITIES_PER_PAGE)
+
+    # Decode cursor to get the last UUID from the previous page
+    cursor_uuid: str | None = None
+    if cursor:
+        try:
+            cursor_data = decode_cursor(cursor)
+            cursor_uuid = cursor_data["id"]
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid cursor") from None
+
+    try:
+        async with graph_service.client.driver.session() as session:
+            # Build Cypher dynamically
+            cypher = "MATCH (n:Entity) "
+            params: dict[str, object] = {"limit": effective_limit + 1}
+
+            where_parts: list[str] = []
+            if cursor_uuid:
+                where_parts.append("n.uuid < $cursor_uuid")
+                params["cursor_uuid"] = cursor_uuid
+
+            # entity_type is validated above; label matching uses Cypher syntax
+            if entity_type:
+                label_clause = f"n:{entity_type}"
+                if where_parts:
+                    cypher += f"WHERE {label_clause} AND " + " AND ".join(where_parts) + " "
+                else:
+                    cypher += f"WHERE {label_clause} "
+            elif where_parts:
+                cypher += "WHERE " + " AND ".join(where_parts) + " "
+
+            cypher += (
+                "RETURN labels(n) AS labels, n.name AS name, "
+                "n.uuid AS uuid, n.summary AS summary "
+                "ORDER BY n.uuid DESC LIMIT $limit"
+            )
+
+            result = await session.run(cypher, **params)
+            records = await result.data()
+
+        # Detect next page
+        has_next = len(records) > effective_limit
+        items = records[:effective_limit]
+
+        entities = [
+            EntityListItem(
+                uuid=r["uuid"],
+                name=r["name"],
+                entity_type=_extract_entity_type(r["labels"]),
+                summary=r["summary"],
+            )
+            for r in items
+        ]
+
+        next_cursor: str | None = None
+        if has_next and items:
+            last_uuid = items[-1]["uuid"]
+            next_cursor = encode_cursor(last_uuid, last_uuid)
+
+        return EntityListResponse(entities=entities, next_cursor=next_cursor)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("graph_entities_failed", error=str(exc))
         raise HTTPException(
             status_code=503,
             detail="Graph database unavailable",
