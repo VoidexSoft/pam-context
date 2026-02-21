@@ -159,6 +159,62 @@ export interface GraphStatus {
   error?: string;
 }
 
+export interface GraphNode {
+  uuid: string;
+  name: string;
+  entity_type: string;
+  summary: string | null;
+}
+
+export interface GraphEdge {
+  uuid: string;
+  source_name: string;
+  target_name: string;
+  relationship_type: string;
+  fact: string;
+  valid_at: string | null;
+  invalid_at: string | null;
+}
+
+export interface NeighborhoodResponse {
+  center: GraphNode;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  total_edges: number;
+}
+
+export interface EntityListItem {
+  uuid: string;
+  name: string;
+  entity_type: string;
+  summary: string | null;
+}
+
+export interface EntityListResponse {
+  entities: EntityListItem[];
+  next_cursor: string | null;
+}
+
+export interface EntityHistoryResponse {
+  entity: GraphNode;
+  edges: GraphEdge[];
+}
+
+export interface SyncLogEntry {
+  id: string;
+  document_id: string | null;
+  action: string;
+  segments_affected: number | null;
+  details: {
+    added?: Array<{ name: string; entity_type?: string }>;
+    modified?: Array<{ name: string; changes?: Record<string, unknown> }>;
+    removed_from_document?: Array<{ name: string }>;
+    episodes_added?: number;
+    episodes_removed?: number;
+  };
+  created_at: string;
+}
+
 export interface TokenResponse {
   access_token: string;
   user: AuthUser;
@@ -272,6 +328,38 @@ export async function syncGraph(limit?: number): Promise<SyncGraphResult> {
   return request<SyncGraphResult>(`/ingest/sync-graph${params}`, {
     method: "POST",
   });
+}
+
+export function getGraphNeighborhood(entityName: string): Promise<NeighborhoodResponse> {
+  return request<NeighborhoodResponse>(`/graph/neighborhood/${encodeURIComponent(entityName)}`);
+}
+
+export function getGraphEntities(params?: {
+  entity_type?: string;
+  limit?: number;
+  cursor?: string;
+}): Promise<EntityListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.entity_type) searchParams.set("entity_type", params.entity_type);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.cursor) searchParams.set("cursor", params.cursor);
+  const qs = searchParams.toString();
+  return request<EntityListResponse>(`/graph/entities${qs ? `?${qs}` : ""}`);
+}
+
+export function getEntityHistory(entityName: string): Promise<EntityHistoryResponse> {
+  return request<EntityHistoryResponse>(`/graph/entity/${encodeURIComponent(entityName)}/history`);
+}
+
+export function getGraphSyncLogs(params?: {
+  document_id?: string;
+  limit?: number;
+}): Promise<SyncLogEntry[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.document_id) searchParams.set("document_id", params.document_id);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const qs = searchParams.toString();
+  return request<SyncLogEntry[]>(`/graph/sync-logs${qs ? `?${qs}` : ""}`);
 }
 
 export function devLogin(email: string, name: string): Promise<TokenResponse> {
