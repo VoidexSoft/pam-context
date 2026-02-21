@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from pam.agent.duckdb_service import DuckDBService
+    from pam.graph.service import GraphitiService
 
 logger = structlog.get_logger()
 
@@ -33,6 +34,8 @@ Available tools:
 - get_change_history: See recent document changes and sync history.
 - query_database: Run SQL queries on analytics data files (CSV/Parquet/JSON).
 - search_entities: Search for structured business entities (metrics, events, KPIs).
+- search_knowledge_graph: Search the knowledge graph for entity relationships and connections.
+- get_entity_history: Get temporal change history of an entity in the knowledge graph.
 
 Rules:
 1. ALWAYS use tools to find information before answering.
@@ -41,7 +44,10 @@ Rules:
 4. If you cannot find relevant information, say so clearly — never make up facts.
 5. For complex questions, you may search multiple times with different queries.
 6. Synthesize information from multiple sources when relevant.
-7. Be concise and direct in your answers."""
+7. Be concise and direct in your answers.
+8. Use search_knowledge_graph for questions about entity relationships, dependencies, and connections.
+9. Use get_entity_history for questions about how entities changed over time or point-in-time queries.
+10. You can combine document search and graph tools in one answer to give comprehensive results."""
 
 MAX_TOOL_ITERATIONS = 5
 
@@ -73,6 +79,7 @@ class RetrievalAgent:
         cost_tracker: CostTracker | None = None,
         db_session: AsyncSession | None = None,
         duckdb_service: DuckDBService | None = None,
+        graph_service: GraphitiService | None = None,
     ) -> None:
         self.client = AsyncAnthropic(api_key=api_key)
         self.model = model
@@ -81,6 +88,7 @@ class RetrievalAgent:
         self.cost_tracker = cost_tracker or CostTracker()
         self.db_session = db_session
         self.duckdb_service = duckdb_service
+        self.graph_service = graph_service
         # NOTE: _default_source_type is instance state set per-call by answer()/answer_streaming().
         # This is safe because agents are instantiated per-request (see api/deps.py).
         # Do NOT share a single RetrievalAgent across concurrent requests.
@@ -372,6 +380,10 @@ class RetrievalAgent:
             return await self._query_database(tool_input)
         if tool_name == "search_entities":
             return await self._search_entities(tool_input)
+        if tool_name == "search_knowledge_graph":
+            return await self._search_knowledge_graph(tool_input)
+        if tool_name == "get_entity_history":
+            return await self._get_entity_history(tool_input)
         return f"Unknown tool: {tool_name}", []
 
     async def _search_knowledge(self, input_: dict) -> tuple[str, list[Citation]]:
@@ -561,6 +573,36 @@ class RetrievalAgent:
             parts.append(f"[{e.entity_type}] (confidence: {e.confidence:.1%})\n{data_str}")
 
         return f"Found {len(entities)} entities:\n\n" + "\n\n---\n\n".join(parts), []
+
+    async def _search_knowledge_graph(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Execute the search_knowledge_graph tool."""
+        if self.graph_service is None:
+            return "Knowledge graph is not available. Try search_knowledge instead.", []
+
+        from pam.graph.query import search_graph_relationships
+
+        result_text = await search_graph_relationships(
+            graph_service=self.graph_service,
+            query=input_["query"],
+            entity_name=input_.get("entity_name"),
+            relationship_type=input_.get("relationship_type"),
+        )
+        return result_text, []
+
+    async def _get_entity_history(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Execute the get_entity_history tool for temporal queries."""
+        if self.graph_service is None:
+            return "Knowledge graph is not available.", []
+
+        from pam.graph.query import get_entity_history
+
+        result_text = await get_entity_history(
+            graph_service=self.graph_service,
+            entity_name=input_["entity_name"],
+            since=input_.get("since"),
+            reference_time=input_.get("reference_time"),
+        )
+        return result_text, []
 
     @staticmethod
     def _extract_text(content: list) -> str:

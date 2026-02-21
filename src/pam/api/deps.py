@@ -66,6 +66,7 @@ async def get_agent(
     db: AsyncSession = Depends(get_db),
 ) -> RetrievalAgent:
     duckdb_service = get_duckdb_service(request)
+    graph_service = getattr(request.app.state, "graph_service", None)
     return RetrievalAgent(
         search_service=search_service,
         embedder=embedder,
@@ -74,4 +75,5 @@ async def get_agent(
         cost_tracker=CostTracker(),
         db_session=db,
         duckdb_service=duckdb_service,
+        graph_service=graph_service,
     )
