@@ -133,7 +133,7 @@ Plans:
 | 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 2/2 | Complete | 2026-02-20 |
 | 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 2/2 | Complete | 2026-02-21 |
 | 9. Graph Explorer UI | v2.0 | 3/3 | Complete | 2026-02-21 |
-| 10. Bi-temporal Timestamp Pipeline Fix | 1/1 | Complete   | 2026-02-22 | — |
+| 10. Bi-temporal Timestamp Pipeline Fix | 1/1 | Complete    | 2026-02-22 | — |
 | 11. Graph Polish + Tech Debt Cleanup | v2.0 | 0/1 | Pending | — |
 | 12. Dual-Level Keyword Extraction + Unified Search | v3.0 | 0/2 | Pending | — |
 | 13. Entity & Relationship Vector Indices | v3.0 | 0/2 | Pending | — |
