@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v2.0 Knowledge Graph & Temporal Reasoning — Phase 9
+**Current focus:** v2.0 Gap Closure — Phase 10
 
 ## Current Position
 
-Phase: 9 of 9 (Graph Explorer UI)
-Plan: 3 of 3 complete
+Phase: 10 of 15 (Bitemporal Timestamp Fix)
+Plan: 1 of 1 complete
 Status: Complete
-Last activity: 2026-02-21 — Completed 09-03-PLAN.md (Ingestion diff preview and chat entity links)
+Last activity: 2026-02-22 — Completed 10-01-PLAN.md (Bitemporal timestamp pipeline fix)
 
-Progress: [##############################] 100% (21/21 plans across all milestones)
+Progress: [##############################] 100% (22/22 plans across all milestones)
 
 ## Milestone Progress
 
@@ -60,6 +60,12 @@ Progress: [##############################] 100% (21/21 plans across all mileston
 | 09-02 | 4min | 3 | 8 |
 | 09-03 | 4min | 2 | 4 |
 
+**Phase 10 (Gap Closure):**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 10-01 | 5min | 2 | 9 |
+
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
@@ -93,6 +99,18 @@ Progress: [##############################] 100% (21/21 plans across all mileston
 - Phase 9-03: EntitySidebar gains footer prop (ReactNode) for extensible bottom-pinned content
 - Phase 9-03: Chat entity links use button element for accessibility with navigate() onClick
 - Phase 9-03: VITE_GRAPH_ENABLED checked at module level for chat link gating
+- Phase 10-01: Nullable modified_at with no backfill -- existing documents get NULL triggering datetime.now(UTC) fallback
+- Phase 10-01: Direct raw_doc.modified_at access replaces getattr fallback for explicit data flow
+- Phase 10-01: Cascading fallback in sync-graph: doc.modified_at -> doc.last_synced_at -> datetime.now(UTC)
+### Roadmap Evolution
+- Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
+- Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
+- Phase 12 added: LightRAG Dual-Level Keyword Extraction + Unified Search Tool
+- Phase 13 added: LightRAG Entity & Relationship Vector Indices
+- Phase 14 added: LightRAG Graph-Aware Context Assembly with Token Budgets
+- Phase 15 added: LightRAG Retrieval Mode Router
+- v3.0 milestone created: LightRAG-Inspired Smart Retrieval (Phases 12-15)
+
 **Blockers:** None
 **Tech Debt:** 12 items (0 critical) — see `milestones/v1-MILESTONE-AUDIT.md`
 
@@ -104,9 +122,9 @@ Progress: [##############################] 100% (21/21 plans across all mileston
 
 ## Session Continuity
 
-Last session: 2026-02-21
-Stopped at: Completed 09-03-PLAN.md (Ingestion diff preview and chat entity links)
-Resume file: .planning/phases/09-graph-explorer-ui/09-03-SUMMARY.md
+Last session: 2026-02-22
+Stopped at: Completed 10-01-PLAN.md (Bitemporal timestamp pipeline fix)
+Resume file: .planning/phases/10-bitemporal-timestamp-fix/10-01-SUMMARY.md
 
 ---
-All phases complete. v2.0 Knowledge Graph milestone finished.
+Phase 10 complete. EXTRACT-02 gap closed.

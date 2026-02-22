@@ -19,7 +19,7 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 ### Entity Extraction
 
 - [x] **EXTRACT-01**: Ingestion pipeline calls add_episode() (never add_episode_bulk) after PG commit for each segment
-- [ ] **EXTRACT-02**: Entity nodes and relationship edges created in Neo4j with bi-temporal timestamps sourced from document modified_at
+- [x] **EXTRACT-02**: Entity nodes and relationship edges created in Neo4j with bi-temporal timestamps sourced from document modified_at
 - [x] **EXTRACT-03**: graph_synced boolean added to PG documents table via Alembic migration
 - [x] **EXTRACT-04**: Graph extraction runs as background step — failure never rolls back PG/ES data
 - [x] **EXTRACT-05**: Reconciliation endpoint /ingest/sync-graph retries documents with graph_synced=False
@@ -81,7 +81,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | INFRA-05 | Phase 6 | Complete |
 | INFRA-06 | Phase 6 | Complete |
 | EXTRACT-01 | Phase 7 | Complete |
-| EXTRACT-02 | Phase 10 | Pending |
+| EXTRACT-02 | Phase 10 | Complete |
 | EXTRACT-03 | Phase 7 | Complete |
 | EXTRACT-04 | Phase 7 | Complete |
 | EXTRACT-05 | Phase 7 | Complete |
