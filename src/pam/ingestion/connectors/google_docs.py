@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+from datetime import datetime
 from pathlib import Path
 
 import structlog
@@ -81,8 +82,10 @@ class GoogleDocsConnector(BaseConnector):
         service = self._get_service()
         loop = asyncio.get_running_loop()
 
-        # Get metadata
-        meta_request = service.files().get(fileId=source_id, fields="name, owners, webViewLink")
+        # Get metadata (including modifiedTime for bi-temporal timestamps)
+        meta_request = service.files().get(
+            fileId=source_id, fields="name, owners, webViewLink, modifiedTime"
+        )
         file_meta = await loop.run_in_executor(None, meta_request.execute)
 
         # Export as DOCX
@@ -90,6 +93,9 @@ class GoogleDocsConnector(BaseConnector):
         content = await loop.run_in_executor(None, export_request.execute)
 
         owner = file_meta.get("owners", [{}])[0].get("emailAddress") if file_meta.get("owners") else None
+        modified_at = (
+            datetime.fromisoformat(file_meta["modifiedTime"]) if file_meta.get("modifiedTime") else None
+        )
         return RawDocument(
             content=content,
             content_type=DOCX_MIME,
@@ -97,6 +103,7 @@ class GoogleDocsConnector(BaseConnector):
             title=file_meta["name"],
             source_url=file_meta.get("webViewLink"),
             owner=owner,
+            modified_at=modified_at,
         )
 
     async def get_content_hash(self, source_id: str) -> str:

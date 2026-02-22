@@ -192,7 +192,7 @@ async def sync_graph(
                 doc_id=doc.id,
                 segments=segments_ks,
                 document_title=doc.title,
-                reference_time=doc.last_synced_at or datetime.now(UTC),
+                reference_time=doc.modified_at or doc.last_synced_at or datetime.now(UTC),
                 source_id=doc.source_id,
                 old_segments=None,  # Sync retry is first-time extraction for failed docs
             )

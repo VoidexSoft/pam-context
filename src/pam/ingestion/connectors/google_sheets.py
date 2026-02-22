@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from datetime import datetime
 
 import structlog
 
@@ -116,6 +117,14 @@ class GoogleSheetsConnector(BaseConnector):
         )
         spreadsheet = await loop.run_in_executor(None, request.execute)
 
+        # Get modifiedTime from Drive API for bi-temporal timestamps
+        drive_svc = self._get_drive_service()
+        drive_request = drive_svc.files().get(fileId=source_id, fields="modifiedTime")
+        drive_meta = await loop.run_in_executor(None, drive_request.execute)
+        modified_at = (
+            datetime.fromisoformat(drive_meta["modifiedTime"]) if drive_meta.get("modifiedTime") else None
+        )
+
         title = spreadsheet["properties"]["title"]
         tabs_data = {}
 
@@ -144,6 +153,7 @@ class GoogleSheetsConnector(BaseConnector):
             title=title,
             source_url=f"https://docs.google.com/spreadsheets/d/{source_id}",
             metadata={"tab_count": len(tabs_data)},
+            modified_at=modified_at,
         )
 
     async def get_content_hash(self, source_id: str) -> str:

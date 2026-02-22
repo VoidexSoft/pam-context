@@ -128,6 +128,7 @@ class IngestionPipeline:
                 content_hash=new_hash,
                 source_url=raw_doc.source_url,
                 owner=raw_doc.owner,
+                modified_at=raw_doc.modified_at,
             )
 
             # Set document_id on all segments
@@ -167,7 +168,7 @@ class IngestionPipeline:
                         doc_id=doc_id,
                         segments=segments,
                         document_title=raw_doc.title,
-                        reference_time=getattr(raw_doc, "modified_at", None) or datetime.now(UTC),
+                        reference_time=raw_doc.modified_at or datetime.now(UTC),
                         source_id=source_id,
                         old_segments=old_segments_for_diff,
                     )

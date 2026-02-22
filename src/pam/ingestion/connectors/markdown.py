@@ -1,6 +1,7 @@
 """Markdown file connector — reads .md files from a local directory."""
 
 import hashlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -23,7 +24,7 @@ class MarkdownConnector(BaseConnector):
                 source_id=str(path),
                 title=path.stem,
                 source_url=f"file://{path}",
-                modified_at=None,  # Could use stat.st_mtime but keeping simple
+                modified_at=datetime.fromtimestamp(path.stat().st_mtime, tz=UTC),
             )
             for path in sorted(self.directory.rglob("*.md"))
         ]
@@ -38,12 +39,15 @@ class MarkdownConnector(BaseConnector):
             raise FileNotFoundError(f"File not found: {source_id}")
 
         content = path.read_bytes()
+        stat = path.stat()
+        modified_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
         return RawDocument(
             content=content,
             content_type="text/markdown",
             source_id=source_id,
             title=path.stem,
             source_url=f"file://{path}",
+            modified_at=modified_at,
         )
 
     async def get_content_hash(self, source_id: str) -> str:
