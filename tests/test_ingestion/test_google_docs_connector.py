@@ -269,7 +269,9 @@ class TestFetchDocument:
 
         await connector.fetch_document("doc1")
 
-        mock_service.get.assert_called_once_with(fileId="doc1", fields="name, owners, webViewLink")
+        mock_service.get.assert_called_once_with(
+            fileId="doc1", fields="name, owners, webViewLink, modifiedTime"
+        )
 
 
 # ── get_content_hash tests ───────────────────────────────────────────
