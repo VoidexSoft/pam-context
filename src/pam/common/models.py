@@ -55,6 +55,7 @@ class Document(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")
     graph_synced: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
     graph_sync_retries: Mapped[int] = mapped_column(Integer, server_default=text("0"), nullable=False)
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -239,6 +240,7 @@ class RawDocument(BaseModel):
     title: str
     source_url: str | None = None
     owner: str | None = None
+    modified_at: datetime | None = None
 
 
 class IngestionTaskResponse(BaseModel):

@@ -25,6 +25,7 @@ class PostgresStore:
         content_hash: str,
         source_url: str | None = None,
         owner: str | None = None,
+        modified_at: datetime | None = None,
         project_id: uuid.UUID | None = None,
     ) -> uuid.UUID:
         """Insert or update a document record. Returns the document ID."""
@@ -35,6 +36,7 @@ class PostgresStore:
             content_hash=content_hash,
             source_url=source_url,
             owner=owner,
+            modified_at=modified_at,
             project_id=project_id,
             last_synced_at=datetime.now(UTC),
         )
@@ -45,6 +47,7 @@ class PostgresStore:
                 "content_hash": stmt.excluded.content_hash,
                 "source_url": stmt.excluded.source_url,
                 "owner": stmt.excluded.owner,
+                "modified_at": stmt.excluded.modified_at,
                 "last_synced_at": stmt.excluded.last_synced_at,
                 "updated_at": func.now(),
             },
