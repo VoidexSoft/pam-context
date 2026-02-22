@@ -19,7 +19,7 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 ### Entity Extraction
 
 - [x] **EXTRACT-01**: Ingestion pipeline calls add_episode() (never add_episode_bulk) after PG commit for each segment
-- [x] **EXTRACT-02**: Entity nodes and relationship edges created in Neo4j with bi-temporal timestamps sourced from document modified_at
+- [ ] **EXTRACT-02**: Entity nodes and relationship edges created in Neo4j with bi-temporal timestamps sourced from document modified_at
 - [x] **EXTRACT-03**: graph_synced boolean added to PG documents table via Alembic migration
 - [x] **EXTRACT-04**: Graph extraction runs as background step — failure never rolls back PG/ES data
 - [x] **EXTRACT-05**: Reconciliation endpoint /ingest/sync-graph retries documents with graph_synced=False
@@ -47,7 +47,7 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 - [x] **VIZ-03**: Temporal timeline component showing t_valid/t_invalid edge history for selected entity
 - [x] **VIZ-04**: Ingestion graph preview showing entities added/changed/invalidated per ingestion run
 - [x] **VIZ-05**: VITE_GRAPH_ENABLED env flag gates the graph explorer UI
-- [x] **VIZ-06**: "Graph indexing in progress" state when graph_synced count is 0
+- [ ] **VIZ-06**: "Graph indexing in progress" state when graph_synced count is 0
 
 ## v3 Requirements
 
@@ -81,7 +81,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | INFRA-05 | Phase 6 | Complete |
 | INFRA-06 | Phase 6 | Complete |
 | EXTRACT-01 | Phase 7 | Complete |
-| EXTRACT-02 | Phase 7 | Complete |
+| EXTRACT-02 | Phase 10 | Pending |
 | EXTRACT-03 | Phase 7 | Complete |
 | EXTRACT-04 | Phase 7 | Complete |
 | EXTRACT-05 | Phase 7 | Complete |
@@ -100,13 +100,14 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | VIZ-03 | Phase 9 | Complete |
 | VIZ-04 | Phase 9 | Complete |
 | VIZ-05 | Phase 9 | Complete |
-| VIZ-06 | Phase 9 | Complete |
+| VIZ-06 | Phase 11 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 27 total
-- Mapped to phases: 27
+- Satisfied: 25
+- Pending (gap closure): 2 (EXTRACT-02 → Phase 10, VIZ-06 → Phase 11)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-19*
-*Last updated: 2026-02-21 after phase 9 completion — all v2.0 requirements complete*
+*Last updated: 2026-02-22 after milestone audit — 2 partial requirements reassigned to gap closure phases*

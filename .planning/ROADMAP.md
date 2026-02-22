@@ -23,9 +23,11 @@ Full details: `.planning/milestones/v1-ROADMAP.md`
 ### v2.0 Knowledge Graph & Temporal Reasoning
 
 - [x] **Phase 6: Neo4j + Graphiti Infrastructure** - Graph database, Graphiti engine, entity schema, and service lifecycle
-- [ ] **Phase 7: Ingestion Pipeline Extension + Diff Engine** - Graph extraction step, dual-write safety, change detection
+- [x] **Phase 7: Ingestion Pipeline Extension + Diff Engine** - Graph extraction step, dual-write safety, change detection (completed 2026-02-20)
 - [x] **Phase 8: Agent Graph Tool + REST Graph Endpoints** - Natural language graph queries via agent, REST API for graph data (completed 2026-02-21)
 - [x] **Phase 9: Graph Explorer UI** - Visual graph explorer with neighborhood view, entity details, temporal timeline (completed 2026-02-21)
+- [ ] **Phase 10: Bi-temporal Timestamp Pipeline Fix** - Wire document modified_at through to graph extraction reference_time (gap closure)
+- [ ] **Phase 11: Graph Polish + Tech Debt Cleanup** - Fix VIZ-06 empty state, graph service null guard, lint, docs alignment (gap closure)
 
 ## Phase Details
 
@@ -91,6 +93,31 @@ Plans:
 - [x] 09-02-PLAN.md — Graph explorer page with NVL canvas, entity sidebar (search + details + temporal timeline), route and feature-flag gating
 - [x] 09-03-PLAN.md — Ingestion diff preview with color-coded canvas + chat entity deep-links
 
+### Phase 10: Bi-temporal Timestamp Pipeline Fix
+**Goal**: Document modification timestamps flow through the ingestion pipeline to graph extraction, so that bi-temporal graph queries reflect when facts were actually valid — not when they were ingested.
+**Depends on**: Phase 7
+**Requirements**: EXTRACT-02
+**Gap Closure**: Closes partial requirement from v2.0 audit
+**Success Criteria** (what must be TRUE):
+  1. `RawDocument` model has a `modified_at: datetime | None` field populated from connector metadata
+  2. `add_episode()` calls use `modified_at` as `reference_time` when available, falling back to `datetime.now(UTC)` only when `modified_at` is None
+  3. Re-ingestion of a document with a different `modified_at` produces edges with the correct temporal timestamps
+Plans:
+- [ ] 10-01-PLAN.md — Add modified_at to RawDocument + connector population + reference_time wiring
+
+### Phase 11: Graph Polish + Tech Debt Cleanup
+**Goal**: All v2.0 spec mismatches and tech debt identified by the milestone audit are resolved — so that the milestone can be archived cleanly.
+**Depends on**: Phase 9
+**Requirements**: VIZ-06
+**Gap Closure**: Closes partial requirement + 4 tech debt items from v2.0 audit
+**Success Criteria** (what must be TRUE):
+  1. Graph explorer empty state shows "Graph indexing in progress" when documents exist but `graph_synced` count is 0, and "No documents ingested" when no documents exist
+  2. Graph REST endpoints have explicit null guard for `get_graph_service()` returning None (not relying on outer try/except alone)
+  3. `ingest.py:121` uses `raise ... from err` pattern (ruff B904 resolved)
+  4. All 10 SUMMARY.md files include `requirements_completed` frontmatter field
+Plans:
+- [ ] 11-01-PLAN.md — VIZ-06 empty state fix + graph service null guard + lint fix + SUMMARY frontmatter
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -104,3 +131,5 @@ Plans:
 | 7. Ingestion Pipeline Extension + Diff Engine | v2.0 | 2/2 | Complete | 2026-02-20 |
 | 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 2/2 | Complete | 2026-02-21 |
 | 9. Graph Explorer UI | v2.0 | 3/3 | Complete | 2026-02-21 |
+| 10. Bi-temporal Timestamp Pipeline Fix | v2.0 | 0/1 | Pending | — |
+| 11. Graph Polish + Tech Debt Cleanup | v2.0 | 0/1 | Pending | — |
