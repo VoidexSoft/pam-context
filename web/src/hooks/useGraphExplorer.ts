@@ -22,12 +22,17 @@ const ENTITY_TYPE_COLORS: Record<string, string> = {
 
 const DEFAULT_COLOR = "#9ca3af";
 
-function toNvlNode(graphNode: GraphNode, connectionCount: number): Node {
+function toNvlNode(graphNode: GraphNode, connectionCount: number, index: number, total: number): Node {
+  // Spread nodes in a circle to avoid overlap from force layout's small coordinates
+  const angle = (2 * Math.PI * index) / Math.max(total, 1);
+  const radius = total <= 1 ? 0 : 150;
   return {
     id: graphNode.uuid,
     caption: graphNode.name,
     color: ENTITY_TYPE_COLORS[graphNode.entity_type] ?? DEFAULT_COLOR,
     size: Math.max(20, Math.min(50, 20 + connectionCount * 5)),
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * radius,
   };
 }
 
@@ -155,8 +160,8 @@ export function useGraphExplorer() {
 
   const nodes: Node[] = useMemo(
     () =>
-      state.graphNodes.map((gn) =>
-        toNvlNode(gn, connectionCounts.get(gn.name) ?? 0)
+      state.graphNodes.map((gn, i) =>
+        toNvlNode(gn, connectionCounts.get(gn.name) ?? 0, i, state.graphNodes.length)
       ),
     [state.graphNodes, connectionCounts]
   );

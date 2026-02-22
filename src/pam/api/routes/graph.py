@@ -143,7 +143,7 @@ def _extract_entity_type(labels: list[str]) -> str:
     return "Entity"
 
 
-@router.get("/graph/neighborhood/{entity_name}", response_model=NeighborhoodResponse)
+@router.get("/graph/neighborhood/{entity_name:path}", response_model=NeighborhoodResponse)
 async def graph_neighborhood(
     entity_name: str,
     graph_service: GraphitiService = Depends(get_graph_service),
@@ -355,7 +355,7 @@ async def graph_entities(
 
 
 @router.get(
-    "/graph/entity/{entity_name}/history",
+    "/graph/entity/{entity_name:path}/history",
     response_model=EntityHistoryResponse,
 )
 async def entity_history(
