@@ -28,7 +28,7 @@ Full details: `.planning/milestones/v1-ROADMAP.md`
 - [x] **Phase 8: Agent Graph Tool + REST Graph Endpoints** - Natural language graph queries via agent, REST API for graph data (completed 2026-02-21)
 - [x] **Phase 9: Graph Explorer UI** - Visual graph explorer with neighborhood view, entity details, temporal timeline (completed 2026-02-21)
 - [x] **Phase 10: Bi-temporal Timestamp Pipeline Fix** - Wire document modified_at through to graph extraction reference_time (gap closure) (completed 2026-02-22)
-- [ ] **Phase 11: Graph Polish + Tech Debt Cleanup** - Fix VIZ-06 empty state, graph service null guard, lint, docs alignment (gap closure)
+- [x] **Phase 11: Graph Polish + Tech Debt Cleanup** - Fix VIZ-06 empty state, graph service null guard, lint, docs alignment (gap closure) (completed 2026-02-23)
 
 ## Phase Details
 
@@ -117,7 +117,7 @@ Plans:
   2. Graph REST endpoints have explicit null guard for `get_graph_service()` returning None (not relying on outer try/except alone)
   3. `ingest.py:121` uses `raise ... from err` pattern (ruff B904 resolved)
   4. All 10 SUMMARY.md files include `requirements_completed` frontmatter field
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 11-01-PLAN.md — VIZ-06 empty state + graph_status PG counts + graph endpoint null guards
 - [ ] 11-02-PLAN.md — Ruff B904 fix (3 files) + SUMMARY.md frontmatter standardization (11 files)
@@ -136,7 +136,7 @@ Plans:
 | 8. Agent Graph Tool + REST Graph Endpoints | v2.0 | 2/2 | Complete | 2026-02-21 |
 | 9. Graph Explorer UI | v2.0 | 3/3 | Complete | 2026-02-21 |
 | 10. Bi-temporal Timestamp Pipeline Fix | v2.0 | 1/1 | Complete | 2026-02-22 |
-| 11. Graph Polish + Tech Debt Cleanup | v2.0 | 1/2 | In Progress | — |
+| 11. Graph Polish + Tech Debt Cleanup | 2/2 | Complete   | 2026-02-23 | — |
 | 12. Dual-Level Keyword Extraction + Unified Search | v3.0 | 0/2 | Pending | — |
 | 13. Entity & Relationship Vector Indices | v3.0 | 0/2 | Pending | — |
 | 14. Graph-Aware Context Assembly + Token Budgets | v3.0 | 0/2 | Pending | — |

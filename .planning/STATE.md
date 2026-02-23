@@ -70,6 +70,7 @@ Progress: [##############################] 100% (24/24 plans across all mileston
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
+| 11-01 | 8min | 2 | 4 |
 | 11-02 | 4min | 2 | 14 |
 
 ## Accumulated Context
@@ -108,6 +109,9 @@ Progress: [##############################] 100% (24/24 plans across all mileston
 - Phase 10-01: Nullable modified_at with no backfill -- existing documents get NULL triggering datetime.now(UTC) fallback
 - Phase 10-01: Direct raw_doc.modified_at access replaces getattr fallback for explicit data flow
 - Phase 10-01: Cascading fallback in sync-graph: doc.modified_at -> doc.last_synced_at -> datetime.now(UTC)
+- Phase 11-01: graph_status returns degraded 200 (not 503) when graph_service is None to preserve document counts for frontend empty states
+- Phase 11-01: Data endpoints (neighborhood, entities, history) return 503 with structured JSON when graph_service is None
+- Phase 11-01: Two empty state branches: documentCount===0 shows 'No documents ingested' with ingest link; documentCount>0 with entityCount===0 shows 'Graph indexing in progress'
 - Phase 11-02: Used `from err` (not `from None`) to preserve exception chain context for B904 fix
 - Phase 11-02: 2-space YAML indentation for requirements_completed sequence items in SUMMARY frontmatter
 ### Roadmap Evolution
@@ -131,8 +135,8 @@ Progress: [##############################] 100% (24/24 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 11-02-PLAN.md (Ruff B904 fix + SUMMARY frontmatter standardization)
-Resume file: .planning/phases/11-graph-polish-tech-debt/11-02-SUMMARY.md
+Stopped at: Completed 11-01-PLAN.md (VIZ-06 empty state + graph null guards)
+Resume file: .planning/phases/11-graph-polish-tech-debt/11-01-SUMMARY.md
 
 ---
 Phase 11 complete. All v2.0 tech debt items resolved.
