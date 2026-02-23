@@ -157,6 +157,8 @@ export interface GraphStatus {
   total_entities: number;
   last_sync_time: string | null;
   error?: string;
+  document_count: number;
+  graph_synced_count: number;
 }
 
 export interface GraphNode {

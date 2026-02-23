@@ -69,6 +69,8 @@ interface GraphExplorerState {
   loading: boolean;
   error: string | null;
   entityCount: number;
+  documentCount: number;
+  graphSyncedCount: number;
 }
 
 export function useGraphExplorer() {
@@ -80,6 +82,8 @@ export function useGraphExplorer() {
     loading: true,
     error: null,
     entityCount: -1, // -1 = not yet loaded
+    documentCount: 0,
+    graphSyncedCount: 0,
   });
 
   // Load initial graph on mount
@@ -95,6 +99,8 @@ export function useGraphExplorer() {
             ...s,
             loading: false,
             entityCount: 0,
+            documentCount: status.document_count ?? 0,
+            graphSyncedCount: status.graph_synced_count ?? 0,
           }));
           return;
         }
@@ -108,6 +114,8 @@ export function useGraphExplorer() {
             ...s,
             loading: false,
             entityCount: 0,
+            documentCount: status.document_count ?? 0,
+            graphSyncedCount: status.graph_synced_count ?? 0,
           }));
           return;
         }
@@ -126,6 +134,8 @@ export function useGraphExplorer() {
           graphEdges: neighborhood.edges,
           loading: false,
           entityCount: status.total_entities,
+          documentCount: status.document_count ?? 0,
+          graphSyncedCount: status.graph_synced_count ?? 0,
         }));
       } catch (err) {
         if (cancelled) return;
@@ -279,6 +289,8 @@ export function useGraphExplorer() {
     loading: state.loading,
     error: state.error,
     entityCount: state.entityCount,
+    documentCount: state.documentCount,
+    graphSyncedCount: state.graphSyncedCount,
     selectEntity,
     expandNeighborhood,
     focusEntity,

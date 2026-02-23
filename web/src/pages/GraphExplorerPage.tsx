@@ -18,6 +18,8 @@ export default function GraphExplorerPage() {
     loading,
     error,
     entityCount,
+    documentCount,
+    graphSyncedCount,
     selectEntity,
     expandNeighborhood,
     focusEntity,
@@ -119,8 +121,8 @@ export default function GraphExplorerPage() {
     );
   }
 
-  // Empty state
-  if (entityCount === 0) {
+  // Empty state: Branch A — No documents ingested
+  if (entityCount === 0 && documentCount === 0) {
     return (
       <div className="flex flex-col h-full">
         <header className="px-6 py-3 border-b border-gray-200 bg-white">
@@ -130,9 +132,54 @@ export default function GraphExplorerPage() {
         </header>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3 max-w-sm">
-            <div className="mx-auto w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+            <div className="mx-auto w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center">
               <svg
-                className="w-8 h-8 text-gray-400"
+                className="w-8 h-8 text-indigo-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                />
+              </svg>
+            </div>
+            <p className="text-sm text-gray-800 font-medium">
+              No documents ingested
+            </p>
+            <p className="text-sm text-gray-500">
+              Ingest documents to build the knowledge graph
+            </p>
+            <Link
+              to="/admin"
+              className="inline-block px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors"
+            >
+              Go to Ingest
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state: Branch B — Documents exist but graph not synced
+  if (entityCount === 0 && documentCount > 0) {
+    const pendingCount = documentCount - graphSyncedCount;
+    return (
+      <div className="flex flex-col h-full">
+        <header className="px-6 py-3 border-b border-gray-200 bg-white">
+          <h2 className="text-base font-semibold text-gray-800">
+            Graph Explorer
+          </h2>
+        </header>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-3 max-w-sm">
+            <div className="mx-auto w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center">
+              <svg
+                className="w-8 h-8 text-indigo-400 animate-pulse"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -147,18 +194,12 @@ export default function GraphExplorerPage() {
                 />
               </svg>
             </div>
-            <p className="text-sm text-gray-600 font-medium">
-              No graph data yet
+            <p className="text-sm text-gray-800 font-medium">
+              Graph indexing in progress
             </p>
-            <p className="text-sm text-gray-400">
-              Ingest some documents to build the knowledge graph.
+            <p className="text-sm text-gray-500">
+              {pendingCount} {pendingCount === 1 ? "document" : "documents"} awaiting graph indexing
             </p>
-            <Link
-              to="/admin"
-              className="inline-block text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-            >
-              Go to Admin
-            </Link>
           </div>
         </div>
       </div>
