@@ -7,12 +7,12 @@ import re
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pam.api.deps import get_db, get_graph_service
 from pam.api.pagination import decode_cursor, encode_cursor
-from pam.common.models import SyncLog
+from pam.common.models import Document, SyncLog
 from pam.graph.entity_types import ENTITY_TYPES
 from pam.graph.service import GraphitiService
 
@@ -92,13 +92,35 @@ class SyncLogResponse(BaseModel):
 
 @router.get("/graph/status")
 async def graph_status(
+    db: AsyncSession = Depends(get_db),
     graph_service: GraphitiService = Depends(get_graph_service),
 ):
     """Return Neo4j connection status, entity counts, and last sync time.
 
     Always returns HTTP 200 -- the ``status`` field indicates whether the
-    graph database is reachable (``connected`` vs ``disconnected``).
+    graph database is reachable (``connected`` vs ``disconnected`` vs
+    ``unavailable``).  PG document counts are always included regardless
+    of Neo4j availability.
     """
+    # Always query PG for document counts (works even without Neo4j)
+    total_doc_result = await db.execute(select(func.count()).select_from(Document))
+    document_count = total_doc_result.scalar() or 0
+    synced_result = await db.execute(
+        select(func.count()).select_from(Document).where(Document.graph_synced == True)  # noqa: E712
+    )
+    graph_synced_count = synced_result.scalar() or 0
+
+    # Null guard: graph_service was never created at startup
+    if graph_service is None:
+        return {
+            "status": "unavailable",
+            "entity_counts": {},
+            "total_entities": 0,
+            "last_sync_time": None,
+            "document_count": document_count,
+            "graph_synced_count": graph_synced_count,
+        }
+
     try:
         async with graph_service.client.driver.session() as session:
             # Entity counts by label
@@ -129,10 +151,17 @@ async def graph_status(
             "entity_counts": entity_counts,
             "total_entities": total_entities,
             "last_sync_time": last_sync_time,
+            "document_count": document_count,
+            "graph_synced_count": graph_synced_count,
         }
     except Exception as exc:
         logger.warning("graph_status_failed", error=str(exc))
-        return {"status": "disconnected", "error": str(exc)}
+        return {
+            "status": "disconnected",
+            "error": str(exc),
+            "document_count": document_count,
+            "graph_synced_count": graph_synced_count,
+        }
 
 
 def _extract_entity_type(labels: list[str]) -> str:
@@ -154,6 +183,9 @@ async def graph_neighborhood(
     connecting them.  Edges are capped at 20.  Returns 404 if the
     entity is not found and 503 if Neo4j is unreachable.
     """
+    if graph_service is None:
+        raise HTTPException(status_code=503, detail="Graph service unavailable")
+
     try:
         async with graph_service.client.driver.session() as session:
             result = await session.run(
@@ -273,6 +305,9 @@ async def graph_entities(
 
     Returns 400 for unknown entity types and 503 if Neo4j is unreachable.
     """
+    if graph_service is None:
+        raise HTTPException(status_code=503, detail="Graph service unavailable")
+
     # Validate entity_type against known taxonomy to prevent Cypher injection
     if entity_type and entity_type not in ENTITY_TYPES:
         raise HTTPException(
@@ -368,6 +403,9 @@ async def entity_history(
     timeline.  Returns 404 if the entity is not found and 503 if Neo4j
     is unreachable.
     """
+    if graph_service is None:
+        raise HTTPException(status_code=503, detail="Graph service unavailable")
+
     try:
         escaped_name = re.escape(entity_name)
         async with graph_service.client.driver.session() as session:
