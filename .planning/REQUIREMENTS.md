@@ -47,7 +47,7 @@ Requirements for the Knowledge Graph milestone. Each maps to roadmap phases.
 - [x] **VIZ-03**: Temporal timeline component showing t_valid/t_invalid edge history for selected entity
 - [x] **VIZ-04**: Ingestion graph preview showing entities added/changed/invalidated per ingestion run
 - [x] **VIZ-05**: VITE_GRAPH_ENABLED env flag gates the graph explorer UI
-- [ ] **VIZ-06**: "Graph indexing in progress" state when graph_synced count is 0
+- [x] **VIZ-06**: "Graph indexing in progress" state when graph_synced count is 0
 
 ## v3 Requirements
 
@@ -100,7 +100,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | VIZ-03 | Phase 9 | Complete |
 | VIZ-04 | Phase 9 | Complete |
 | VIZ-05 | Phase 9 | Complete |
-| VIZ-06 | Phase 11 | Pending |
+| VIZ-06 | Phase 11 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 27 total

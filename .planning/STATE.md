@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v2.0 Gap Closure — Phase 10
+**Current focus:** v2.0 Gap Closure — Phase 11
 
 ## Current Position
 
-Phase: 10 of 15 (Bitemporal Timestamp Fix)
-Plan: 1 of 1 complete
+Phase: 11 of 15 (Graph Polish + Tech Debt)
+Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-22 — Completed 10-01-PLAN.md (Bitemporal timestamp pipeline fix)
+Last activity: 2026-02-23 — Completed 11-02-PLAN.md (Ruff B904 fix + SUMMARY frontmatter standardization)
 
-Progress: [##############################] 100% (22/22 plans across all milestones)
+Progress: [##############################] 100% (24/24 plans across all milestones)
 
 ## Milestone Progress
 
 | Milestone | Phases | Plans | Status |
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
-| v2.0 Knowledge Graph | 4/4 | 12/12 | Complete |
+| v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
 
 ## Performance Metrics
 
@@ -66,6 +66,12 @@ Progress: [##############################] 100% (22/22 plans across all mileston
 |------|----------|-------|-------|
 | 10-01 | 5min | 2 | 9 |
 
+**Phase 11 (Gap Closure):**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 11-02 | 4min | 2 | 14 |
+
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
@@ -102,6 +108,8 @@ Progress: [##############################] 100% (22/22 plans across all mileston
 - Phase 10-01: Nullable modified_at with no backfill -- existing documents get NULL triggering datetime.now(UTC) fallback
 - Phase 10-01: Direct raw_doc.modified_at access replaces getattr fallback for explicit data flow
 - Phase 10-01: Cascading fallback in sync-graph: doc.modified_at -> doc.last_synced_at -> datetime.now(UTC)
+- Phase 11-02: Used `from err` (not `from None`) to preserve exception chain context for B904 fix
+- Phase 11-02: 2-space YAML indentation for requirements_completed sequence items in SUMMARY frontmatter
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -122,9 +130,9 @@ Progress: [##############################] 100% (22/22 plans across all mileston
 
 ## Session Continuity
 
-Last session: 2026-02-22
-Stopped at: Completed 10-01-PLAN.md (Bitemporal timestamp pipeline fix)
-Resume file: .planning/phases/10-bitemporal-timestamp-fix/10-01-SUMMARY.md
+Last session: 2026-02-23
+Stopped at: Completed 11-02-PLAN.md (Ruff B904 fix + SUMMARY frontmatter standardization)
+Resume file: .planning/phases/11-graph-polish-tech-debt/11-02-SUMMARY.md
 
 ---
-Phase 10 complete. EXTRACT-02 gap closed.
+Phase 11 complete. All v2.0 tech debt items resolved.
