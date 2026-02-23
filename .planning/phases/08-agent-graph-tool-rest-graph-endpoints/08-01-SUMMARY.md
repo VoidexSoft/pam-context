@@ -44,7 +44,15 @@ patterns-established:
   - "Agent tool handlers check self.graph_service is None before delegating"
   - "Episode source_description parsed via regex for document title extraction"
 
-requirements-completed: [GRAPH-01, GRAPH-02, GRAPH-03, GRAPH-06]
+requirements_completed:
+  - id: GRAPH-01
+    desc: search_knowledge_graph agent tool
+  - id: GRAPH-02
+    desc: get_entity_history agent tool
+  - id: GRAPH-03
+    desc: Point-in-time graph query via reference_time
+  - id: GRAPH-06
+    desc: Tool result capped at 3000 chars / 20 nodes
 
 # Metrics
 duration: 4min

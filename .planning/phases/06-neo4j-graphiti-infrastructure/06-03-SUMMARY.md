@@ -37,7 +37,9 @@ patterns-established:
   - "Feature flag pattern: import.meta.env.VITE_X === 'true' for conditional nav rendering"
   - "Disabled nav item pattern: span with text-gray-300 cursor-not-allowed and title tooltip"
 
-requirements-completed: [INFRA-06]
+requirements_completed:
+  - id: INFRA-06
+    desc: NVL React packages installed in web/
 
 # Metrics
 duration: 3min

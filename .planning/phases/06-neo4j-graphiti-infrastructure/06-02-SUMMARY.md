@@ -44,7 +44,11 @@ patterns-established:
   - "Graph service lifecycle: create in lifespan try/except, store on app.state, close in shutdown before DB"
   - "Graph status: query Entity labels and Episodic created_at for counts and last sync time"
 
-requirements-completed: [INFRA-03, INFRA-04]
+requirements_completed:
+  - id: INFRA-03
+    desc: GraphitiService singleton on app.state
+  - id: INFRA-04
+    desc: get_graph_service dependency in deps.py
 
 # Metrics
 duration: 5min

@@ -46,7 +46,13 @@ patterns-established:
   - "Sync recovery pattern: query unsynced docs, retry extraction per-document with commit after each, count remaining"
   - "from __future__ import annotations for TYPE_CHECKING-guarded GraphitiService in dataclass fields"
 
-requirements-completed: [EXTRACT-04, EXTRACT-05, DIFF-03]
+requirements_completed:
+  - id: EXTRACT-04
+    desc: Graph extraction as non-blocking background step
+  - id: EXTRACT-05
+    desc: sync-graph endpoint retries failed extractions
+  - id: DIFF-03
+    desc: Diff summaries in SyncLog.details JSON
 
 # Metrics
 duration: 7min

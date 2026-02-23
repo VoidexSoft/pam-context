@@ -41,7 +41,9 @@ patterns-established:
   - "Diff overlay pattern: child component builds Map<entityName, hexColor>, parent applies via useMemo node/rel transformation"
   - "Footer slot pattern on sidebar components for always-visible sections independent of selection state"
 
-requirements-completed: [VIZ-04]
+requirements_completed:
+  - id: VIZ-04
+    desc: Ingestion graph preview with diff overlay
 
 # Metrics
 duration: 4min

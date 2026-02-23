@@ -44,7 +44,9 @@ patterns-established:
   - "Connector metadata propagation: connectors populate RawDocument fields, pipeline forwards them to stores and graph extraction"
   - "Cascading timestamp fallback: primary source -> secondary source -> current time"
 
-requirements-completed: [EXTRACT-02]
+requirements_completed:
+  - id: EXTRACT-02
+    desc: Bi-temporal timestamps from document modified_at
 
 # Metrics
 duration: 5min

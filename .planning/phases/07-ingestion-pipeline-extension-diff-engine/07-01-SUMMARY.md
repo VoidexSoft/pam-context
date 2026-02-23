@@ -44,7 +44,19 @@ patterns-established:
   - "Graph rollback: per-episode remove_episode() with individual exception handling for resilience"
   - "Diff summary: field-level old/new detail for modified entities (locked user decision)"
 
-requirements-completed: [EXTRACT-01, EXTRACT-02, EXTRACT-03, EXTRACT-06, DIFF-01, DIFF-02]
+requirements_completed:
+  - id: EXTRACT-01
+    desc: Pipeline calls add_episode per segment
+  - id: EXTRACT-02
+    desc: Bi-temporal timestamps from document modified_at
+  - id: EXTRACT-03
+    desc: graph_synced column via Alembic migration
+  - id: EXTRACT-06
+    desc: Orphan prevention via episode tombstoning
+  - id: DIFF-01
+    desc: Entity-level change detection on re-ingestion
+  - id: DIFF-02
+    desc: Superseded edges get t_invalid set
 
 # Metrics
 duration: 4min

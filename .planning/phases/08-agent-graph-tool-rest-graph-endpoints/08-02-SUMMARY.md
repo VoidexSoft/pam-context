@@ -34,7 +34,13 @@ patterns-established:
   - "_extract_entity_type helper: filters 'Entity' base label from Neo4j labels list"
   - "Cypher injection prevention via taxonomy validation for non-parameterizable label clauses"
 
-requirements-completed: [GRAPH-04, GRAPH-05, GRAPH-06]
+requirements_completed:
+  - id: GRAPH-04
+    desc: GET /graph/neighborhood endpoint
+  - id: GRAPH-05
+    desc: GET /graph/entities endpoint
+  - id: GRAPH-06
+    desc: Tool result capped at 3000 chars / 20 nodes
 
 # Metrics
 duration: 3min

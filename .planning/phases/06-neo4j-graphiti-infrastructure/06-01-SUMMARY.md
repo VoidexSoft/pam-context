@@ -43,7 +43,13 @@ patterns-established:
   - "Graph entity types: Pydantic BaseModel subclasses with optional fields, registered in ENTITY_TYPES dict"
   - "Graph service: async create() classmethod factory, property client accessor, async close() teardown"
 
-requirements-completed: [INFRA-01, INFRA-02, INFRA-05]
+requirements_completed:
+  - id: INFRA-01
+    desc: Neo4j running in Docker with health check
+  - id: INFRA-02
+    desc: graphiti-core installed with Anthropic LLM
+  - id: INFRA-05
+    desc: Entity type taxonomy as Pydantic models
 
 # Metrics
 duration: 4min

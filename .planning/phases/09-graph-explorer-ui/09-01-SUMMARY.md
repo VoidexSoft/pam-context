@@ -36,7 +36,11 @@ key-decisions:
 patterns-established:
   - "Mixed Neo4j + PostgreSQL endpoints in same router with appropriate dependency injection"
 
-requirements-completed: [VIZ-03, VIZ-04]
+requirements_completed:
+  - id: VIZ-03
+    desc: Temporal timeline for edge history
+  - id: VIZ-04
+    desc: Ingestion graph preview with diff overlay
 
 # Metrics
 duration: 2min

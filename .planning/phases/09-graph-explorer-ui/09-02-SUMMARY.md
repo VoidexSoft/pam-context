@@ -49,7 +49,17 @@ patterns-established:
   - "Graph component architecture: page -> hook -> canvas + sidebar with clean separation"
   - "NVL Node/Relationship conversion from backend GraphNode/GraphEdge with name-to-UUID mapping"
 
-requirements-completed: [VIZ-01, VIZ-02, VIZ-03, VIZ-05, VIZ-06]
+requirements_completed:
+  - id: VIZ-01
+    desc: Graph explorer with NVL as collapsible panel
+  - id: VIZ-02
+    desc: Entity click expands detail panel
+  - id: VIZ-03
+    desc: Temporal timeline for edge history
+  - id: VIZ-05
+    desc: VITE_GRAPH_ENABLED feature flag
+  - id: VIZ-06
+    desc: Graph indexing in progress empty state
 
 # Metrics
 duration: 4min
