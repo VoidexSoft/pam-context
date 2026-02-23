@@ -62,8 +62,8 @@ async def list_documents(
                     (Document.updated_at == cursor_sv) & (Document.id < cursor_id),
                 )
             )
-        except (ValueError, KeyError):
-            raise HTTPException(status_code=400, detail="Invalid cursor")
+        except (ValueError, KeyError) as err:
+            raise HTTPException(status_code=400, detail="Invalid cursor") from err
 
     # Fetch limit + 1 to detect next page
     stmt = stmt.limit(limit + 1)

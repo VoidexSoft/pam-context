@@ -117,8 +117,8 @@ async def list_task_statuses(
                     (IngestionTask.created_at == cursor_sv) & (IngestionTask.id < cursor_id),
                 )
             )
-        except (ValueError, KeyError):
-            raise HTTPException(status_code=400, detail="Invalid cursor")
+        except (ValueError, KeyError) as err:
+            raise HTTPException(status_code=400, detail="Invalid cursor") from err
 
     # Fetch limit + 1 to detect next page
     stmt = stmt.limit(limit + 1)
