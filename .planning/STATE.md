@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v3.0 LightRAG Smart Retrieval — Phase 14
+**Current focus:** v3.0 LightRAG Smart Retrieval — Phase 15
 
 ## Current Position
 
-Phase: 14 of 15 (LightRAG Graph-Aware Context Assembly with Token Budgets)
-Plan: 1 of 2 complete
+Phase: 15 of 15 (LightRAG Retrieval Mode Router)
+Plan: 0 of ? complete
 Status: In Progress
-Last activity: 2026-02-25 — Completed 14-01-PLAN.md (Context assembly module + tests)
+Last activity: 2026-02-25 — Completed 14-02-PLAN.md (Smart search context assembly integration)
 
-Progress: [##############################] 100% (29/30 plans across all milestones)
+Progress: [##############################] 100% (30/30 plans across all milestones)
 
 ## Milestone Progress
 
@@ -22,7 +22,7 @@ Progress: [##############################] 100% (29/30 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
-| v3.0 LightRAG Smart Retrieval | 3/4 | 5/? | In Progress |
+| v3.0 LightRAG Smart Retrieval | 3/4 | 6/? | In Progress |
 
 ## Performance Metrics
 
@@ -93,6 +93,7 @@ Progress: [##############################] 100% (29/30 plans across all mileston
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | 14-01 | 5min | 2 | 4 |
+| 14-02 | 3min | 2 | 3 |
 
 ## Accumulated Context
 
@@ -153,6 +154,9 @@ Progress: [##############################] 100% (29/30 plans across all mileston
 - Phase 14-01: graph_text tokens counted toward relationship budget, appended as supplementary content
 - Phase 14-01: Chunk budget dynamically calculated with unused entity/relationship redistribution
 - Phase 14-01: Summary header only mentions non-empty categories to avoid mismatch with omitted sections
+- Phase 14-02: Removed hashlib import after eliminating content-hash dedup (assemble_context handles dedup by segment_id)
+- Phase 14-02: Updated existing VDB tests to match new section names rather than maintaining old assertions
+- Phase 14-02: Added tiktoken mock fixture (autouse) to VDB integration test class for seamless context_assembly usage
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -174,8 +178,8 @@ Progress: [##############################] 100% (29/30 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 14-01-PLAN.md (Context assembly module + tiktoken + tests)
-Resume file: .planning/phases/14-lightrag-graph-aware-context-assembly-with-token-budgets/14-01-SUMMARY.md
+Stopped at: Completed 14-02-PLAN.md (Smart search context assembly integration)
+Resume file: .planning/phases/14-lightrag-graph-aware-context-assembly-with-token-budgets/14-02-SUMMARY.md
 
 ---
-Phase 14 plan 01 complete. 4-stage context assembly pipeline with tiktoken cl100k_base, configurable budgets, budget redistribution, 23 unit tests.
+Phase 14 complete. Token-budgeted context assembly wired into smart_search with structured sections and 10 integration tests.
