@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 13 of 15 (LightRAG Entity & Relationship Vector Indices)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-24 — Completed 13-01-PLAN.md (Entity/relationship VDB store + pipeline integration)
+Plan: 2 of 2 complete
+Status: Phase Complete
+Last activity: 2026-02-24 — Completed 13-02-PLAN.md (VDB search methods + 4-way smart_search)
 
-Progress: [##############################] 100% (27/28 plans across all milestones)
+Progress: [##############################] 100% (28/28 plans across all milestones)
 
 ## Milestone Progress
 
@@ -22,7 +22,7 @@ Progress: [##############################] 100% (27/28 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
-| v3.0 LightRAG Smart Retrieval | 2/4 | 3/? | In Progress |
+| v3.0 LightRAG Smart Retrieval | 2/4 | 4/? | In Progress |
 
 ## Performance Metrics
 
@@ -86,6 +86,7 @@ Progress: [##############################] 100% (27/28 plans across all mileston
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | 13-01 | 4min | 2 | 7 |
+| 13-02 | 5min | 2 | 4 |
 
 ## Accumulated Context
 
@@ -139,6 +140,9 @@ Progress: [##############################] 100% (27/28 plans across all mileston
 - Phase 13-01: VDB upsert is non-blocking (try/except) consistent with graph extraction fault isolation
 - Phase 13-01: make_relationship_doc_id sorts alphabetically for undirected relationship dedup
 - Phase 13-01: Relationship weight derived from episode count (chunks mentioning the relationship)
+- Phase 13-02: Query embedding reuse: embed es_query and graph_query in one API call, reuse for VDB searches
+- Phase 13-02: VDB store injected via getattr(app.state, 'vdb_store', None) following Phase 8 optional service pattern
+- Phase 13-02: Entity VDB uses low-level keyword embedding, relationship VDB uses high-level keyword embedding (LightRAG dual-level routing)
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -160,8 +164,8 @@ Progress: [##############################] 100% (27/28 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 13-01-PLAN.md (Entity/relationship VDB store + pipeline integration)
-Resume file: .planning/phases/13-lightrag-entity-and-relationship-vector-indices/13-01-SUMMARY.md
+Stopped at: Completed 13-02-PLAN.md (VDB search methods + 4-way smart_search)
+Resume file: .planning/phases/13-lightrag-entity-and-relationship-vector-indices/13-02-SUMMARY.md
 
 ---
-Phase 13 plan 01 complete. EntityRelationshipVDBStore with pam_entities/pam_relationships indices, content-hash skip-re-embedding, full ingestion chain wiring.
+Phase 13 complete. Entity/relationship VDB store with kNN search, 4-way concurrent smart_search with query embedding reuse, 13 integration tests.

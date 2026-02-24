@@ -138,7 +138,7 @@ Plans:
 | 10. Bi-temporal Timestamp Pipeline Fix | v2.0 | 1/1 | Complete | 2026-02-22 |
 | 11. Graph Polish + Tech Debt Cleanup | 2/2 | Complete    | 2026-02-23 | — |
 | 12. Dual-Level Keyword Extraction + Unified Search | 2/2 | Complete    | 2026-02-24 | — |
-| 13. Entity & Relationship Vector Indices | 1/2 | In Progress|  | — |
+| 13. Entity & Relationship Vector Indices | 2/2 | Complete   | 2026-02-24 | — |
 | 14. Graph-Aware Context Assembly + Token Budgets | v3.0 | 0/2 | Pending | — |
 | 15. Retrieval Mode Router | v3.0 | 0/2 | Pending | — |
 
@@ -147,7 +147,7 @@ Plans:
 Inspired by [LightRAG](https://github.com/HKUDS/LightRAG) (EMNLP 2025). Key insight: integrating knowledge graph into both indexing and retrieval with dual-level (entity + relationship) keyword extraction produces dramatically better results than treating text search and graph search as separate paths. LightRAG achieves ~6,000x fewer retrieval tokens than GraphRAG with comparable quality.
 
 - [x] **Phase 12: Dual-Level Keyword Extraction + Unified Search Tool** - Query keyword generation + merged ES/graph retrieval in one tool call (completed 2026-02-24)
-- [ ] **Phase 13: Entity & Relationship Vector Indices** - Embed entity descriptions and relationship descriptions into ES as separate searchable indices
+- [x] **Phase 13: Entity & Relationship Vector Indices** - Embed entity descriptions and relationship descriptions into ES as separate searchable indices (completed 2026-02-24)
 - [ ] **Phase 14: Graph-Aware Context Assembly with Token Budgets** - Structured context blocks with per-category token limits for entity, relationship, and chunk data
 - [ ] **Phase 15: Retrieval Mode Router** - Query classification to select optimal retrieval strategy per question type
 
@@ -179,7 +179,7 @@ Plans:
   3. During graph extraction, entity and relationship descriptions are embedded and upserted into these indices alongside the existing Neo4j writes
   4. `smart_search` uses entity VDB for low-level keyword matching and relationship VDB for high-level keyword matching (in addition to existing `pam_segments` and Graphiti search)
   5. Re-ingestion updates entity/relationship embeddings when descriptions change (keyed by entity name or sorted src+tgt pair)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [ ] 13-01-PLAN.md — EntityRelationshipVDBStore class with ES index mappings + upsert pipeline + extraction integration + lifespan wiring
 - [ ] 13-02-PLAN.md — kNN search methods + 4-way concurrent smart_search + VDB result formatting + integration tests
