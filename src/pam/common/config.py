@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     duckdb_data_dir: str = ""  # Directory containing data files (CSV, Parquet, JSON)
     duckdb_max_rows: int = 1000  # Max rows returned per query
 
+    # Smart Search
+    smart_search_es_limit: int = 5  # Max document results from ES hybrid search
+    smart_search_graph_limit: int = 5  # Max graph results from Graphiti search
+
     # Ingestion
     chunk_size_tokens: int = 512
     ingest_root: str = ""  # Required base directory for folder ingestion; empty = reject all
