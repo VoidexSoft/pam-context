@@ -399,12 +399,13 @@ class RetrievalAgent:
         return f"Unknown tool: {tool_name}", []
 
     async def _smart_search(self, input_: dict) -> tuple[str, list[Citation]]:
-        """Execute the smart_search tool: keyword extraction + concurrent ES and graph search.
+        """Execute the smart_search tool: keyword extraction + 4-way concurrent search.
 
         Extracts dual-level keywords from the query, then runs ES hybrid search
-        (low-level keywords) and graph relationship search (high-level keywords)
-        concurrently via asyncio.gather.  Returns results in separate sections
-        with extracted keywords for transparency.
+        (low-level keywords), graph relationship search (high-level keywords),
+        entity VDB search (low-level keywords), and relationship VDB search
+        (high-level keywords) concurrently via asyncio.gather.  Returns results
+        in separate sections with extracted keywords for transparency.
         """
         query = input_["query"]
 
@@ -426,12 +427,18 @@ class RetrievalAgent:
         es_limit = settings.smart_search_es_limit
         _graph_limit = settings.smart_search_graph_limit  # reserved for future re-query backfill
 
+        # Step B2: Embed both queries upfront (reuse for VDB searches)
+        # es_query_embedding -> ES segment search + entity VDB search (low-level)
+        # graph_query_embedding -> relationship VDB search (high-level)
+        query_embeddings = await self.embedder.embed_texts([es_query, graph_query])
+        es_query_embedding = query_embeddings[0]
+        graph_query_embedding = query_embeddings[1]
+
         # Step C: Define async search coroutines
         async def _es_search_coro() -> list:
-            embeddings = await self.embedder.embed_texts([es_query])
             return await self.search.search(
                 query=es_query,
-                query_embedding=embeddings[0],
+                query_embedding=es_query_embedding,
                 top_k=es_limit,
                 source_type=self._default_source_type,
             )
@@ -446,10 +453,28 @@ class RetrievalAgent:
                 query=graph_query,
             )
 
-        # Step D: Run concurrently
-        es_result, graph_result = await asyncio.gather(
+        async def _entity_vdb_search_coro() -> list[dict]:
+            if self.vdb_store is None:
+                return []
+            return await self.vdb_store.search_entities(
+                query_embedding=es_query_embedding,
+                top_k=settings.smart_search_entity_limit,
+            )
+
+        async def _rel_vdb_search_coro() -> list[dict]:
+            if self.vdb_store is None:
+                return []
+            return await self.vdb_store.search_relationships(
+                query_embedding=graph_query_embedding,
+                top_k=settings.smart_search_relationship_limit,
+            )
+
+        # Step D: Run all 4 searches concurrently
+        es_result, graph_result, entity_vdb_result, rel_vdb_result = await asyncio.gather(
             _es_search_coro(),
             _graph_search_coro(),
+            _entity_vdb_search_coro(),
+            _rel_vdb_search_coro(),
             return_exceptions=True,
         )
 
@@ -468,6 +493,20 @@ class RetrievalAgent:
             warnings.append("graph_backend_failed")
         else:
             graph_text = graph_result
+
+        if isinstance(entity_vdb_result, Exception):
+            logger.warning("smart_search_entity_vdb_failed", error=str(entity_vdb_result))
+            entity_vdb_results: list[dict] = []
+            warnings.append("entity_vdb_failed")
+        else:
+            entity_vdb_results = entity_vdb_result
+
+        if isinstance(rel_vdb_result, Exception):
+            logger.warning("smart_search_rel_vdb_failed", error=str(rel_vdb_result))
+            rel_vdb_results: list[dict] = []
+            warnings.append("relationship_vdb_failed")
+        else:
+            rel_vdb_results = rel_vdb_result
 
         # Step E: Format document_results from ES
         citations: list[Citation] = []
@@ -523,6 +562,28 @@ class RetrievalAgent:
             parts.append(graph_text)
         else:
             parts.append("No graph results found.")
+
+        parts.append("")
+        parts.append(f"## Entity Matches ({len(entity_vdb_results)} results)")
+        if entity_vdb_results:
+            parts.extend(
+                f"- [Entity] {ev['name']} ({ev.get('entity_type', 'Unknown')}): "
+                f"{ev.get('description', 'No description')}"
+                for ev in entity_vdb_results
+            )
+        else:
+            parts.append("No entity VDB results found.")
+
+        parts.append("")
+        parts.append(f"## Relationship Matches ({len(rel_vdb_results)} results)")
+        if rel_vdb_results:
+            parts.extend(
+                f"- [Relationship] {rv.get('src_entity', '?')} -> {rv.get('tgt_entity', '?')} "
+                f"({rv.get('rel_type', 'RELATED_TO')}): {rv.get('description', 'No description')}"
+                for rv in rel_vdb_results
+            )
+        else:
+            parts.append("No relationship VDB results found.")
 
         if warnings:
             parts.append("")
