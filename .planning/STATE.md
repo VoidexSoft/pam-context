@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 12 of 15 (LightRAG Dual-Level Keyword Extraction + Unified Search Tool)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-24 — Completed 12-01-PLAN.md (Keyword extraction + tool definition)
+Plan: 2 of 2 complete
+Status: Phase Complete
+Last activity: 2026-02-24 — Completed 12-02-PLAN.md (Smart search handler + tests)
 
-Progress: [##############################] 100% (25/26 plans across all milestones)
+Progress: [##############################] 100% (26/26 plans across all milestones)
 
 ## Milestone Progress
 
@@ -22,7 +22,7 @@ Progress: [##############################] 100% (25/26 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
-| v3.0 LightRAG Smart Retrieval | 1/4 | 1/? | In Progress |
+| v3.0 LightRAG Smart Retrieval | 1/4 | 2/? | In Progress |
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [##############################] 100% (25/26 plans across all mileston
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | 12-01 | 2min | 2 | 3 |
+| 12-02 | 5min | 2 | 2 |
 
 ## Accumulated Context
 
@@ -124,6 +125,9 @@ Progress: [##############################] 100% (25/26 plans across all mileston
 - Phase 12-01: Hardcoded claude-3-5-haiku-20241022 as default extraction model (configurable via function param, not env var)
 - Phase 12-01: Re-raise on extraction failure (per user decision: return error to agent, not silent fallback)
 - Phase 12-01: 15s timeout for keyword extraction (generous for cold starts/API congestion)
+- Phase 12-02: Empty keyword lists fall back to original query to avoid empty result pitfall
+- Phase 12-02: Graph results passed through as-is from search_graph_relationships (already formatted with relationship structure)
+- Phase 12-02: Backfill is informational only (no re-query): other source's full results compensate
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -145,8 +149,8 @@ Progress: [##############################] 100% (25/26 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 12-01-PLAN.md (Keyword extraction + tool definition)
-Resume file: .planning/phases/12-lightrag-dual-level-keyword-extraction-unified-search-tool/12-01-SUMMARY.md
+Stopped at: Completed 12-02-PLAN.md (Smart search handler + tests)
+Resume file: .planning/phases/12-lightrag-dual-level-keyword-extraction-unified-search-tool/12-02-SUMMARY.md
 
 ---
-Phase 12 Plan 01 complete. Keyword extractor and smart_search tool definition ready for Plan 02 wiring.
+Phase 12 complete. smart_search tool fully wired with concurrent ES + graph search, 9 tests passing.
