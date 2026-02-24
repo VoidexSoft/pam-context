@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v3.0 LightRAG Smart Retrieval — Phase 13
+**Current focus:** v3.0 LightRAG Smart Retrieval — Phase 14
 
 ## Current Position
 
-Phase: 13 of 15 (LightRAG Entity & Relationship Vector Indices)
-Plan: 2 of 2 complete
-Status: Phase Complete
-Last activity: 2026-02-24 — Completed 13-02-PLAN.md (VDB search methods + 4-way smart_search)
+Phase: 14 of 15 (LightRAG Graph-Aware Context Assembly with Token Budgets)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-02-25 — Completed 14-01-PLAN.md (Context assembly module + tests)
 
-Progress: [##############################] 100% (28/28 plans across all milestones)
+Progress: [##############################] 100% (29/30 plans across all milestones)
 
 ## Milestone Progress
 
@@ -22,7 +22,7 @@ Progress: [##############################] 100% (28/28 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
-| v3.0 LightRAG Smart Retrieval | 2/4 | 4/? | In Progress |
+| v3.0 LightRAG Smart Retrieval | 3/4 | 5/? | In Progress |
 
 ## Performance Metrics
 
@@ -88,6 +88,12 @@ Progress: [##############################] 100% (28/28 plans across all mileston
 | 13-01 | 4min | 2 | 7 |
 | 13-02 | 5min | 2 | 4 |
 
+**Phase 14 (v3.0 LightRAG):**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 14-01 | 5min | 2 | 4 |
+
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
@@ -143,6 +149,10 @@ Progress: [##############################] 100% (28/28 plans across all mileston
 - Phase 13-02: Query embedding reuse: embed es_query and graph_query in one API call, reuse for VDB searches
 - Phase 13-02: VDB store injected via getattr(app.state, 'vdb_store', None) following Phase 8 optional service pattern
 - Phase 13-02: Entity VDB uses low-level keyword embedding, relationship VDB uses high-level keyword embedding (LightRAG dual-level routing)
+- Phase 14-01: 500-token per-item truncation cap (truncate text, never drop items)
+- Phase 14-01: graph_text tokens counted toward relationship budget, appended as supplementary content
+- Phase 14-01: Chunk budget dynamically calculated with unused entity/relationship redistribution
+- Phase 14-01: Summary header only mentions non-empty categories to avoid mismatch with omitted sections
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -163,9 +173,9 @@ Progress: [##############################] 100% (28/28 plans across all mileston
 
 ## Session Continuity
 
-Last session: 2026-02-24
-Stopped at: Completed 13-02-PLAN.md (VDB search methods + 4-way smart_search)
-Resume file: .planning/phases/13-lightrag-entity-and-relationship-vector-indices/13-02-SUMMARY.md
+Last session: 2026-02-25
+Stopped at: Completed 14-01-PLAN.md (Context assembly module + tiktoken + tests)
+Resume file: .planning/phases/14-lightrag-graph-aware-context-assembly-with-token-budgets/14-01-SUMMARY.md
 
 ---
-Phase 13 complete. Entity/relationship VDB store with kNN search, 4-way concurrent smart_search with query embedding reuse, 13 integration tests.
+Phase 14 plan 01 complete. 4-stage context assembly pipeline with tiktoken cl100k_base, configurable budgets, budget redistribution, 23 unit tests.

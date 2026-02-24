@@ -139,7 +139,7 @@ Plans:
 | 11. Graph Polish + Tech Debt Cleanup | 2/2 | Complete    | 2026-02-23 | — |
 | 12. Dual-Level Keyword Extraction + Unified Search | 2/2 | Complete    | 2026-02-24 | — |
 | 13. Entity & Relationship Vector Indices | 2/2 | Complete    | 2026-02-24 | — |
-| 14. Graph-Aware Context Assembly + Token Budgets | v3.0 | 0/2 | Pending | — |
+| 14. Graph-Aware Context Assembly + Token Budgets | 1/2 | In Progress|  | — |
 | 15. Retrieval Mode Router | v3.0 | 0/2 | Pending | — |
 
 ### v3.0 LightRAG-Inspired Smart Retrieval
@@ -195,7 +195,7 @@ Plans:
   3. The agent's system prompt includes structured context blocks: `## Knowledge Graph Entities`, `## Knowledge Graph Relationships`, `## Document Chunks` with source references
   4. Context assembly happens inside `smart_search` before returning to the agent, not as a separate tool call
   5. Total context per search result stays within a configurable `max_context_tokens` (default 12000), preventing context window bloat from large result sets
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 14-01-PLAN.md — context_assembly.py module with 4-stage pipeline, tiktoken token counting, config settings, unit tests
 - [ ] 14-02-PLAN.md — Wire assemble_context into _smart_search, refactor output formatting, integration tests
