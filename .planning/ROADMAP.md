@@ -195,9 +195,10 @@ Plans:
   3. The agent's system prompt includes structured context blocks: `## Knowledge Graph Entities`, `## Knowledge Graph Relationships`, `## Document Chunks` with source references
   4. Context assembly happens inside `smart_search` before returning to the agent, not as a separate tool call
   5. Total context per search result stays within a configurable `max_context_tokens` (default 12000), preventing context window bloat from large result sets
+**Plans:** 2 plans
 Plans:
-- [ ] 14-01-PLAN.md — Token-budgeted context assembly pipeline + structured prompt templates
-- [ ] 14-02-PLAN.md — Integration with smart_search + agent system prompt updates
+- [ ] 14-01-PLAN.md — context_assembly.py module with 4-stage pipeline, tiktoken token counting, config settings, unit tests
+- [ ] 14-02-PLAN.md — Wire assemble_context into _smart_search, refactor output formatting, integration tests
 
 ### Phase 15: Retrieval Mode Router
 **Goal**: A query classifier routes each question to the optimal retrieval strategy — so that entity-specific questions use graph-first retrieval, conceptual questions use relationship search, temporal questions use history tools, and simple factual questions skip the graph entirely, following LightRAG's mode-based retrieval pattern.
