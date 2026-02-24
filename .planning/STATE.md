@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v3.0 LightRAG Smart Retrieval — Phase 12
+**Current focus:** v3.0 LightRAG Smart Retrieval — Phase 13
 
 ## Current Position
 
-Phase: 12 of 15 (LightRAG Dual-Level Keyword Extraction + Unified Search Tool)
-Plan: 2 of 2 complete
-Status: Phase Complete
-Last activity: 2026-02-24 — Completed 12-02-PLAN.md (Smart search handler + tests)
+Phase: 13 of 15 (LightRAG Entity & Relationship Vector Indices)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-02-24 — Completed 13-01-PLAN.md (Entity/relationship VDB store + pipeline integration)
 
-Progress: [##############################] 100% (26/26 plans across all milestones)
+Progress: [##############################] 100% (27/28 plans across all milestones)
 
 ## Milestone Progress
 
@@ -22,7 +22,7 @@ Progress: [##############################] 100% (26/26 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
-| v3.0 LightRAG Smart Retrieval | 1/4 | 2/? | In Progress |
+| v3.0 LightRAG Smart Retrieval | 2/4 | 3/? | In Progress |
 
 ## Performance Metrics
 
@@ -81,6 +81,12 @@ Progress: [##############################] 100% (26/26 plans across all mileston
 | 12-01 | 2min | 2 | 3 |
 | 12-02 | 5min | 2 | 2 |
 
+**Phase 13 (v3.0 LightRAG):**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 13-01 | 4min | 2 | 7 |
+
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
@@ -128,6 +134,11 @@ Progress: [##############################] 100% (26/26 plans across all mileston
 - Phase 12-02: Empty keyword lists fall back to original query to avoid empty result pitfall
 - Phase 12-02: Graph results passed through as-is from search_graph_relationships (already formatted with relationship structure)
 - Phase 12-02: Backfill is informational only (no re-query): other source's full results compensate
+- Phase 13-01: LightRAG embedding text format: entities "name\ndescription", relationships "keywords\tsrc\ntgt\ndescription"
+- Phase 13-01: Content hash SHA-256 comparison to skip re-embedding unchanged entities/relationships
+- Phase 13-01: VDB upsert is non-blocking (try/except) consistent with graph extraction fault isolation
+- Phase 13-01: make_relationship_doc_id sorts alphabetically for undirected relationship dedup
+- Phase 13-01: Relationship weight derived from episode count (chunks mentioning the relationship)
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -149,8 +160,8 @@ Progress: [##############################] 100% (26/26 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-24
-Stopped at: Completed 12-02-PLAN.md (Smart search handler + tests)
-Resume file: .planning/phases/12-lightrag-dual-level-keyword-extraction-unified-search-tool/12-02-SUMMARY.md
+Stopped at: Completed 13-01-PLAN.md (Entity/relationship VDB store + pipeline integration)
+Resume file: .planning/phases/13-lightrag-entity-and-relationship-vector-indices/13-01-SUMMARY.md
 
 ---
-Phase 12 complete. smart_search tool fully wired with concurrent ES + graph search, 9 tests passing.
+Phase 13 plan 01 complete. EntityRelationshipVDBStore with pam_entities/pam_relationships indices, content-hash skip-re-embedding, full ingestion chain wiring.
