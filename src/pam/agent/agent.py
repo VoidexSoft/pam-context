@@ -26,6 +26,9 @@ if TYPE_CHECKING:
 
     from pam.agent.duckdb_service import DuckDBService
     from pam.graph.service import GraphitiService
+    from pam.ingestion.stores.entity_relationship_store import (
+        EntityRelationshipVDBStore,
+    )
 
 logger = structlog.get_logger()
 
@@ -85,6 +88,7 @@ class RetrievalAgent:
         db_session: AsyncSession | None = None,
         duckdb_service: DuckDBService | None = None,
         graph_service: GraphitiService | None = None,
+        vdb_store: EntityRelationshipVDBStore | None = None,
     ) -> None:
         self.client = AsyncAnthropic(api_key=api_key)
         self.model = model
@@ -94,6 +98,7 @@ class RetrievalAgent:
         self.db_session = db_session
         self.duckdb_service = duckdb_service
         self.graph_service = graph_service
+        self.vdb_store = vdb_store
         # NOTE: _default_source_type is instance state set per-call by answer()/answer_streaming().
         # This is safe because agents are instantiated per-request (see api/deps.py).
         # Do NOT share a single RetrievalAgent across concurrent requests.

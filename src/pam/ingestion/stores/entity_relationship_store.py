@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import structlog
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
 
 if TYPE_CHECKING:
     from pam.ingestion.embedders.base import BaseEmbedder
@@ -340,3 +340,108 @@ class EntityRelationshipVDBStore:
             source_id=source_id,
         )
         return upserted
+
+    async def search_entities(
+        self,
+        query_embedding: list[float],
+        top_k: int = 5,
+        entity_type: str | None = None,
+    ) -> list[dict]:
+        """Search entity VDB by vector similarity (kNN).
+
+        Args:
+            query_embedding: Pre-computed query embedding vector.
+            top_k: Number of results to return.
+            entity_type: Optional filter to restrict by entity type.
+
+        Returns:
+            List of dicts with name, entity_type, description, score, source.
+        """
+        knn: dict = {
+            "field": "embedding",
+            "query_vector": query_embedding,
+            "k": top_k,
+            "num_candidates": top_k * 10,
+        }
+        if entity_type:
+            knn["filter"] = {"term": {"entity_type": entity_type}}
+
+        body = {
+            "knn": knn,
+            "size": top_k,
+            "_source": {"excludes": ["embedding"]},
+        }
+
+        try:
+            response = await self.client.search(index=self.entity_index, body=body)
+        except NotFoundError:
+            logger.debug("search_entities_index_not_found", index=self.entity_index)
+            return []
+
+        results: list[dict] = []
+        for hit in response["hits"]["hits"]:
+            src = hit["_source"]
+            results.append(
+                {
+                    "name": src.get("name", ""),
+                    "entity_type": src.get("entity_type", ""),
+                    "description": src.get("description", ""),
+                    "score": hit.get("_score", 0.0),
+                    "source": "entity_vdb",
+                }
+            )
+        return results
+
+    async def search_relationships(
+        self,
+        query_embedding: list[float],
+        top_k: int = 5,
+    ) -> list[dict]:
+        """Search relationship VDB by vector similarity (kNN).
+
+        Args:
+            query_embedding: Pre-computed query embedding vector.
+            top_k: Number of results to return.
+
+        Returns:
+            List of dicts with src_entity, tgt_entity, rel_type, description,
+            keywords, weight, score, source.
+        """
+        body = {
+            "knn": {
+                "field": "embedding",
+                "query_vector": query_embedding,
+                "k": top_k,
+                "num_candidates": top_k * 10,
+            },
+            "size": top_k,
+            "_source": {"excludes": ["embedding"]},
+        }
+
+        try:
+            response = await self.client.search(
+                index=self.relationship_index, body=body
+            )
+        except NotFoundError:
+            logger.debug(
+                "search_relationships_index_not_found",
+                index=self.relationship_index,
+            )
+            return []
+
+        results: list[dict] = []
+        for hit in response["hits"]["hits"]:
+            src = hit["_source"]
+            results.append(
+                {
+                    "src_entity": src.get("src_entity", ""),
+                    "tgt_entity": src.get("tgt_entity", ""),
+                    "rel_type": src.get("rel_type", ""),
+                    "description": src.get("description", ""),
+                    "keywords": src.get("keywords", ""),
+                    "weight": src.get("weight", 1.0),
+                    "score": hit.get("_score", 0.0),
+                    "source": "relationship_vdb",
+                }
+            )
+        return results

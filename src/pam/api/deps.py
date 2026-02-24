@@ -67,6 +67,7 @@ async def get_agent(
 ) -> RetrievalAgent:
     duckdb_service = get_duckdb_service(request)
     graph_service = getattr(request.app.state, "graph_service", None)
+    vdb_store = getattr(request.app.state, "vdb_store", None)
     return RetrievalAgent(
         search_service=search_service,
         embedder=embedder,
@@ -76,4 +77,5 @@ async def get_agent(
         db_session=db,
         duckdb_service=duckdb_service,
         graph_service=graph_service,
+        vdb_store=vdb_store,
     )
