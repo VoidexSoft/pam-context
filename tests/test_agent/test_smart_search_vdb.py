@@ -4,6 +4,7 @@ import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from elasticsearch import NotFoundError
 
 from pam.agent.agent import RetrievalAgent
@@ -11,6 +12,14 @@ from pam.common.config import Settings
 from pam.ingestion.stores.entity_relationship_store import (
     EntityRelationshipVDBStore,
 )
+
+
+def _word_count_encoder():
+    """Return a mock encoder that counts tokens as words (space-split)."""
+    enc = MagicMock()
+    enc.encode = lambda text: text.split()
+    enc.decode = lambda tokens: " ".join(tokens)
+    return enc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -208,6 +217,12 @@ class TestVDBStoreSearchMethods:
 
 
 class TestSmartSearchVDBIntegration:
+    @pytest.fixture(autouse=True)
+    def _mock_tiktoken(self):
+        """Mock tiktoken encoder so tests don't need network access."""
+        with patch("pam.agent.context_assembly._get_encoder", return_value=_word_count_encoder()):
+            yield
+
     async def test_smart_search_includes_entity_section(self):
         store = _mock_vdb_store(
             entity_hits=[
@@ -217,8 +232,8 @@ class TestSmartSearchVDBIntegration:
         agent = _mock_agent(vdb_store=store)
         result_text, _citations = await agent._smart_search({"query": "deployment teams"})
 
-        assert "## Entity Matches" in result_text
-        assert "[Entity] AuthService (Technology)" in result_text
+        assert "## Knowledge Graph Entities" in result_text
+        assert "**AuthService**: Handles authentication" in result_text
 
     async def test_smart_search_includes_relationship_section(self):
         store = _mock_vdb_store(
@@ -232,19 +247,19 @@ class TestSmartSearchVDBIntegration:
         agent = _mock_agent(vdb_store=store)
         result_text, _citations = await agent._smart_search({"query": "infrastructure reliability"})
 
-        assert "## Relationship Matches" in result_text
-        assert "[Relationship] Infra -> Reliability (SUPPORTS)" in result_text
+        assert "## Knowledge Graph Relationships" in result_text
+        assert "**Infra** -> SUPPORTS -> **Reliability**" in result_text
 
     async def test_smart_search_without_vdb_store_still_works(self):
         agent = _mock_agent(vdb_store=None)
         result_text, _citations = await agent._smart_search({"query": "test query"})
 
-        assert "## Document Results" in result_text
-        assert "## Graph Results" in result_text
-        assert "## Entity Matches (0 results)" in result_text
-        assert "## Relationship Matches (0 results)" in result_text
-        assert "No entity VDB results found." in result_text
-        assert "No relationship VDB results found." in result_text
+        # With no results from any source, assemble_context returns fallback
+        assert "No relevant context found" in result_text
+        # Old section names should NOT appear
+        assert "## Document Results" not in result_text
+        assert "## Entity Matches" not in result_text
+        assert "## Relationship Matches" not in result_text
 
     async def test_smart_search_vdb_failure_graceful(self):
         """When VDB search raises, smart_search still returns ES+graph results with warning."""
@@ -255,25 +270,35 @@ class TestSmartSearchVDBIntegration:
         agent = _mock_agent(vdb_store=mock_store)
         result_text, _citations = await agent._smart_search({"query": "some query"})
 
-        assert "## Document Results" in result_text
-        assert "## Graph Results" in result_text
+        # Keywords header always present
+        assert "Keywords extracted:" in result_text
         # VDB failures produce warnings, not crashes
         assert "entity_vdb_failed" in result_text
         assert "relationship_vdb_failed" in result_text
 
-    async def test_smart_search_has_all_4_sections(self):
-        """Verify all 4 distinct sections appear in output."""
+    async def test_smart_search_has_all_3_context_sections(self):
+        """Verify all 3 structured sections appear in output when data is present."""
         store = _mock_vdb_store(
             entity_hits=[_make_entity_hit("X", "T", "desc")],
             relationship_hits=[_make_relationship_hit("A", "B", "REL", "desc")],
         )
+        # Need ES results too for Document Chunks section
         agent = _mock_agent(vdb_store=store)
+        # Provide mock ES results
+        mock_result = MagicMock()
+        mock_result.document_title = "TestDoc"
+        mock_result.section_path = "intro"
+        mock_result.source_url = "http://test"
+        mock_result.source_id = "test-src"
+        mock_result.segment_id = "seg-1"
+        mock_result.content = "Test chunk content"
+        agent.search.search = AsyncMock(return_value=[mock_result])
+
         result_text, _citations = await agent._smart_search({"query": "test"})
 
-        assert "## Document Results" in result_text
-        assert "## Graph Results" in result_text
-        assert "## Entity Matches" in result_text
-        assert "## Relationship Matches" in result_text
+        assert "## Knowledge Graph Entities" in result_text
+        assert "## Knowledge Graph Relationships" in result_text
+        assert "## Document Chunks" in result_text
 
     async def test_smart_search_reuses_query_embeddings(self):
         """Verify embed_texts is called once with both queries (not per-coroutine)."""

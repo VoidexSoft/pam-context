@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -13,6 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 import structlog
 from anthropic import AsyncAnthropic
 
+from pam.agent.context_assembly import ContextBudget, assemble_context
 from pam.agent.keyword_extractor import extract_query_keywords
 from pam.agent.tools import ALL_TOOLS
 from pam.common.config import get_settings
@@ -508,17 +508,9 @@ class RetrievalAgent:
         else:
             rel_vdb_results = rel_vdb_result
 
-        # Step E: Format document_results from ES
+        # Step E: Extract citations from ES results (for agent response attribution)
         citations: list[Citation] = []
-        formatted_es_parts: list[str] = []
-        _seen_hashes: set[str] = set()
-
-        for i, r in enumerate(es_results, 1):
-            content_hash = hashlib.sha256(r.content.encode()).hexdigest()
-            if content_hash in _seen_hashes:
-                continue
-            _seen_hashes.add(content_hash)
-
+        for r in es_results:
             citation = Citation(
                 document_title=r.document_title,
                 section_path=r.section_path,
@@ -527,63 +519,27 @@ class RetrievalAgent:
             )
             citations.append(citation)
 
-            source_label = r.document_title or r.source_id or "Unknown"
-            if r.section_path:
-                source_label += f" > {r.section_path}"
-            url_part = f" ({r.source_url})" if r.source_url else ""
-            formatted_es_parts.append(
-                f"[Result {i}] Source: {source_label}{url_part}\n{r.content}"
-            )
+        # Step F: Assemble structured context with token budgets
+        budget = ContextBudget(
+            entity_tokens=settings.context_entity_budget,
+            relationship_tokens=settings.context_relationship_budget,
+            max_total_tokens=settings.context_max_tokens,
+        )
+        assembled = assemble_context(
+            es_results=es_results,
+            graph_text=graph_text,
+            entity_vdb_results=entity_vdb_results,
+            rel_vdb_results=rel_vdb_results,
+            budget=budget,
+        )
 
-        # Step F: Graph results (already formatted text from search_graph_relationships)
-        # No additional formatting needed; graph_text includes relationship structure.
-
-        # Step G: Backfill note (best-effort, no re-query)
-        # The actual backfill is informational: if one source underperformed,
-        # the other source's full results already compensate.
-
-        # Step H: Build final output string
+        # Step G: Build final output with keywords header + assembled context
         parts: list[str] = []
         parts.append("Keywords extracted:")
         parts.append(f"- High-level: {', '.join(keywords.high_level_keywords)}")
         parts.append(f"- Low-level: {', '.join(keywords.low_level_keywords)}")
         parts.append("")
-
-        es_count = len(formatted_es_parts)
-        parts.append(f"## Document Results ({es_count} results)")
-        if formatted_es_parts:
-            parts.append("\n\n---\n\n".join(formatted_es_parts))
-        else:
-            parts.append("No document results found.")
-        parts.append("")
-
-        parts.append("## Graph Results")
-        if graph_text:
-            parts.append(graph_text)
-        else:
-            parts.append("No graph results found.")
-
-        parts.append("")
-        parts.append(f"## Entity Matches ({len(entity_vdb_results)} results)")
-        if entity_vdb_results:
-            parts.extend(
-                f"- [Entity] {ev['name']} ({ev.get('entity_type', 'Unknown')}): "
-                f"{ev.get('description', 'No description')}"
-                for ev in entity_vdb_results
-            )
-        else:
-            parts.append("No entity VDB results found.")
-
-        parts.append("")
-        parts.append(f"## Relationship Matches ({len(rel_vdb_results)} results)")
-        if rel_vdb_results:
-            parts.extend(
-                f"- [Relationship] {rv.get('src_entity', '?')} -> {rv.get('tgt_entity', '?')} "
-                f"({rv.get('rel_type', 'RELATED_TO')}): {rv.get('description', 'No description')}"
-                for rv in rel_vdb_results
-            )
-        else:
-            parts.append("No relationship VDB results found.")
+        parts.append(assembled.text)
 
         if warnings:
             parts.append("")
