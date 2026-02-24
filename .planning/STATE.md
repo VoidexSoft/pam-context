@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v2.0 Gap Closure — Phase 11
+**Current focus:** v3.0 LightRAG Smart Retrieval — Phase 12
 
 ## Current Position
 
-Phase: 11 of 15 (Graph Polish + Tech Debt)
-Plan: 2 of 2 complete
-Status: Complete
-Last activity: 2026-02-23 — Completed 11-02-PLAN.md (Ruff B904 fix + SUMMARY frontmatter standardization)
+Phase: 12 of 15 (LightRAG Dual-Level Keyword Extraction + Unified Search Tool)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-02-24 — Completed 12-01-PLAN.md (Keyword extraction + tool definition)
 
-Progress: [##############################] 100% (24/24 plans across all milestones)
+Progress: [##############################] 100% (25/26 plans across all milestones)
 
 ## Milestone Progress
 
@@ -22,6 +22,7 @@ Progress: [##############################] 100% (24/24 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
+| v3.0 LightRAG Smart Retrieval | 1/4 | 1/? | In Progress |
 
 ## Performance Metrics
 
@@ -73,6 +74,12 @@ Progress: [##############################] 100% (24/24 plans across all mileston
 | 11-01 | 8min | 2 | 4 |
 | 11-02 | 4min | 2 | 14 |
 
+**Phase 12 (v3.0 LightRAG):**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 12-01 | 2min | 2 | 3 |
+
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
@@ -114,6 +121,9 @@ Progress: [##############################] 100% (24/24 plans across all mileston
 - Phase 11-01: Two empty state branches: documentCount===0 shows 'No documents ingested' with ingest link; documentCount>0 with entityCount===0 shows 'Graph indexing in progress'
 - Phase 11-02: Used `from err` (not `from None`) to preserve exception chain context for B904 fix
 - Phase 11-02: 2-space YAML indentation for requirements_completed sequence items in SUMMARY frontmatter
+- Phase 12-01: Hardcoded claude-3-5-haiku-20241022 as default extraction model (configurable via function param, not env var)
+- Phase 12-01: Re-raise on extraction failure (per user decision: return error to agent, not silent fallback)
+- Phase 12-01: 15s timeout for keyword extraction (generous for cold starts/API congestion)
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -134,9 +144,9 @@ Progress: [##############################] 100% (24/24 plans across all mileston
 
 ## Session Continuity
 
-Last session: 2026-02-23
-Stopped at: Completed 11-01-PLAN.md (VIZ-06 empty state + graph null guards)
-Resume file: .planning/phases/11-graph-polish-tech-debt/11-01-SUMMARY.md
+Last session: 2026-02-24
+Stopped at: Completed 12-01-PLAN.md (Keyword extraction + tool definition)
+Resume file: .planning/phases/12-lightrag-dual-level-keyword-extraction-unified-search-tool/12-01-SUMMARY.md
 
 ---
-Phase 11 complete. All v2.0 tech debt items resolved.
+Phase 12 Plan 01 complete. Keyword extractor and smart_search tool definition ready for Plan 02 wiring.

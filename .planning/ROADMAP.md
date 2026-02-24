@@ -137,7 +137,7 @@ Plans:
 | 9. Graph Explorer UI | v2.0 | 3/3 | Complete | 2026-02-21 |
 | 10. Bi-temporal Timestamp Pipeline Fix | v2.0 | 1/1 | Complete | 2026-02-22 |
 | 11. Graph Polish + Tech Debt Cleanup | 2/2 | Complete    | 2026-02-23 | — |
-| 12. Dual-Level Keyword Extraction + Unified Search | v3.0 | 0/2 | Pending | — |
+| 12. Dual-Level Keyword Extraction + Unified Search | 1/2 | In Progress|  | — |
 | 13. Entity & Relationship Vector Indices | v3.0 | 0/2 | Pending | — |
 | 14. Graph-Aware Context Assembly + Token Budgets | v3.0 | 0/2 | Pending | — |
 | 15. Retrieval Mode Router | v3.0 | 0/2 | Pending | — |
@@ -163,7 +163,7 @@ Inspired by [LightRAG](https://github.com/HKUDS/LightRAG) (EMNLP 2025). Key insi
   4. Results are merged via round-robin interleaving (alternating ES and graph results) with deduplication by content hash
   5. Existing `search_knowledge` and `search_knowledge_graph` tools remain available as fallbacks, but `smart_search` is the agent's preferred first tool
   6. Agent tool iterations for relationship-aware questions drop from 2-3 to 1 (measured on eval/questions.json)
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
 - [ ] 12-01-PLAN.md — Keyword extraction module + config env vars + SMART_SEARCH_TOOL definition
 - [ ] 12-02-PLAN.md — `_smart_search()` handler with concurrent ES+graph search, result merging, agent integration + smoke tests
