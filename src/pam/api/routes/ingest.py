@@ -63,6 +63,7 @@ async def ingest_folder(
 
     task = await create_task(body.path, db)
     graph_service = getattr(request.app.state, "graph_service", None)
+    vdb_store = getattr(request.app.state, "vdb_store", None)
     spawn_ingestion_task(
         task.id,
         body.path,
@@ -72,6 +73,7 @@ async def ingest_folder(
         cache_service=request.app.state.cache_service,
         graph_service=graph_service,
         skip_graph=skip_graph,
+        vdb_store=vdb_store,
     )
 
     return TaskCreatedResponse(task_id=task.id)

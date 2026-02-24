@@ -29,6 +29,7 @@ from pam.ingestion.stores.elasticsearch_store import ElasticsearchStore
 
 if TYPE_CHECKING:
     from pam.graph.service import GraphitiService
+    from pam.ingestion.stores.entity_relationship_store import EntityRelationshipVDBStore
 
 logger = structlog.get_logger()
 
@@ -67,12 +68,13 @@ def spawn_ingestion_task(
     cache_service: CacheService | None = None,
     graph_service: GraphitiService | None = None,
     skip_graph: bool = False,
+    vdb_store: EntityRelationshipVDBStore | None = None,
 ) -> None:
     """Spawn a background asyncio task for ingestion."""
     asyncio_task = asyncio.create_task(
         run_ingestion_background(
             task_id, folder_path, es_client, embedder, session_factory,
-            cache_service, graph_service, skip_graph,
+            cache_service, graph_service, skip_graph, vdb_store,
         ),
         name=f"ingest-{task_id}",
     )
@@ -89,6 +91,7 @@ async def run_ingestion_background(
     cache_service: CacheService | None = None,
     graph_service: GraphitiService | None = None,
     skip_graph: bool = False,
+    vdb_store: EntityRelationshipVDBStore | None = None,
 ) -> None:
     """Background coroutine that runs the ingestion pipeline and updates task state."""
     try:
@@ -173,6 +176,7 @@ async def run_ingestion_background(
                     source_type="markdown",
                     progress_callback=on_progress,
                     graph_service=graph_service,
+                    vdb_store=vdb_store,
                     skip_graph=skip_graph,
                 )
                 await pipeline.ingest_all()

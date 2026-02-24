@@ -22,6 +22,8 @@ from pam.ingestion.diff_engine import ChunkDiff, build_diff_summary, compute_chu
 if TYPE_CHECKING:
     from pam.common.models import KnowledgeSegment, Segment
     from pam.graph.service import GraphitiService
+    from pam.ingestion.embedders.base import BaseEmbedder
+    from pam.ingestion.stores.entity_relationship_store import EntityRelationshipVDBStore
 
 logger = structlog.get_logger()
 
@@ -35,6 +37,8 @@ class ExtractionResult:
     entities_extracted: list[dict] = field(default_factory=list)
     diff_summary: dict = field(default_factory=dict)
     progress_log: list[str] = field(default_factory=list)
+    entities_embedded: int = 0
+    relationships_embedded: int = 0
 
 
 async def extract_graph_for_document(
@@ -45,6 +49,8 @@ async def extract_graph_for_document(
     reference_time: datetime,
     source_id: str,
     old_segments: list[Segment] | None = None,
+    vdb_store: EntityRelationshipVDBStore | None = None,
+    embedder: BaseEmbedder | None = None,
 ) -> ExtractionResult:
     """Extract graph entities from document chunks via Graphiti add_episode().
 
@@ -60,6 +66,8 @@ async def extract_graph_for_document(
         reference_time: Bi-temporal reference time (document modified_at).
         source_id: Source identifier for the document.
         old_segments: Previous Segment ORM objects for diff (None = first ingestion).
+        vdb_store: Optional VDB store for entity/relationship embedding.
+        embedder: Optional embedder for VDB upsert (required if vdb_store is provided).
 
     Returns:
         ExtractionResult with extraction metrics and diff summary.
@@ -116,6 +124,8 @@ async def extract_graph_for_document(
     # Phase 2: Extract new/changed chunks
     added_episode_uuids: list[str] = []
     new_entities: dict[str, dict[str, Any]] = {}
+    uuid_to_name: dict[str, str] = {}
+    all_edges: dict[str, dict] = {}  # rel_doc_id -> edge info
 
     for i, seg in enumerate(diff.added):
         episode_result = await graph_service.client.add_episode(
@@ -139,6 +149,7 @@ async def extract_graph_for_document(
         # Collect entity info from extraction results
         for node in episode_result.nodes:
             node_name = node.name if hasattr(node, "name") else str(node)
+            uuid_to_name[node.uuid] = node_name
             labels = (
                 [la for la in node.labels if la != "Entity"]
                 if hasattr(node, "labels")
@@ -157,11 +168,79 @@ async def extract_graph_for_document(
                 "type": entity_info["type"],
             })
 
+        # Accumulate relationship edges across all chunks
+        for edge in episode_result.edges:
+            src_name = uuid_to_name.get(edge.source_node_uuid, edge.source_node_uuid)
+            tgt_name = uuid_to_name.get(edge.target_node_uuid, edge.target_node_uuid)
+            from pam.ingestion.stores.entity_relationship_store import (
+                make_relationship_doc_id,
+            )
+
+            rel_key = make_relationship_doc_id(src_name, edge.name, tgt_name)
+            all_edges[rel_key] = {
+                "src_entity": src_name,
+                "tgt_entity": tgt_name,
+                "rel_type": edge.name,
+                "description": edge.fact if hasattr(edge, "fact") else "",
+                "episodes": edge.episodes if hasattr(edge, "episodes") else [],
+            }
+
         progress_msg = f"extracted {i + 1}/{total_to_extract} chunks"
         result.progress_log.append(progress_msg)
         logger.info("graph_extraction_progress", progress=progress_msg, doc_id=str(doc_id))
 
     result.episodes_added = len(added_episode_uuids)
+
+    # Phase 2b: VDB upsert (entity + relationship embeddings)
+    if vdb_store is not None and embedder is not None:
+        from pam.ingestion.stores.entity_relationship_store import (
+            EntityVDBRecord,
+            RelationshipVDBRecord,
+        )
+
+        # Build entity records from new_entities dict
+        entity_records = [
+            EntityVDBRecord(
+                name=name,
+                entity_type=info.get("type", "Unknown"),
+                description=info.get("summary", ""),
+                source_id=source_id,
+            )
+            for name, info in new_entities.items()
+        ]
+
+        # Build relationship records from accumulated edges
+        rel_records = [
+            RelationshipVDBRecord(
+                src_entity=e["src_entity"],
+                tgt_entity=e["tgt_entity"],
+                rel_type=e["rel_type"],
+                keywords=e["rel_type"].replace("_", " ").lower(),
+                description=e["description"],
+                source_id=source_id,
+                weight=float(len(e["episodes"])) if e["episodes"] else 1.0,
+            )
+            for e in all_edges.values()
+        ]
+
+        try:
+            entities_upserted = await vdb_store.upsert_entities(
+                entity_records, embedder, source_id
+            )
+            rels_upserted = await vdb_store.upsert_relationships(
+                rel_records, embedder, source_id
+            )
+            result.entities_embedded = entities_upserted
+            result.relationships_embedded = rels_upserted
+            logger.info(
+                "vdb_upsert_complete",
+                doc_id=str(doc_id),
+                entities_upserted=entities_upserted,
+                relationships_upserted=rels_upserted,
+            )
+        except Exception:
+            # VDB upsert is non-blocking, same as graph extraction itself
+            logger.warning("vdb_upsert_failed", doc_id=str(doc_id), exc_info=True)
 
     # Phase 3: Build diff summary
     result.diff_summary = build_diff_summary(

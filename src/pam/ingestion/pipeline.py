@@ -28,6 +28,7 @@ from pam.ingestion.stores.postgres_store import PostgresStore
 
 if TYPE_CHECKING:
     from pam.graph.service import GraphitiService
+    from pam.ingestion.stores.entity_relationship_store import EntityRelationshipVDBStore
 
 logger = structlog.get_logger()
 
@@ -54,6 +55,7 @@ class IngestionPipeline:
     source_type: str = "markdown"
     progress_callback: Callable[[IngestionResult], Awaitable[None]] | None = None
     graph_service: GraphitiService | None = None
+    vdb_store: EntityRelationshipVDBStore | None = None
     skip_graph: bool = False
 
     async def ingest_document(self, source_id: str) -> IngestionResult:
@@ -171,6 +173,8 @@ class IngestionPipeline:
                         reference_time=raw_doc.modified_at or datetime.now(UTC),
                         source_id=source_id,
                         old_segments=old_segments_for_diff,
+                        vdb_store=self.vdb_store,
+                        embedder=self.embedder,
                     )
                     graph_synced = True
                     diff_summary = extraction_result.diff_summary

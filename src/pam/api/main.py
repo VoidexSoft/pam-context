@@ -53,6 +53,18 @@ async def lifespan(app: FastAPI):
     )
     await es_store.ensure_index()
 
+    # --- Entity/Relationship VDB indices ---
+    from pam.ingestion.stores.entity_relationship_store import EntityRelationshipVDBStore
+
+    vdb_store = EntityRelationshipVDBStore(
+        client=app.state.es_client,
+        entity_index=settings.entity_index,
+        relationship_index=settings.relationship_index,
+        embedding_dims=settings.embedding_dims,
+    )
+    await vdb_store.ensure_indices()
+    app.state.vdb_store = vdb_store
+
     # --- Redis client ---
     redis_client = None
     try:
