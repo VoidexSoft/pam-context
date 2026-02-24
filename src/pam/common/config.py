@@ -65,9 +65,15 @@ class Settings(BaseSettings):
     duckdb_data_dir: str = ""  # Directory containing data files (CSV, Parquet, JSON)
     duckdb_max_rows: int = 1000  # Max rows returned per query
 
+    # Entity/Relationship VDB indices
+    entity_index: str = "pam_entities"
+    relationship_index: str = "pam_relationships"
+
     # Smart Search
     smart_search_es_limit: int = 5  # Max document results from ES hybrid search
     smart_search_graph_limit: int = 5  # Max graph results from Graphiti search
+    smart_search_entity_limit: int = 5  # Max entity VDB results
+    smart_search_relationship_limit: int = 5  # Max relationship VDB results
 
     # Ingestion
     chunk_size_tokens: int = 512
