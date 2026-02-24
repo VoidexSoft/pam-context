@@ -187,6 +187,26 @@ GET_ENTITY_HISTORY_TOOL: dict[str, Any] = {
     },
 }
 
+SMART_SEARCH_TOOL: dict[str, Any] = {
+    "name": "smart_search",
+    "description": (
+        "Search both documents and the knowledge graph in one call. "
+        "Extracts key concepts and entities from your query, then searches "
+        "documents (text/semantic) and the knowledge graph (relationships) concurrently. "
+        "Returns document results and graph results in separate sections."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Natural language query to search across documents and the knowledge graph.",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
 ALL_TOOLS: list[dict[str, Any]] = [
     SEARCH_KNOWLEDGE_TOOL,
     GET_DOCUMENT_CONTEXT_TOOL,
@@ -195,4 +215,5 @@ ALL_TOOLS: list[dict[str, Any]] = [
     SEARCH_ENTITIES_TOOL,
     SEARCH_KNOWLEDGE_GRAPH_TOOL,
     GET_ENTITY_HISTORY_TOOL,
+    SMART_SEARCH_TOOL,
 ]
