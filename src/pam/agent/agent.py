@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -11,7 +13,9 @@ from typing import TYPE_CHECKING, Any, cast
 import structlog
 from anthropic import AsyncAnthropic
 
+from pam.agent.keyword_extractor import extract_query_keywords
 from pam.agent.tools import ALL_TOOLS
+from pam.common.config import get_settings
 from pam.common.logging import CostTracker
 from pam.common.utils import escape_like
 from pam.ingestion.embedders.base import BaseEmbedder
@@ -29,6 +33,7 @@ SYSTEM_PROMPT = """You are a business knowledge assistant. You answer questions 
 retrieved from the business knowledge base via the available tools.
 
 Available tools:
+- smart_search: Search documents and the knowledge graph in one call using extracted keywords.
 - search_knowledge: Search documents for relevant text segments.
 - get_document_context: Fetch full document content for deep reading.
 - get_change_history: See recent document changes and sync history.
@@ -370,6 +375,8 @@ class RetrievalAgent:
 
     async def _execute_tool(self, tool_name: str, tool_input: dict) -> tuple[str, list[Citation]]:
         """Execute a tool call and return (result_text, citations)."""
+        if tool_name == "smart_search":
+            return await self._smart_search(tool_input)
         if tool_name == "search_knowledge":
             return await self._search_knowledge(tool_input)
         if tool_name == "get_document_context":
@@ -385,6 +392,141 @@ class RetrievalAgent:
         if tool_name == "get_entity_history":
             return await self._get_entity_history(tool_input)
         return f"Unknown tool: {tool_name}", []
+
+    async def _smart_search(self, input_: dict) -> tuple[str, list[Citation]]:
+        """Execute the smart_search tool: keyword extraction + concurrent ES and graph search.
+
+        Extracts dual-level keywords from the query, then runs ES hybrid search
+        (low-level keywords) and graph relationship search (high-level keywords)
+        concurrently via asyncio.gather.  Returns results in separate sections
+        with extracted keywords for transparency.
+        """
+        query = input_["query"]
+
+        # Step A: Extract keywords
+        try:
+            keywords = await extract_query_keywords(self.client, query)
+        except Exception as exc:
+            logger.warning("smart_search_keyword_extraction_failed", error=str(exc))
+            return (
+                f"Keyword extraction failed: {exc}. "
+                "Try search_knowledge or search_knowledge_graph instead."
+            ), []
+
+        # Step B: Prepare search queries
+        es_query = " ".join(keywords.low_level_keywords) if keywords.low_level_keywords else query
+        graph_query = " ".join(keywords.high_level_keywords) if keywords.high_level_keywords else query
+
+        settings = get_settings()
+        es_limit = settings.smart_search_es_limit
+        _graph_limit = settings.smart_search_graph_limit  # reserved for future re-query backfill
+
+        # Step C: Define async search coroutines
+        async def _es_search_coro() -> list:
+            embeddings = await self.embedder.embed_texts([es_query])
+            return await self.search.search(
+                query=es_query,
+                query_embedding=embeddings[0],
+                top_k=es_limit,
+                source_type=self._default_source_type,
+            )
+
+        async def _graph_search_coro() -> str:
+            if self.graph_service is None:
+                return ""
+            from pam.graph.query import search_graph_relationships
+
+            return await search_graph_relationships(
+                graph_service=self.graph_service,
+                query=graph_query,
+            )
+
+        # Step D: Run concurrently
+        es_result, graph_result = await asyncio.gather(
+            _es_search_coro(),
+            _graph_search_coro(),
+            return_exceptions=True,
+        )
+
+        warnings: list[str] = []
+
+        if isinstance(es_result, Exception):
+            logger.warning("smart_search_es_failed", error=str(es_result))
+            es_results: list = []
+            warnings.append("es_backend_failed")
+        else:
+            es_results = es_result
+
+        if isinstance(graph_result, Exception):
+            logger.warning("smart_search_graph_failed", error=str(graph_result))
+            graph_text: str = ""
+            warnings.append("graph_backend_failed")
+        else:
+            graph_text = graph_result
+
+        # Step E: Format document_results from ES
+        citations: list[Citation] = []
+        formatted_es_parts: list[str] = []
+        _seen_hashes: set[str] = set()
+
+        for i, r in enumerate(es_results, 1):
+            content_hash = hashlib.sha256(r.content.encode()).hexdigest()
+            if content_hash in _seen_hashes:
+                continue
+            _seen_hashes.add(content_hash)
+
+            citation = Citation(
+                document_title=r.document_title,
+                section_path=r.section_path,
+                source_url=r.source_url,
+                segment_id=str(r.segment_id),
+            )
+            citations.append(citation)
+
+            source_label = r.document_title or r.source_id or "Unknown"
+            if r.section_path:
+                source_label += f" > {r.section_path}"
+            url_part = f" ({r.source_url})" if r.source_url else ""
+            formatted_es_parts.append(
+                f"[Result {i}] Source: {source_label}{url_part}\n{r.content}"
+            )
+
+        # Step F: Graph results (already formatted text from search_graph_relationships)
+        # No additional formatting needed; graph_text includes relationship structure.
+
+        # Step G: Backfill note (best-effort, no re-query)
+        # The actual backfill is informational: if one source underperformed,
+        # the other source's full results already compensate.
+
+        # Step H: Build final output string
+        parts: list[str] = []
+        parts.append("Keywords extracted:")
+        parts.append(f"- High-level: {', '.join(keywords.high_level_keywords)}")
+        parts.append(f"- Low-level: {', '.join(keywords.low_level_keywords)}")
+        parts.append("")
+
+        es_count = len(formatted_es_parts)
+        parts.append(f"## Document Results ({es_count} results)")
+        if formatted_es_parts:
+            parts.append("\n\n---\n\n".join(formatted_es_parts))
+        else:
+            parts.append("No document results found.")
+        parts.append("")
+
+        parts.append("## Graph Results")
+        if graph_text:
+            parts.append(graph_text)
+        else:
+            parts.append("No graph results found.")
+
+        if warnings:
+            parts.append("")
+            parts.extend(
+                f"Warning: {w} search was unavailable, showing partial results."
+                for w in warnings
+            )
+
+        return "\n".join(parts), citations
 
     async def _search_knowledge(self, input_: dict) -> tuple[str, list[Citation]]:
         """Execute the search_knowledge tool."""
