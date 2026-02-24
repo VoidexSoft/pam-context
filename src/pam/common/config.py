@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     smart_search_entity_limit: int = 5  # Max entity VDB results
     smart_search_relationship_limit: int = 5  # Max relationship VDB results
 
+    # Context Assembly Token Budgets
+    context_entity_budget: int = 4000
+    context_relationship_budget: int = 6000
+    context_max_tokens: int = 12000
+
     # Ingestion
     chunk_size_tokens: int = 512
     ingest_root: str = ""  # Required base directory for folder ingestion; empty = reject all
