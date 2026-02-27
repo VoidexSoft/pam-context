@@ -12,6 +12,7 @@ from pam.agent.context_assembly import (
     ContextBudget,
     _build_context_string,
     _calculate_chunk_budget,
+    _truncate_text_to_tokens,
     assemble_context,
     count_tokens,
     deduplicate_chunks,
@@ -112,6 +113,35 @@ class TestCountTokens:
 
 
 # ===========================================================================
+# TestTruncateTextToTokens
+# ===========================================================================
+
+
+class TestTruncateTextToTokens:
+    def test_short_text_unchanged(self):
+        # "hello world" = 2 tokens with mock encoder, limit 10
+        result = _truncate_text_to_tokens("hello world", max_tokens=10)
+        assert result == "hello world"
+
+    def test_long_text_truncated_with_ellipsis(self):
+        long_text = " ".join(f"word{i}" for i in range(20))  # 20 tokens
+        result = _truncate_text_to_tokens(long_text, max_tokens=5)
+        assert result.endswith("...")
+        # The mock decoder produces "w0 w1 w2 w3 w4" for 5 tokens
+        assert result == "w0 w1 w2 w3 w4..."
+
+    def test_exact_limit_unchanged(self):
+        text = "one two three"  # 3 tokens with mock encoder
+        result = _truncate_text_to_tokens(text, max_tokens=3)
+        assert result == "one two three"
+        assert "..." not in result
+
+    def test_empty_text(self):
+        result = _truncate_text_to_tokens("", max_tokens=10)
+        assert result == ""
+
+
+# ===========================================================================
 # TestTruncateListByTokenBudget
 # ===========================================================================
 
@@ -155,6 +185,34 @@ class TestTruncateListByTokenBudget:
         assert tokens_used == 0
         assert total == 0
 
+    def test_zero_budget_returns_empty(self):
+        items = [{"description": "some text"}]
+        result, tokens_used, total = truncate_list_by_token_budget(items, "description", max_tokens=0)
+        assert result == []
+        assert tokens_used == 0
+        assert total == 1
+
+    def test_missing_text_key_treated_as_empty(self):
+        # Items without the text_key contribute 0 tokens (empty string)
+        items = [{"name": "no description key"}, {"description": "has text"}]
+        result, tokens_used, total = truncate_list_by_token_budget(items, "description", max_tokens=100)
+        assert len(result) == 2
+        assert total == 2
+        # First item contributes 0 tokens, second contributes >0
+        assert tokens_used > 0
+
+    def test_all_items_truncated_individually(self):
+        # Each item has 20 words (20 tokens) but max_item_tokens=3
+        long_text = " ".join(f"w{i}" for i in range(20))
+        items = [{"description": long_text}, {"description": long_text}]
+        result, tokens_used, total = truncate_list_by_token_budget(
+            items, "description", max_tokens=100, max_item_tokens=3,
+        )
+        assert len(result) == 2
+        assert total == 2
+        for item in result:
+            assert "..." in item["description"]
+
 
 # ===========================================================================
 # TestDeduplicateChunks
@@ -193,6 +251,27 @@ class TestDeduplicateChunks:
 
     def test_empty_list(self):
         assert deduplicate_chunks([]) == []
+
+    def test_empty_string_key_always_included(self):
+        # Items with key="" are never deduped (treated like missing key)
+        chunks = [
+            {"segment_id": "", "content": "first empty"},
+            {"segment_id": "", "content": "second empty"},
+            {"segment_id": "a", "content": "third"},
+        ]
+        result = deduplicate_chunks(chunks)
+        assert len(result) == 3
+
+    def test_custom_key_parameter(self):
+        chunks = [
+            {"doc_id": "x", "content": "first"},
+            {"doc_id": "y", "content": "second"},
+            {"doc_id": "x", "content": "duplicate"},
+        ]
+        result = deduplicate_chunks(chunks, key="doc_id")
+        assert len(result) == 2
+        assert result[0]["content"] == "first"
+        assert result[1]["content"] == "second"
 
 
 # ===========================================================================
@@ -305,6 +384,47 @@ class TestBuildContextString:
         assert "relationships" not in result.split("\n")[0]
         assert "chunks" not in result.split("\n")[0]
 
+    def test_relationship_dropped_indicator(self):
+        rels = [{"src_entity": "A", "tgt_entity": "B", "rel_type": "REL", "description": "desc"}]
+        result = _build_context_string(
+            entities=[], relationships=rels, chunks=[],
+            graph_text="", total_entities=0, total_relationships=5, total_chunks=0,
+        )
+        assert "[+4 more relationships not shown]" in result
+
+    def test_chunk_dropped_indicator(self):
+        chunks = [{"content": "Some text", "source_label": "Doc"}]
+        result = _build_context_string(
+            entities=[], relationships=[], chunks=chunks,
+            graph_text="", total_entities=0, total_relationships=0, total_chunks=3,
+        )
+        assert "[+2 more chunks not shown]" in result
+
+    def test_graph_text_only_no_structured_rels(self):
+        # Only graph_text, no structured relationship dicts
+        result = _build_context_string(
+            entities=[], relationships=[], chunks=[],
+            graph_text="Some pre-formatted graph text",
+            total_entities=0, total_relationships=0, total_chunks=0,
+        )
+        assert "## Knowledge Graph Relationships" in result
+        assert "Some pre-formatted graph text" in result
+        # No arrow notation since no structured relationships
+        assert "->" not in result
+
+    def test_all_three_categories_present(self):
+        entities = [{"name": "E", "description": "entity desc"}]
+        rels = [{"src_entity": "A", "tgt_entity": "B", "rel_type": "R", "description": "rel desc"}]
+        chunks = [{"content": "chunk text", "source_label": "Doc"}]
+        result = _build_context_string(
+            entities=entities, relationships=rels, chunks=chunks,
+            graph_text="", total_entities=1, total_relationships=1, total_chunks=1,
+        )
+        summary_line = result.split("\n")[0]
+        assert "entities" in summary_line
+        assert "relationships" in summary_line
+        assert "chunks" in summary_line
+
 
 # ===========================================================================
 # TestAssembleContext
@@ -364,3 +484,83 @@ class TestAssembleContext:
         assert isinstance(result.relationship_tokens_used, int)
         assert isinstance(result.chunk_tokens_used, int)
         assert isinstance(result.total_tokens, int)
+
+    def test_graph_text_reduces_relationship_budget(self, sample_relationships):
+        # Large graph_text eats into relationship budget, leaving less for VDB rels
+        large_graph_text = " ".join(f"word{i}" for i in range(50))  # 50 tokens
+        small_budget = ContextBudget(
+            entity_tokens=100, relationship_tokens=55, max_total_tokens=500, max_item_tokens=100,
+        )
+        result = assemble_context(
+            es_results=[],
+            graph_text=large_graph_text,
+            entity_vdb_results=[],
+            rel_vdb_results=sample_relationships,
+            budget=small_budget,
+        )
+        # graph_text=50 tokens, budget=55, so only 5 tokens left for VDB rels
+        # Each rel description is ~3-4 words. Only some may fit.
+        assert result.relationship_tokens_used >= 50  # At least graph_text tokens
+
+    def test_entities_sorted_by_score_descending(self):
+        entities = [
+            {"name": "Low", "description": "low score", "score": 0.1},
+            {"name": "High", "description": "high score", "score": 0.9},
+            {"name": "Mid", "description": "mid score", "score": 0.5},
+        ]
+        result = assemble_context(
+            es_results=[], graph_text="",
+            entity_vdb_results=entities, rel_vdb_results=[],
+        )
+        # High score entity should appear before Low in the text
+        high_pos = result.text.index("**High**")
+        mid_pos = result.text.index("**Mid**")
+        low_pos = result.text.index("**Low**")
+        assert high_pos < mid_pos < low_pos
+
+    def test_stage1_source_id_fallback(self):
+        # ES result with no document_title falls back to source_id
+        es_result = SimpleNamespace(
+            content="Some content",
+            document_title=None,
+            section_path="",
+            source_url="",
+            segment_id="seg-1",
+            source_id="fallback-source-id",
+        )
+        result = assemble_context(
+            es_results=[es_result], graph_text="",
+            entity_vdb_results=[], rel_vdb_results=[],
+        )
+        assert "[Source: fallback-source-id]" in result.text
+
+    def test_stage1_section_path_appended(self):
+        es_result = SimpleNamespace(
+            content="Content here",
+            document_title="My Document",
+            section_path="Chapter 3",
+            source_url="",
+            segment_id="seg-1",
+            source_id="doc-1",
+        )
+        result = assemble_context(
+            es_results=[es_result], graph_text="",
+            entity_vdb_results=[], rel_vdb_results=[],
+        )
+        assert "[Source: My Document > Chapter 3]" in result.text
+
+    def test_budget_redistribution_increases_chunks(self, sample_es_results):
+        # With no entities/relationships, their full budget redistributes to chunks
+        no_graph_budget = ContextBudget(
+            entity_tokens=4000, relationship_tokens=6000, max_total_tokens=12000,
+        )
+        result_with_redistribution = assemble_context(
+            es_results=sample_es_results, graph_text="",
+            entity_vdb_results=[], rel_vdb_results=[],
+            budget=no_graph_budget,
+        )
+        # Chunk budget should get 12000 (all budget redistributed since no entities/rels used)
+        # This means all ES results should fit
+        assert result_with_redistribution.chunk_tokens_used > 0
+        assert result_with_redistribution.entity_tokens_used == 0
+        assert result_with_redistribution.relationship_tokens_used == 0
