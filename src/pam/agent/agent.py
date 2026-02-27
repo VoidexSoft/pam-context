@@ -14,6 +14,7 @@ from anthropic import AsyncAnthropic
 
 from pam.agent.context_assembly import ContextBudget, assemble_context
 from pam.agent.keyword_extractor import extract_query_keywords
+from pam.agent.query_classifier import ClassificationResult, RetrievalMode, classify_query_mode
 from pam.agent.tools import ALL_TOOLS
 from pam.common.config import get_settings
 from pam.common.logging import CostTracker
@@ -75,6 +76,8 @@ class AgentResponse:
     token_usage: dict = field(default_factory=dict)
     latency_ms: float = 0.0
     tool_calls: int = 0
+    retrieval_mode: str | None = None
+    mode_confidence: float | None = None
 
 
 class RetrievalAgent:
@@ -103,6 +106,7 @@ class RetrievalAgent:
         # This is safe because agents are instantiated per-request (see api/deps.py).
         # Do NOT share a single RetrievalAgent across concurrent requests.
         self._default_source_type: str | None = None
+        self._last_classification: ClassificationResult | None = None
 
     async def answer(
         self,
@@ -158,6 +162,8 @@ class RetrievalAgent:
                     },
                     latency_ms=round(total_latency, 1),
                     tool_calls=tool_call_count,
+                    retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
+                    mode_confidence=self._last_classification.confidence if self._last_classification else None,
                 )
 
             # Unexpected stop reason (e.g. max_tokens)
@@ -178,6 +184,8 @@ class RetrievalAgent:
                     },
                     latency_ms=round(total_latency, 1),
                     tool_calls=tool_call_count,
+                    retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
+                    mode_confidence=self._last_classification.confidence if self._last_classification else None,
                 )
 
             # Process tool calls
@@ -221,6 +229,8 @@ class RetrievalAgent:
             },
             latency_ms=round(total_latency, 1),
             tool_calls=tool_call_count,
+            retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
+            mode_confidence=self._last_classification.confidence if self._last_classification else None,
         )
 
     async def answer_streaming(
@@ -351,6 +361,8 @@ class RetrievalAgent:
                     },
                     "latency_ms": round(total_latency, 1),
                     "tool_calls": tool_call_count,
+                    "retrieval_mode": self._last_classification.mode.value if self._last_classification else None,
+                    "mode_confidence": self._last_classification.confidence if self._last_classification else None,
                 },
             }
 
@@ -419,6 +431,32 @@ class RetrievalAgent:
                 "Try search_knowledge or search_knowledge_graph instead."
             ), []
 
+        # Step A2: Classify query mode
+        forced_mode_str = input_.get("mode")
+        if forced_mode_str:
+            try:
+                mode = RetrievalMode(forced_mode_str)
+                classification = ClassificationResult(mode=mode, confidence=1.0, method="forced")
+            except ValueError:
+                # Invalid mode string from tool input; fall back to auto-classification
+                classification = await classify_query_mode(
+                    query, client=self.client, vdb_store=self.vdb_store,
+                )
+                mode = classification.mode
+        else:
+            classification = await classify_query_mode(
+                query, client=self.client, vdb_store=self.vdb_store,
+            )
+            mode = classification.mode
+
+        logger.info(
+            "smart_search_mode_selected",
+            mode=mode.value,
+            confidence=classification.confidence,
+            method=classification.method,
+            query=query[:100],
+        )
+
         # Step B: Prepare search queries
         es_query = " ".join(keywords.low_level_keywords) if keywords.low_level_keywords else query
         graph_query = " ".join(keywords.high_level_keywords) if keywords.high_level_keywords else query
@@ -469,12 +507,36 @@ class RetrievalAgent:
                 top_k=settings.smart_search_relationship_limit,
             )
 
-        # Step D: Run all 4 searches concurrently
+        # Step D: Run searches concurrently (mode-conditioned)
+        async def _noop_list() -> list:
+            return []
+
+        async def _noop_str() -> str:
+            return ""
+
+        if mode == RetrievalMode.FACTUAL:
+            es_coro = _es_search_coro()
+            graph_coro = _noop_str()
+            entity_vdb_coro = _noop_list()
+            rel_vdb_coro = _noop_list()
+        elif mode == RetrievalMode.ENTITY:
+            es_coro = _es_search_coro()
+            graph_coro = _noop_str()
+            entity_vdb_coro = _entity_vdb_search_coro()
+            rel_vdb_coro = _noop_list()
+        elif mode == RetrievalMode.CONCEPTUAL:
+            es_coro = _es_search_coro()
+            graph_coro = _graph_search_coro()
+            entity_vdb_coro = _noop_list()
+            rel_vdb_coro = _rel_vdb_search_coro()
+        else:  # TEMPORAL or HYBRID — all paths
+            es_coro = _es_search_coro()
+            graph_coro = _graph_search_coro()
+            entity_vdb_coro = _entity_vdb_search_coro()
+            rel_vdb_coro = _rel_vdb_search_coro()
+
         es_result, graph_result, entity_vdb_result, rel_vdb_result = await asyncio.gather(
-            _es_search_coro(),
-            _graph_search_coro(),
-            _entity_vdb_search_coro(),
-            _rel_vdb_search_coro(),
+            es_coro, graph_coro, entity_vdb_coro, rel_vdb_coro,
             return_exceptions=True,
         )
 
@@ -547,6 +609,9 @@ class RetrievalAgent:
                 f"Warning: {w} search was unavailable, showing partial results."
                 for w in warnings
             )
+
+        # Store classification for response metadata propagation
+        self._last_classification = classification
 
         return "\n".join(parts), citations
 

@@ -202,6 +202,15 @@ SMART_SEARCH_TOOL: dict[str, Any] = {
                 "type": "string",
                 "description": "Natural language query to search across documents and the knowledge graph.",
             },
+            "mode": {
+                "type": "string",
+                "enum": ["entity", "conceptual", "temporal", "factual", "hybrid"],
+                "description": (
+                    "Optional: force a specific retrieval mode, skipping auto-classification. "
+                    "Modes: entity (graph-first), conceptual (relationship-first), "
+                    "temporal (history-first), factual (ES-only), hybrid (all sources)."
+                ),
+            },
         },
         "required": ["query"],
     },

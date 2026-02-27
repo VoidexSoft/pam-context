@@ -37,6 +37,8 @@ class ChatResponse(BaseModel):
     conversation_id: str | None
     token_usage: dict
     latency_ms: float
+    retrieval_mode: str | None = None
+    mode_confidence: float | None = None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -74,6 +76,8 @@ async def chat(
         conversation_id=conversation_id,
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
+        retrieval_mode=result.retrieval_mode,
+        mode_confidence=result.mode_confidence,
     )
 
 
