@@ -140,7 +140,7 @@ Plans:
 | 12. Dual-Level Keyword Extraction + Unified Search | 2/2 | Complete    | 2026-02-24 | — |
 | 13. Entity & Relationship Vector Indices | 2/2 | Complete    | 2026-02-24 | — |
 | 14. Graph-Aware Context Assembly + Token Budgets | 2/2 | Complete    | 2026-02-24 | — |
-| 15. Retrieval Mode Router | 1/2 | In Progress|  | — |
+| 15. Retrieval Mode Router | 2/2 | Complete   | 2026-02-27 | — |
 
 ### v3.0 LightRAG-Inspired Smart Retrieval
 
@@ -149,7 +149,7 @@ Inspired by [LightRAG](https://github.com/HKUDS/LightRAG) (EMNLP 2025). Key insi
 - [x] **Phase 12: Dual-Level Keyword Extraction + Unified Search Tool** - Query keyword generation + merged ES/graph retrieval in one tool call (completed 2026-02-24)
 - [x] **Phase 13: Entity & Relationship Vector Indices** - Embed entity descriptions and relationship descriptions into ES as separate searchable indices (completed 2026-02-24)
 - [x] **Phase 14: Graph-Aware Context Assembly with Token Budgets** - Structured context blocks with per-category token limits for entity, relationship, and chunk data (completed 2026-02-24)
-- [ ] **Phase 15: Retrieval Mode Router** - Query classification to select optimal retrieval strategy per question type
+- [x] **Phase 15: Retrieval Mode Router** - Query classification to select optimal retrieval strategy per question type (completed 2026-02-27)
 
 ### Phase 12: Dual-Level Keyword Extraction + Unified Search Tool
 **Goal**: A single `smart_search` agent tool generates entity-level and theme-level keywords from the query, runs ES hybrid search and graph relationship search in parallel, and returns merged results — so that the agent answers graph-aware questions in 1 tool call instead of 2-3, following LightRAG's dual-level retrieval pattern.

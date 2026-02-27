@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 15 of 15 (LightRAG Retrieval Mode Router)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-27 — Completed 15-01-PLAN.md (Query classifier module)
+Plan: 2 of 2 complete
+Status: Complete
+Last activity: 2026-02-27 — Completed 15-02-PLAN.md (Mode-conditioned smart search)
 
-Progress: [##############################] 100% (31/32 plans across all milestones)
+Progress: [##############################] 100% (32/32 plans across all milestones)
 
 ## Milestone Progress
 
@@ -22,7 +22,7 @@ Progress: [##############################] 100% (31/32 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
-| v3.0 LightRAG Smart Retrieval | 3/4 | 7/8 | In Progress |
+| v3.0 LightRAG Smart Retrieval | 4/4 | 8/8 | Complete |
 
 ## Performance Metrics
 
@@ -100,6 +100,7 @@ Progress: [##############################] 100% (31/32 plans across all mileston
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | 15-01 | 4min | 2 | 3 |
+| 15-02 | 8min | 2 | 4 |
 
 ## Accumulated Context
 
@@ -167,6 +168,9 @@ Progress: [##############################] 100% (31/32 plans across all mileston
 - Phase 15-01: Factual negative signal checks multi-word caps and PascalCase but not single-word entities
 - Phase 15-01: LLM classification prompt uses inline format (not system message) for simplicity
 - Phase 15-01: Entity check is best-effort with try/except -- ES unavailability returns None gracefully
+- Phase 15-02: Noop coroutines defined as local functions inside _smart_search to keep scope contained
+- Phase 15-02: Mode metadata propagated via self._last_classification instance state (safe: agents are per-request)
+- Phase 15-02: All 3 AgentResponse return paths in answer() include mode fields for consistency
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -188,8 +192,8 @@ Progress: [##############################] 100% (31/32 plans across all mileston
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 15-01-PLAN.md (Query classifier module)
-Resume file: .planning/phases/15-lightrag-retrieval-mode-router/15-01-SUMMARY.md
+Stopped at: Completed 15-02-PLAN.md (Mode-conditioned smart search)
+Resume file: .planning/phases/15-lightrag-retrieval-mode-router/15-02-SUMMARY.md
 
 ---
-Phase 15 Plan 01 complete. Two-tier query classifier with 5-mode enum, rule-based heuristics, entity ES lookup, and Haiku LLM fallback. 32 unit tests.
+Phase 15 complete. All v3.0 LightRAG Smart Retrieval milestones shipped. Mode-conditioned smart_search with noop coroutine hard skips, tool mode parameter, and full metadata propagation. 32/32 plans complete across all milestones.
