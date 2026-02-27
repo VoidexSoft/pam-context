@@ -159,3 +159,11 @@ class TestStatsEndpoint:
         assert len(data["recent_tasks"]) == 1
         assert data["recent_tasks"][0]["status"] == "completed"
         assert data["recent_tasks"][0]["folder_path"] == "/data/reports"
+
+
+class TestDocumentsCursorValidation:
+    async def test_list_documents_invalid_cursor_returns_400(self, client):
+        """Invalid base64 cursor → 400 with 'Invalid cursor' (B904 exception chaining)."""
+        response = await client.get("/api/documents?cursor=not-valid-base64!!!")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid cursor"

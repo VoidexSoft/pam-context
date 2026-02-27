@@ -221,3 +221,11 @@ class TestRoleValidation:
             json={"user_id": str(uuid.uuid4()), "project_id": str(uuid.uuid4()), "role": "admin"},
         )
         assert response.status_code != 422
+
+
+class TestListUsersCursorValidation:
+    async def test_list_users_invalid_cursor_returns_400(self, client):
+        """Invalid base64 cursor → 400 with 'Invalid cursor' (B904 exception chaining)."""
+        response = await client.get("/api/admin/users?cursor=not-valid-base64!!!")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid cursor"

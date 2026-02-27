@@ -121,3 +121,9 @@ class TestIngestEndpoint:
         assert data["items"] == []
         assert data["total"] == 0
         assert data["cursor"] == ""
+
+    async def test_list_tasks_invalid_cursor_returns_400(self, client):
+        """Invalid base64 cursor → 400 with 'Invalid cursor' (B904 exception chaining)."""
+        response = await client.get("/api/ingest/tasks?cursor=not-valid-base64!!!")
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid cursor"
