@@ -139,8 +139,8 @@ Plans:
 | 11. Graph Polish + Tech Debt Cleanup | 2/2 | Complete    | 2026-02-23 | — |
 | 12. Dual-Level Keyword Extraction + Unified Search | 2/2 | Complete    | 2026-02-24 | — |
 | 13. Entity & Relationship Vector Indices | 2/2 | Complete    | 2026-02-24 | — |
-| 14. Graph-Aware Context Assembly + Token Budgets | 2/2 | Complete   | 2026-02-24 | — |
-| 15. Retrieval Mode Router | v3.0 | 0/2 | Pending | — |
+| 14. Graph-Aware Context Assembly + Token Budgets | 2/2 | Complete    | 2026-02-24 | — |
+| 15. Retrieval Mode Router | 1/2 | In Progress|  | — |
 
 ### v3.0 LightRAG-Inspired Smart Retrieval
 

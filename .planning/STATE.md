@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-19)
 ## Current Position
 
 Phase: 15 of 15 (LightRAG Retrieval Mode Router)
-Plan: 0 of ? complete
+Plan: 1 of 2 complete
 Status: In Progress
-Last activity: 2026-02-25 — Completed 14-02-PLAN.md (Smart search context assembly integration)
+Last activity: 2026-02-27 — Completed 15-01-PLAN.md (Query classifier module)
 
-Progress: [##############################] 100% (30/30 plans across all milestones)
+Progress: [##############################] 100% (31/32 plans across all milestones)
 
 ## Milestone Progress
 
@@ -22,7 +22,7 @@ Progress: [##############################] 100% (30/30 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
-| v3.0 LightRAG Smart Retrieval | 3/4 | 6/? | In Progress |
+| v3.0 LightRAG Smart Retrieval | 3/4 | 7/8 | In Progress |
 
 ## Performance Metrics
 
@@ -95,6 +95,12 @@ Progress: [##############################] 100% (30/30 plans across all mileston
 | 14-01 | 5min | 2 | 4 |
 | 14-02 | 3min | 2 | 3 |
 
+**Phase 15 (v3.0 LightRAG):**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 15-01 | 4min | 2 | 3 |
+
 ## Accumulated Context
 
 **Decisions:** See PROJECT.md Key Decisions table (11 entries)
@@ -157,6 +163,10 @@ Progress: [##############################] 100% (30/30 plans across all mileston
 - Phase 14-02: Removed hashlib import after eliminating content-hash dedup (assemble_context handles dedup by segment_id)
 - Phase 14-02: Updated existing VDB tests to match new section names rather than maintaining old assertions
 - Phase 14-02: Added tiktoken mock fixture (autouse) to VDB integration test class for seamless context_assembly usage
+- Phase 15-01: Candidate entity names use original casing for ES keyword field terms query (not lowercased)
+- Phase 15-01: Factual negative signal checks multi-word caps and PascalCase but not single-word entities
+- Phase 15-01: LLM classification prompt uses inline format (not system message) for simplicity
+- Phase 15-01: Entity check is best-effort with try/except -- ES unavailability returns None gracefully
 ### Roadmap Evolution
 - Phase 10 added: Bi-temporal Timestamp Pipeline Fix (gap closure)
 - Phase 11 added: Graph Polish + Tech Debt Cleanup (gap closure)
@@ -177,9 +187,9 @@ Progress: [##############################] 100% (30/30 plans across all mileston
 
 ## Session Continuity
 
-Last session: 2026-02-25
-Stopped at: Completed 14-02-PLAN.md (Smart search context assembly integration)
-Resume file: .planning/phases/14-lightrag-graph-aware-context-assembly-with-token-budgets/14-02-SUMMARY.md
+Last session: 2026-02-27
+Stopped at: Completed 15-01-PLAN.md (Query classifier module)
+Resume file: .planning/phases/15-lightrag-retrieval-mode-router/15-01-SUMMARY.md
 
 ---
-Phase 14 complete. Token-budgeted context assembly wired into smart_search with structured sections and 10 integration tests.
+Phase 15 Plan 01 complete. Two-tier query classifier with 5-mode enum, rule-based heuristics, entity ES lookup, and Haiku LLM fallback. 32 unit tests.
