@@ -347,3 +347,166 @@ class TestMakeRelationshipDocId:
     def test_identical_entities(self):
         result = make_relationship_doc_id("Self", "RELATES", "Self")
         assert result == "Self::RELATES::Self"
+
+    def test_multiple_rel_types_between_same_pair(self):
+        """Different rel_types between the same entities produce distinct doc IDs."""
+        id_manages = make_relationship_doc_id("Alice", "MANAGES", "Bob")
+        id_mentors = make_relationship_doc_id("Alice", "MENTORS", "Bob")
+
+        assert id_manages == "Alice::MANAGES::Bob"
+        assert id_mentors == "Alice::MENTORS::Bob"
+        assert id_manages != id_mentors
+
+
+# ===========================================================================
+# TestUpsertEntities — Gap Coverage
+# ===========================================================================
+
+
+class TestUpsertEntitiesGaps:
+    async def test_entity_file_paths_included_in_doc(self):
+        """file_paths contains entity.file_path when set."""
+        mget_resp = {"docs": [{"found": False}]}
+        store, client = _make_store(mget_response=mget_resp)
+        embedder = _mock_embedder()
+
+        entities = [
+            EntityVDBRecord(
+                name="Svc", entity_type="T", description="d",
+                source_id="s1", file_path="/docs/readme.md",
+            ),
+        ]
+        await store.upsert_entities(entities, embedder, source_id="src-1")
+
+        bulk_ops = client.bulk.call_args.kwargs["operations"]
+        doc = bulk_ops[1]
+        assert doc["file_paths"] == ["/docs/readme.md"]
+
+    async def test_entity_file_paths_empty_when_none(self):
+        """file_paths is [] when entity.file_path is None."""
+        mget_resp = {"docs": [{"found": False}]}
+        store, client = _make_store(mget_response=mget_resp)
+        embedder = _mock_embedder()
+
+        entities = [
+            EntityVDBRecord(name="Svc", entity_type="T", description="d", source_id="s1"),
+        ]
+        await store.upsert_entities(entities, embedder, source_id="src-1")
+
+        bulk_ops = client.bulk.call_args.kwargs["operations"]
+        doc = bulk_ops[1]
+        assert doc["file_paths"] == []
+
+    async def test_entity_source_ids_in_bulk_doc(self):
+        """source_ids field contains the provided source_id."""
+        mget_resp = {"docs": [{"found": False}]}
+        store, client = _make_store(mget_response=mget_resp)
+        embedder = _mock_embedder()
+
+        entities = [
+            EntityVDBRecord(name="X", entity_type="T", description="d", source_id="s1"),
+        ]
+        await store.upsert_entities(entities, embedder, source_id="doc-42")
+
+        bulk_ops = client.bulk.call_args.kwargs["operations"]
+        doc = bulk_ops[1]
+        assert doc["source_ids"] == ["doc-42"]
+
+    async def test_entity_bulk_error_logged_not_raised(self):
+        """Bulk returns errors on entity upsert → logged but not raised."""
+        mget_resp = {"docs": [{"found": False}]}
+        store, client = _make_store(mget_response=mget_resp)
+        client.bulk = AsyncMock(return_value={
+            "errors": True,
+            "items": [
+                {"index": {"error": {"type": "mapper_parsing_exception", "reason": "bad"}}}
+            ],
+        })
+        embedder = _mock_embedder()
+
+        entities = [
+            EntityVDBRecord(name="Svc", entity_type="T", description="d", source_id="s1"),
+        ]
+        # Should not raise
+        count = await store.upsert_entities(entities, embedder, source_id="src-1")
+        assert count == 1
+
+
+# ===========================================================================
+# TestUpsertRelationships — Gap Coverage
+# ===========================================================================
+
+
+class TestUpsertRelationshipsGaps:
+    async def test_relationship_content_hash_sha256(self):
+        """Content hash matches SHA-256 of LightRAG relationship embedding text."""
+        mget_resp = {"docs": [{"found": False}]}
+        store, client = _make_store(mget_response=mget_resp)
+        embedder = _mock_embedder()
+
+        rels = [
+            RelationshipVDBRecord(
+                src_entity="A", tgt_entity="B", rel_type="USES",
+                keywords="kw", description="A uses B", source_id="s1",
+            ),
+        ]
+        await store.upsert_relationships(rels, embedder, source_id="src-1")
+
+        bulk_ops = client.bulk.call_args.kwargs["operations"]
+        stored_hash = bulk_ops[1]["content_hash"]
+        expected_hash = hashlib.sha256("kw\tA\nB\nA uses B".encode()).hexdigest()
+        assert stored_hash == expected_hash
+
+    async def test_relationship_weight_in_bulk_doc(self):
+        """Weight field from record is preserved in the bulk document."""
+        mget_resp = {"docs": [{"found": False}]}
+        store, client = _make_store(mget_response=mget_resp)
+        embedder = _mock_embedder()
+
+        rels = [
+            RelationshipVDBRecord(
+                src_entity="A", tgt_entity="B", rel_type="R",
+                keywords="k", description="d", source_id="s1", weight=3.5,
+            ),
+        ]
+        await store.upsert_relationships(rels, embedder, source_id="src-1")
+
+        bulk_ops = client.bulk.call_args.kwargs["operations"]
+        doc = bulk_ops[1]
+        assert doc["weight"] == 3.5
+
+    async def test_relationship_source_ids_in_bulk_doc(self):
+        """source_ids field contains the provided source_id."""
+        mget_resp = {"docs": [{"found": False}]}
+        store, client = _make_store(mget_response=mget_resp)
+        embedder = _mock_embedder()
+
+        rels = [
+            RelationshipVDBRecord(
+                src_entity="X", tgt_entity="Y", rel_type="R",
+                keywords="k", description="d", source_id="s1",
+            ),
+        ]
+        await store.upsert_relationships(rels, embedder, source_id="doc-99")
+
+        bulk_ops = client.bulk.call_args.kwargs["operations"]
+        doc = bulk_ops[1]
+        assert doc["source_ids"] == ["doc-99"]
+
+
+# ===========================================================================
+# TestFilterUnchanged — Edge Cases
+# ===========================================================================
+
+
+class TestFilterUnchangedEdgeCases:
+    async def test_filter_unchanged_missing_content_hash(self):
+        """Doc exists but has no content_hash field → treated as changed."""
+        mget_resp = {"docs": [{"found": True, "_source": {}}]}
+        store, _ = _make_store(mget_response=mget_resp)
+
+        _, changed_indices = await store._filter_unchanged(
+            "pam_entities", ["entity-1"], ["abc123"]
+        )
+
+        assert changed_indices == [0]
