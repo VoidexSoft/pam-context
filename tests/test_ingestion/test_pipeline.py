@@ -2,6 +2,7 @@
 
 import hashlib
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 from pam.common.models import DocumentInfo, RawDocument
@@ -226,6 +227,158 @@ class TestIngestDocument:
         assert result.error is None
         assert result.segments_created == 1
         mock_db_session.commit.assert_called_once()
+
+
+class TestModifiedAtPropagation:
+    """Phase 10: Verify modified_at flows through pipeline to upsert and graph extraction."""
+
+    @patch("pam.ingestion.pipeline.chunk_document")
+    @patch("pam.ingestion.pipeline.PostgresStore")
+    async def test_modified_at_forwarded_to_upsert(
+        self,
+        mock_pg_cls,
+        mock_chunk_fn,
+        mock_connector,
+        mock_parser,
+        mock_embedder,
+        mock_es_store,
+        mock_db_session,
+    ):
+        """raw_doc.modified_at is passed through to upsert_document."""
+        ts = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
+        raw_doc = RawDocument(
+            content=b"# Test",
+            content_type="text/markdown",
+            source_id="/test.md",
+            title="Test",
+            modified_at=ts,
+        )
+        mock_connector.fetch_document = AsyncMock(return_value=raw_doc)
+
+        mock_pg = AsyncMock()
+        mock_pg.get_document_by_source = AsyncMock(return_value=None)
+        mock_pg.upsert_document = AsyncMock(return_value=uuid.uuid4())
+        mock_pg.save_segments = AsyncMock(return_value=1)
+        mock_pg.log_sync = AsyncMock()
+        mock_pg_cls.return_value = mock_pg
+
+        mock_chunk = Mock(content="chunk", content_hash="h1", section_path=None, segment_type="text", position=0)
+        mock_chunk_fn.return_value = [mock_chunk]
+        mock_embedder.embed_texts_with_cache = AsyncMock(return_value=[[0.1] * 1536])
+
+        pipeline = _make_pipeline(mock_connector, mock_parser, mock_embedder, mock_es_store, mock_db_session)
+        await pipeline.ingest_document("/test.md")
+
+        call_kwargs = mock_pg.upsert_document.call_args
+        assert call_kwargs.kwargs.get("modified_at") == ts
+
+    @patch("pam.ingestion.pipeline.extract_graph_for_document")
+    @patch("pam.ingestion.pipeline.chunk_document")
+    @patch("pam.ingestion.pipeline.PostgresStore")
+    async def test_modified_at_forwarded_to_graph_extraction(
+        self,
+        mock_pg_cls,
+        mock_chunk_fn,
+        mock_extract_graph,
+        mock_connector,
+        mock_parser,
+        mock_embedder,
+        mock_es_store,
+        mock_db_session,
+    ):
+        """raw_doc.modified_at is used as reference_time for graph extraction."""
+        ts = datetime(2024, 3, 10, 8, 0, 0, tzinfo=UTC)
+        raw_doc = RawDocument(
+            content=b"# Test",
+            content_type="text/markdown",
+            source_id="/test.md",
+            title="Test",
+            modified_at=ts,
+        )
+        mock_connector.fetch_document = AsyncMock(return_value=raw_doc)
+
+        mock_pg = AsyncMock()
+        mock_pg.get_document_by_source = AsyncMock(return_value=None)
+        doc_id = uuid.uuid4()
+        mock_pg.upsert_document = AsyncMock(return_value=doc_id)
+        mock_pg.save_segments = AsyncMock(return_value=1)
+        mock_pg.log_sync = AsyncMock()
+        mock_pg.set_graph_synced = AsyncMock()
+        mock_pg_cls.return_value = mock_pg
+
+        mock_chunk = Mock(content="chunk", content_hash="h1", section_path=None, segment_type="text", position=0)
+        mock_chunk_fn.return_value = [mock_chunk]
+        mock_embedder.embed_texts_with_cache = AsyncMock(return_value=[[0.1] * 1536])
+
+        mock_graph_result = Mock()
+        mock_graph_result.diff_summary = None
+        mock_graph_result.entities_extracted = []
+        mock_graph_result.episodes_added = 0
+        mock_extract_graph.return_value = mock_graph_result
+
+        mock_graph_service = AsyncMock()
+        pipeline = _make_pipeline(mock_connector, mock_parser, mock_embedder, mock_es_store, mock_db_session)
+        pipeline.graph_service = mock_graph_service
+        await pipeline.ingest_document("/test.md")
+
+        call_kwargs = mock_extract_graph.call_args
+        assert call_kwargs.kwargs.get("reference_time") == ts
+
+    @patch("pam.ingestion.pipeline.extract_graph_for_document")
+    @patch("pam.ingestion.pipeline.chunk_document")
+    @patch("pam.ingestion.pipeline.PostgresStore")
+    async def test_modified_at_none_falls_back_to_now(
+        self,
+        mock_pg_cls,
+        mock_chunk_fn,
+        mock_extract_graph,
+        mock_connector,
+        mock_parser,
+        mock_embedder,
+        mock_es_store,
+        mock_db_session,
+    ):
+        """When modified_at is None, reference_time should use datetime.now(UTC)."""
+        raw_doc = RawDocument(
+            content=b"# Test",
+            content_type="text/markdown",
+            source_id="/test.md",
+            title="Test",
+            modified_at=None,
+        )
+        mock_connector.fetch_document = AsyncMock(return_value=raw_doc)
+
+        mock_pg = AsyncMock()
+        mock_pg.get_document_by_source = AsyncMock(return_value=None)
+        doc_id = uuid.uuid4()
+        mock_pg.upsert_document = AsyncMock(return_value=doc_id)
+        mock_pg.save_segments = AsyncMock(return_value=1)
+        mock_pg.log_sync = AsyncMock()
+        mock_pg.set_graph_synced = AsyncMock()
+        mock_pg_cls.return_value = mock_pg
+
+        mock_chunk = Mock(content="chunk", content_hash="h1", section_path=None, segment_type="text", position=0)
+        mock_chunk_fn.return_value = [mock_chunk]
+        mock_embedder.embed_texts_with_cache = AsyncMock(return_value=[[0.1] * 1536])
+
+        mock_graph_result = Mock()
+        mock_graph_result.diff_summary = None
+        mock_graph_result.entities_extracted = []
+        mock_graph_result.episodes_added = 0
+        mock_extract_graph.return_value = mock_graph_result
+
+        mock_graph_service = AsyncMock()
+        pipeline = _make_pipeline(mock_connector, mock_parser, mock_embedder, mock_es_store, mock_db_session)
+        pipeline.graph_service = mock_graph_service
+
+        before = datetime.now(UTC)
+        await pipeline.ingest_document("/test.md")
+        after = datetime.now(UTC)
+
+        call_kwargs = mock_extract_graph.call_args
+        ref_time = call_kwargs.kwargs.get("reference_time")
+        assert ref_time is not None
+        assert before <= ref_time <= after
 
 
 class TestIngestAll:

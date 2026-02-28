@@ -1,6 +1,7 @@
 """Tests for MarkdownConnector — local markdown file ingestion."""
 
 import hashlib
+from datetime import UTC, datetime
 
 import pytest
 
@@ -30,6 +31,14 @@ class TestListDocuments:
         assert "doc2" in titles
         assert "doc3" in titles  # nested file
 
+    async def test_list_documents_includes_modified_at(self, temp_dir):
+        """Phase 10: list_documents populates modified_at from filesystem st_mtime."""
+        connector = MarkdownConnector(temp_dir)
+        docs = await connector.list_documents()
+        for doc in docs:
+            assert doc.modified_at is not None
+            assert isinstance(doc.modified_at, datetime)
+
     async def test_excludes_non_markdown(self, temp_dir):
         connector = MarkdownConnector(temp_dir)
         docs = await connector.list_documents()
@@ -56,6 +65,22 @@ class TestFetchDocument:
         assert raw.content_type == "text/markdown"
         assert len(raw.content) > 0
         assert raw.source_url.startswith("file://")
+
+    async def test_fetch_document_includes_modified_at(self, temp_dir):
+        """Phase 10: fetch_document populates modified_at from filesystem st_mtime."""
+        connector = MarkdownConnector(temp_dir)
+        docs = await connector.list_documents()
+        raw = await connector.fetch_document(docs[0].source_id)
+        assert raw.modified_at is not None
+        assert isinstance(raw.modified_at, datetime)
+
+    async def test_modified_at_is_utc_aware(self, temp_dir):
+        """Phase 10: modified_at datetime has UTC timezone info."""
+        connector = MarkdownConnector(temp_dir)
+        docs = await connector.list_documents()
+        raw = await connector.fetch_document(docs[0].source_id)
+        assert raw.modified_at.tzinfo is not None
+        assert raw.modified_at.tzinfo == UTC
 
     async def test_fetch_nonexistent_file(self, temp_dir):
         connector = MarkdownConnector(temp_dir)

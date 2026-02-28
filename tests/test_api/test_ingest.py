@@ -1,9 +1,10 @@
 """Tests for ingest endpoints — POST /api/ingest/folder, GET /api/ingest/tasks."""
 
 import uuid
-from datetime import UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+from pam.api.routes.ingest import _segment_to_knowledge_segment
 from pam.common.models import IngestionTask
 
 
@@ -127,3 +128,95 @@ class TestIngestEndpoint:
         response = await client.get("/api/ingest/tasks?cursor=not-valid-base64!!!")
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid cursor"
+
+
+class TestSegmentToKnowledgeSegment:
+    """Phase 10: Test the pure _segment_to_knowledge_segment converter."""
+
+    def test_converts_orm_segment_fields(self):
+        """Maps ORM Segment fields to KnowledgeSegment correctly."""
+        seg = Mock()
+        seg.id = uuid.uuid4()
+        seg.content = "Some content"
+        seg.content_hash = "abc123"
+        seg.segment_type = "text"
+        seg.section_path = "Section > Sub"
+        seg.position = 3
+        seg.metadata_ = {"graph_episode_uuid": "ep-1"}
+
+        ks = _segment_to_knowledge_segment(seg)
+
+        assert ks.id == seg.id
+        assert ks.content == "Some content"
+        assert ks.content_hash == "abc123"
+        assert ks.segment_type == "text"
+        assert ks.section_path == "Section > Sub"
+        assert ks.position == 3
+        assert ks.metadata == {"graph_episode_uuid": "ep-1"}
+
+    def test_handles_none_metadata(self):
+        """When metadata_ is None, defaults to empty dict."""
+        seg = Mock()
+        seg.id = uuid.uuid4()
+        seg.content = "text"
+        seg.content_hash = "h"
+        seg.segment_type = "text"
+        seg.section_path = None
+        seg.position = 0
+        seg.metadata_ = None
+
+        ks = _segment_to_knowledge_segment(seg)
+        assert ks.metadata == {}
+
+
+class TestSyncGraphEndpoint:
+    """Phase 10: Test sync-graph endpoint reference_time cascading fallback."""
+
+    @patch("pam.api.routes.ingest.rollback_graph_for_document")
+    @patch("pam.api.routes.ingest.extract_graph_for_document")
+    @patch("pam.api.routes.ingest.PostgresStore")
+    async def test_sync_graph_uses_modified_at_as_reference_time(
+        self, mock_pg_cls, mock_extract, mock_rollback, client, mock_api_db_session
+    ):
+        """doc.modified_at is used as primary reference_time in sync-graph."""
+        ts = datetime(2024, 5, 20, 14, 0, 0, tzinfo=UTC)
+        mock_doc = Mock()
+        mock_doc.id = uuid.uuid4()
+        mock_doc.title = "Test"
+        mock_doc.source_id = "/test.md"
+        mock_doc.modified_at = ts
+        mock_doc.last_synced_at = datetime(2024, 1, 1, tzinfo=UTC)
+
+        mock_pg = AsyncMock()
+        mock_pg.get_unsynced_documents = AsyncMock(side_effect=[[mock_doc], []])
+        mock_pg.get_segments_for_document = AsyncMock(return_value=[])
+        mock_pg.set_graph_synced = AsyncMock()
+        mock_pg.log_sync = AsyncMock()
+        mock_pg_cls.return_value = mock_pg
+
+        mock_result = Mock()
+        mock_result.entities_extracted = ["e1"]
+        mock_result.diff_summary = {}
+        mock_extract.return_value = mock_result
+
+        # Override graph_service dependency to return a real mock
+        from pam.api.deps import get_graph_service
+
+        mock_graph_svc = AsyncMock()
+        client._transport.app.dependency_overrides[get_graph_service] = lambda: mock_graph_svc
+
+        response = await client.post("/api/ingest/sync-graph")
+        assert response.status_code == 200
+
+        call_kwargs = mock_extract.call_args.kwargs
+        assert call_kwargs["reference_time"] == ts
+
+    async def test_sync_graph_returns_503_without_graph_service(self, client):
+        """sync-graph returns 503 when graph_service is None."""
+        from pam.api.deps import get_graph_service
+
+        client._transport.app.dependency_overrides[get_graph_service] = lambda: None
+
+        response = await client.post("/api/ingest/sync-graph")
+        assert response.status_code == 503
+        assert "not available" in response.json()["detail"]

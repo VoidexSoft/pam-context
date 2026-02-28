@@ -1,6 +1,7 @@
 """Tests for Google Docs connector."""
 
 import hashlib
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -272,6 +273,30 @@ class TestFetchDocument:
         mock_service.get.assert_called_once_with(
             fileId="doc1", fields="name, owners, webViewLink, modifiedTime"
         )
+
+    async def test_fetch_populates_modified_at_from_api(self, connector, mock_service, patch_loop):
+        """Phase 10: modified_at is parsed from Drive API modifiedTime field."""
+        meta = _make_drive_file(modified_time="2024-06-01T12:00:00.000Z")
+        mock_service.get.return_value = _mock_execute(meta)
+        mock_service.export.return_value = _mock_execute(b"docx")
+        connector._service = mock_service
+
+        doc = await connector.fetch_document("doc1")
+        assert doc.modified_at is not None
+        assert isinstance(doc.modified_at, datetime)
+        assert doc.modified_at.year == 2024
+        assert doc.modified_at.month == 6
+
+    async def test_fetch_modified_at_none_when_missing(self, connector, mock_service, patch_loop):
+        """Phase 10: modified_at is None when modifiedTime absent from API response."""
+        meta = _make_drive_file()
+        del meta["modifiedTime"]
+        mock_service.get.return_value = _mock_execute(meta)
+        mock_service.export.return_value = _mock_execute(b"docx")
+        connector._service = mock_service
+
+        doc = await connector.fetch_document("doc1")
+        assert doc.modified_at is None
 
 
 # ── get_content_hash tests ───────────────────────────────────────────
