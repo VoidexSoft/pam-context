@@ -4,7 +4,7 @@
 
 - ✅ **v1 Code Quality Cleanup** — Phases 1-5 (shipped 2026-02-19)
 - ✅ **v2.0 Knowledge Graph & Temporal Reasoning** — Phases 6-9 (complete 2026-02-21)
-- **v3.0 LightRAG-Inspired Smart Retrieval** — Phases 12-15 (planned)
+- **v3.0 LightRAG-Inspired Smart Retrieval** — Phases 12-17 (in progress)
 
 ## Phases
 
@@ -140,7 +140,9 @@ Plans:
 | 12. Dual-Level Keyword Extraction + Unified Search | 2/2 | Complete    | 2026-02-24 | — |
 | 13. Entity & Relationship Vector Indices | 2/2 | Complete    | 2026-02-24 | — |
 | 14. Graph-Aware Context Assembly + Token Budgets | 2/2 | Complete    | 2026-02-24 | — |
-| 15. Retrieval Mode Router | 2/2 | Complete   | 2026-02-27 | — |
+| 15. Retrieval Mode Router | 2/2 | Complete    | 2026-02-27 | — |
+| 16. Frontend Retrieval Mode Display | v3.0 | 0/0 | Planned | — |
+| 17. Sync-Graph VDB Fix + Codebase Cleanup | v3.0 | 0/0 | Planned | — |
 
 ### v3.0 LightRAG-Inspired Smart Retrieval
 
@@ -150,6 +152,8 @@ Inspired by [LightRAG](https://github.com/HKUDS/LightRAG) (EMNLP 2025). Key insi
 - [x] **Phase 13: Entity & Relationship Vector Indices** - Embed entity descriptions and relationship descriptions into ES as separate searchable indices (completed 2026-02-24)
 - [x] **Phase 14: Graph-Aware Context Assembly with Token Budgets** - Structured context blocks with per-category token limits for entity, relationship, and chunk data (completed 2026-02-24)
 - [x] **Phase 15: Retrieval Mode Router** - Query classification to select optimal retrieval strategy per question type (completed 2026-02-27)
+- [ ] **Phase 16: Frontend Retrieval Mode Display** - Wire retrieval mode metadata into frontend types, SSE handler, and chat UI (gap closure)
+- [ ] **Phase 17: Sync-Graph VDB Fix + Codebase Cleanup** - Fix sync-graph VDB gap, remove orphaned route, fix ruff warning, register v3.0 requirements (gap closure)
 
 ### Phase 12: Dual-Level Keyword Extraction + Unified Search Tool
 **Goal**: A single `smart_search` agent tool generates entity-level and theme-level keywords from the query, runs ES hybrid search and graph relationship search in parallel, and returns merged results — so that the agent answers graph-aware questions in 1 tool call instead of 2-3, following LightRAG's dual-level retrieval pattern.
@@ -214,3 +218,26 @@ Plans:
 Plans:
 - [ ] 15-01-PLAN.md — Query classifier implementation (LLM-based + rule-based fallback)
 - [ ] 15-02-PLAN.md — Mode-based routing in smart_search + observability logging
+
+### Phase 16: Frontend Retrieval Mode Display
+**Goal**: Frontend TypeScript types, SSE handler, and chat UI consume retrieval mode metadata emitted by the backend — so that users can see which retrieval strategy was used for each response, closing the MODE-03 frontend integration gap.
+**Depends on**: Phase 15
+**Requirements**: MODE-03 (frontend consumption)
+**Gap Closure**: Closes integration gap MODE-03-frontend + 3 tech debt items from v2.0 audit
+**Success Criteria** (what must be TRUE):
+  1. `StreamEvent.metadata` and `ChatResponse` TypeScript types include `retrieval_mode` and `mode_confidence` fields
+  2. `useChat.ts` done handler reads and stores mode metadata from SSE events
+  3. Chat response UI displays a mode badge/indicator showing the retrieval strategy used
+**Plans:** TBD
+
+### Phase 17: Sync-Graph VDB Fix + Codebase Cleanup
+**Goal**: All remaining tech debt from the v2.0 audit is resolved — sync-graph retries update VDB indices, orphaned routes are removed, lint warnings are fixed, and v3.0 requirements are formally registered — so that the milestone can be archived cleanly.
+**Depends on**: Phase 15
+**Requirements**: VDB-03 (sync-graph VDB wiring)
+**Gap Closure**: Closes 4 tech debt items from v2.0 audit + documentation registration gap
+**Success Criteria** (what must be TRUE):
+  1. `sync-graph` endpoint passes `vdb_store` to `extract_graph_for_document()` so VDB indices update on retries
+  2. Legacy `/graph` route stub from Phase 6 is removed (only `/graph/explore` remains)
+  3. UP046 ruff warning in `pagination.py` is resolved
+  4. REQUIREMENTS.md includes all 12 v3.0 LightRAG requirements (SMART-01-03, VDB-01-03, CTX-01-03, MODE-01-03) with traceability
+**Plans:** TBD

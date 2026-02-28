@@ -103,11 +103,10 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | VIZ-06 | Phase 11 | Complete |
 
 **Coverage:**
-- v2.0 requirements: 27 total
-- Satisfied: 25
-- Pending (gap closure): 2 (EXTRACT-02 → Phase 10, VIZ-06 → Phase 11)
+- v2.0 requirements: 27 total — 27 satisfied
+- v3.0 LightRAG requirements: 12 total — 12 satisfied (registration pending Phase 17)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-19*
-*Last updated: 2026-02-22 after milestone audit — 2 partial requirements reassigned to gap closure phases*
+*Last updated: 2026-02-28 after milestone audit — all v2.0 requirements satisfied; v3.0 requirements to be formally registered in Phase 17*

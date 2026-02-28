@@ -1,3 +1,16 @@
+---
+gsd_state_version: 1.0
+milestone: v2.0
+milestone_name: Knowledge Graph & Temporal Reasoning
+status: unknown
+last_updated: "2026-02-27T16:01:30.704Z"
+progress:
+  total_phases: 10
+  completed_phases: 10
+  total_plans: 21
+  completed_plans: 21
+---
+
 # Project State: PAM Context
 
 ## Project Reference
@@ -5,16 +18,16 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Users can ask natural-language questions about their business documents and get accurate, cited answers
-**Current focus:** v3.0 LightRAG Smart Retrieval — Phase 15
+**Current focus:** v3.0 LightRAG Smart Retrieval — Gap Closure Phases 16-17
 
 ## Current Position
 
-Phase: 15 of 15 (LightRAG Retrieval Mode Router)
-Plan: 2 of 2 complete
-Status: Complete
-Last activity: 2026-02-27 — Completed 15-02-PLAN.md (Mode-conditioned smart search)
+Phase: 16 of 17 (Frontend Retrieval Mode Display — gap closure)
+Plan: 0 of 0 (planning needed)
+Status: Planned
+Last activity: 2026-02-28 — Gap closure phases 16-17 created from milestone audit
 
-Progress: [##############################] 100% (32/32 plans across all milestones)
+Progress: [##############################] 100% (32/32 plans across all milestones, 2 gap closure phases planned)
 
 ## Milestone Progress
 
@@ -22,7 +35,7 @@ Progress: [##############################] 100% (32/32 plans across all mileston
 |-----------|--------|-------|--------|
 | v1 Code Quality Cleanup | 5/5 | 10/10 | Shipped 2026-02-19 |
 | v2.0 Knowledge Graph | 6/6 | 14/14 | Complete |
-| v3.0 LightRAG Smart Retrieval | 4/4 | 8/8 | Complete |
+| v3.0 LightRAG Smart Retrieval | 4/6 | 8/8 | Gap closure planned |
 
 ## Performance Metrics
 
@@ -179,6 +192,8 @@ Progress: [##############################] 100% (32/32 plans across all mileston
 - Phase 14 added: LightRAG Graph-Aware Context Assembly with Token Budgets
 - Phase 15 added: LightRAG Retrieval Mode Router
 - v3.0 milestone created: LightRAG-Inspired Smart Retrieval (Phases 12-15)
+- Phase 16 added: Frontend Retrieval Mode Display (gap closure from v2.0 audit)
+- Phase 17 added: Sync-Graph VDB Fix + Codebase Cleanup (gap closure from v2.0 audit)
 
 **Blockers:** None
 **Tech Debt:** 12 items (0 critical) — see `milestones/v1-MILESTONE-AUDIT.md`
@@ -191,9 +206,9 @@ Progress: [##############################] 100% (32/32 plans across all mileston
 
 ## Session Continuity
 
-Last session: 2026-02-27
-Stopped at: Completed 15-02-PLAN.md (Mode-conditioned smart search)
-Resume file: .planning/phases/15-lightrag-retrieval-mode-router/15-02-SUMMARY.md
+Last session: 2026-02-28
+Stopped at: Gap closure phases 16-17 created from milestone audit
+Resume file: .planning/v2.0-MILESTONE-AUDIT.md
 
 ---
-Phase 15 complete. All v3.0 LightRAG Smart Retrieval milestones shipped. Mode-conditioned smart_search with noop coroutine hard skips, tool mode parameter, and full metadata propagation. 32/32 plans complete across all milestones.
+Gap closure phases 16-17 added from v2.0 milestone audit. Phase 16: Frontend Retrieval Mode Display (MODE-03 integration gap + 3 tech debt items). Phase 17: Sync-Graph VDB Fix + Codebase Cleanup (4 tech debt items + documentation gap). Next: `/gsd:plan-phase 16`.
