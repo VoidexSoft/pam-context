@@ -22,7 +22,7 @@ import httpx
 
 # Allow running from project root
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from judges import score_answer
+from judges import score_answer, score_faithfulness
 from metrics import compute_percentiles
 
 
@@ -114,15 +114,11 @@ async def evaluate_agent(
     api_url: str,
     question: str,
 ) -> dict:
-    """
-    Call POST /api/chat and capture the agent's answer.
-
-    Returns a dict with answer text and latency_ms.
-    """
+    """Call POST /api/chat/debug and capture the agent's answer + context."""
     start = time.perf_counter()
     try:
         resp = await client.post(
-            f"{api_url}/api/chat",
+            f"{api_url}/api/chat/debug",
             json={"message": question},
             timeout=60.0,
         )
@@ -131,24 +127,28 @@ async def evaluate_agent(
         if resp.status_code != 200:
             return {
                 "answer": "",
+                "retrieved_context": [],
                 "latency_ms": latency_ms,
                 "error": f"HTTP {resp.status_code}: {resp.text[:200]}",
             }
 
         data = resp.json()
-        # Backend returns { response: str, citations: [...] } or
-        # potentially { message: { role, content, citations } }.
-        # Handle both structures safely.
         answer = data.get("answer", data.get("response", ""))
         if not answer:
             message = data.get("message", {})
             answer = message.get("content", "") if isinstance(message, dict) else str(message)
-        return {"answer": answer, "latency_ms": latency_ms}
+
+        return {
+            "answer": answer,
+            "retrieved_context": data.get("retrieved_context", []),
+            "latency_ms": latency_ms,
+        }
 
     except httpx.RequestError as exc:
         latency_ms = round((time.perf_counter() - start) * 1000, 1)
         return {
             "answer": "",
+            "retrieved_context": [],
             "latency_ms": latency_ms,
             "error": str(exc),
         }
@@ -228,14 +228,27 @@ async def run_evaluation(api_url: str, questions_file: str) -> dict:
                     print(f"     Judge error: {exc}")
                     judge_scores["reasoning"] = f"Judge error: {exc}"
 
+            # Step 4: Faithfulness scoring
+            faithfulness_score = {"faithfulness": 0.0, "reasoning": "No answer or context"}
+            retrieved_ctx = agent_result.get("retrieved_context", [])
+            if answer and retrieved_ctx:
+                print("  -> Scoring faithfulness...")
+                try:
+                    faithfulness_score = await score_faithfulness(question, answer, retrieved_ctx)
+                    print(f"     Faithfulness: {faithfulness_score['faithfulness']:.2f}")
+                except Exception as exc:
+                    print(f"     Faithfulness error: {exc}")
+
             results.append({
                 "id": qid,
                 "question": question,
                 "difficulty": difficulty,
                 "retrieval": retrieval,
-                "agent_answer": answer[:500],  # truncate for report
+                "agent_answer": answer[:500],
                 "agent_latency_ms": agent_result.get("latency_ms", 0.0),
+                "retrieved_context_count": len(agent_result.get("retrieved_context", [])),
                 "scores": judge_scores,
+                "faithfulness": faithfulness_score,
             })
 
     return {"questions": results}
@@ -299,6 +312,17 @@ def print_summary(eval_results: dict) -> None:
     print(f"  Citation presence:  {avg_citation:.2f}")
     print(f"  Completeness:       {avg_completeness:.2f}")
     print(f"  Overall average:    {avg_overall:.2f}")
+
+    # Faithfulness
+    faithful = [q for q in questions if q.get("faithfulness", {}).get("faithfulness", 0) > 0]
+    if faithful:
+        avg_faith = sum(q["faithfulness"]["faithfulness"] for q in faithful) / len(faithful)
+    else:
+        avg_faith = 0.0
+
+    print(f"\n--- Faithfulness (Groundedness) ---")
+    print(f"  Scored answers:     {len(faithful)}/{total}")
+    print(f"  Avg faithfulness:   {avg_faith:.2f}")
 
     # By difficulty
     print(f"\n--- By Difficulty ---")

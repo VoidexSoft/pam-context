@@ -41,6 +41,58 @@ class ChatResponse(BaseModel):
     mode_confidence: float | None = None
 
 
+class ChatDebugResponse(BaseModel):
+    response: str
+    citations: list[dict]
+    conversation_id: str | None
+    token_usage: dict
+    latency_ms: float
+    retrieval_mode: str | None = None
+    mode_confidence: float | None = None
+    retrieved_context: list[str] = []
+
+
+@router.post("/chat/debug", response_model=ChatDebugResponse)
+async def chat_debug(
+    request: ChatRequest,
+    agent: RetrievalAgent = Depends(get_agent),
+    _user: User | None = Depends(get_current_user),
+):
+    """Chat endpoint that also returns retrieved context for evaluation."""
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+
+    kwargs: dict = {}
+    if request.conversation_history:
+        kwargs["conversation_history"] = [{"role": m.role, "content": m.content} for m in request.conversation_history]
+    if request.source_type:
+        kwargs["source_type"] = request.source_type
+
+    try:
+        result: AgentResponse = await agent.answer(request.message, **kwargs)
+    except Exception as e:
+        logger.exception("chat_debug_error", message=request.message[:100])
+        raise HTTPException(status_code=500, detail="An internal error occurred") from e
+
+    return ChatDebugResponse(
+        response=result.answer,
+        citations=[
+            {
+                "document_title": c.document_title,
+                "section_path": c.section_path,
+                "source_url": c.source_url,
+                "segment_id": c.segment_id,
+            }
+            for c in result.citations
+        ],
+        conversation_id=conversation_id,
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+        retrieval_mode=result.retrieval_mode,
+        mode_confidence=result.mode_confidence,
+        retrieved_context=result.retrieved_context,
+    )
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,

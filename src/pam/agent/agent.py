@@ -78,6 +78,7 @@ class AgentResponse:
     tool_calls: int = 0
     retrieval_mode: str | None = None
     mode_confidence: float | None = None
+    retrieved_context: list[str] = field(default_factory=list)
 
 
 class RetrievalAgent:
@@ -128,6 +129,7 @@ class RetrievalAgent:
         total_input_tokens = 0
         total_output_tokens = 0
         tool_call_count = 0
+        all_retrieved_context: list[str] = []
 
         for _ in range(MAX_TOOL_ITERATIONS):
             call_start = time.perf_counter()
@@ -164,6 +166,7 @@ class RetrievalAgent:
                     tool_calls=tool_call_count,
                     retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
                     mode_confidence=self._last_classification.confidence if self._last_classification else None,
+                    retrieved_context=all_retrieved_context,
                 )
 
             # Unexpected stop reason (e.g. max_tokens)
@@ -186,6 +189,7 @@ class RetrievalAgent:
                     tool_calls=tool_call_count,
                     retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
                     mode_confidence=self._last_classification.confidence if self._last_classification else None,
+                    retrieved_context=all_retrieved_context,
                 )
 
             # Process tool calls
@@ -199,6 +203,9 @@ class RetrievalAgent:
                     if block.type == "tool_use":
                         tool_call_count += 1
                         result, citations = await self._execute_tool(block.name, block.input)
+                        if block.name in ("search_knowledge", "smart_search"):
+                            if isinstance(result, str):
+                                all_retrieved_context.append(result)
                         all_citations.extend(citations)
                         tool_results.append(
                             {
@@ -231,6 +238,7 @@ class RetrievalAgent:
             tool_calls=tool_call_count,
             retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
             mode_confidence=self._last_classification.confidence if self._last_classification else None,
+            retrieved_context=all_retrieved_context,
         )
 
     async def answer_streaming(
