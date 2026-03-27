@@ -56,6 +56,7 @@ dev = [
 ]
 eval = [
     "deepeval>=2.0",
+    "locust>=2.20",
 ]
 
 [build-system]
