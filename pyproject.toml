@@ -54,6 +54,9 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.0",
 ]
+eval = [
+    "deepeval>=2.0",
+]
 
 [build-system]
 requires = ["hatchling"]
