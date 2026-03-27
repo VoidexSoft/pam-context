@@ -23,6 +23,7 @@ import httpx
 # Allow running from project root
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from judges import score_answer
+from metrics import compute_percentiles
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +234,7 @@ async def run_evaluation(api_url: str, questions_file: str) -> dict:
                 "difficulty": difficulty,
                 "retrieval": retrieval,
                 "agent_answer": answer[:500],  # truncate for report
+                "agent_latency_ms": agent_result.get("latency_ms", 0.0),
                 "scores": judge_scores,
             })
 
@@ -261,17 +263,25 @@ def print_summary(eval_results: dict) -> None:
         1 for q in questions if q["retrieval"]["has_relevant_result"]
     )
     retrieval_errors = sum(1 for q in questions if "error" in q["retrieval"])
-    avg_retrieval_latency = (
-        sum(q["retrieval"]["latency_ms"] for q in questions) / total
-        if total
-        else 0
-    )
+
+    retrieval_latencies = [q["retrieval"]["latency_ms"] for q in questions]
+    agent_latencies = [
+        q.get("agent_latency_ms", 0.0) for q in questions if q.get("agent_latency_ms", 0.0) > 0
+    ]
+
+    retrieval_pcts = compute_percentiles(retrieval_latencies)
 
     print(f"\n--- Retrieval Recall ---")
     pct = f"({relevant_count/total*100:.0f}%)" if total else "(N/A)"
     print(f"  Relevant results found: {relevant_count}/{total} {pct}")
     print(f"  Retrieval errors:       {retrieval_errors}/{total}")
-    print(f"  Avg retrieval latency:  {avg_retrieval_latency:.0f}ms")
+    print(f"  Retrieval latency:      p50={retrieval_pcts['p50']:.0f}ms  "
+          f"p90={retrieval_pcts['p90']:.0f}ms  p99={retrieval_pcts['p99']:.0f}ms")
+
+    if agent_latencies:
+        agent_pcts = compute_percentiles(agent_latencies)
+        print(f"  Agent latency:          p50={agent_pcts['p50']:.0f}ms  "
+              f"p90={agent_pcts['p90']:.0f}ms  p99={agent_pcts['p99']:.0f}ms")
 
     # Answer quality scores
     scored = [q for q in questions if q["scores"]["average_score"] > 0]
