@@ -59,8 +59,11 @@ jobs:
       - name: Validate eval framework
         run: |
           python -c "import json; json.load(open('eval/questions.json'))"
-          python -c "import sys; sys.path.insert(0, 'eval'); from judges import score_answer"
+          python -c "import sys; sys.path.insert(0, 'eval'); from judges import score_answer, score_faithfulness"
           python -c "import sys; sys.path.insert(0, 'eval'); from run_eval import main"
+          python -c "import sys; sys.path.insert(0, 'eval'); from metrics import compute_percentiles"
+          # Integration eval (requires live API, not run by default):
+          # python eval/run_eval.py --fail-under 0.6 --output eval/datasets/last_eval_results.json
 
   frontend:
     runs-on: ubuntu-latest

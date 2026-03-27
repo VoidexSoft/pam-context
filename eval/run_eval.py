@@ -371,6 +371,12 @@ def main():
         default=None,
         help="Path to save the full results JSON (optional)",
     )
+    parser.add_argument(
+        "--fail-under",
+        type=float,
+        default=None,
+        help="Fail with exit code 1 if average score is below this threshold (0.0-1.0)",
+    )
     args = parser.parse_args()
 
     results = asyncio.run(run_evaluation(args.api_url, args.questions_file))
@@ -382,6 +388,21 @@ def main():
         with open(output_path, "w") as f:
             json.dump(results, f, indent=2)
         print(f"\nFull results saved to {output_path}")
+
+    # Quality gate
+    if args.fail_under is not None:
+        questions = results["questions"]
+        scored = [q for q in questions if q["scores"]["average_score"] > 0]
+        if scored:
+            avg = sum(q["scores"]["average_score"] for q in scored) / len(scored)
+        else:
+            avg = 0.0
+
+        if avg < args.fail_under:
+            print(f"\nFAILED: Average score {avg:.2f} is below threshold {args.fail_under}")
+            sys.exit(1)
+        else:
+            print(f"\nPASSED: Average score {avg:.2f} meets threshold {args.fail_under}")
 
 
 if __name__ == "__main__":
