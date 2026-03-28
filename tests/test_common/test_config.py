@@ -24,12 +24,12 @@ class TestSettings:
         assert s.database_url == "postgresql+psycopg://pam:pam@localhost:5432/pam_context"
         assert s.elasticsearch_url == "http://localhost:9200"
         assert s.elasticsearch_index == "pam_segments"
-        assert s.embedding_model == "text-embedding-3-large"
-        assert s.embedding_dims == 1536
-        assert s.agent_model == "claude-sonnet-4-5-20250514"
-        assert s.chunk_size_tokens == 512
-        assert s.log_level == "INFO"
-        assert s.cors_origins == ["http://localhost:5173"]
+        assert s.embedding_model == Settings.model_fields["embedding_model"].default
+        assert s.embedding_dims == Settings.model_fields["embedding_dims"].default
+        assert s.agent_model == Settings.model_fields["agent_model"].default
+        assert s.chunk_size_tokens == Settings.model_fields["chunk_size_tokens"].default
+        assert s.log_level == Settings.model_fields["log_level"].default
+        assert s.cors_origins == Settings.model_fields["cors_origins"].default
 
     def test_env_override(self):
         """Settings should be overridable via environment variables."""

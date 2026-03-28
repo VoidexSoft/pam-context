@@ -31,10 +31,13 @@ class TestIngestEndpoint:
         assert data["status"] == "pending"
         mock_spawn.assert_called_once()
 
-    async def test_ingest_invalid_path(self, client):
+    @patch("pam.api.routes.ingest.settings")
+    async def test_ingest_invalid_path(self, mock_settings, client, tmp_path):
+        mock_settings.ingest_root = str(tmp_path)
+        nonexistent = str(tmp_path / "does_not_exist")
         response = await client.post(
             "/api/ingest/folder",
-            json={"path": "/nonexistent/path"},
+            json={"path": nonexistent},
         )
         assert response.status_code == 400
 

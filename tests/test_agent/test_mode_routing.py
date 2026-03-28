@@ -445,26 +445,28 @@ class TestModeLogging:
             mode=RetrievalMode.FACTUAL, confidence=0.8, method="rules"
         )
 
-        log_events = []
+        log_events: list[dict] = []
 
-        def capture_log(logger, method_name, event_dict):
+        def capture_log(_logger, method_name, event_dict):
             log_events.append(event_dict.copy())
             raise structlog.DropEvent
+
+        # Haystack (and other libs) call structlog.configure() on import,
+        # replacing the processor list and enabling logger caching. This
+        # means capture_logs() and module-level loggers operate on
+        # different list objects. Instead, we patch the logger directly
+        # with a freshly-bound one using our capture processor.
+        test_logger = structlog.wrap_logger(
+            None,
+            processors=[capture_log],
+            wrapper_class=structlog.make_filtering_bound_logger(0),
+        )
 
         with patch(
             "pam.agent.agent.classify_query_mode",
             return_value=classification,
-        ):
-            structlog.configure(
-                processors=[capture_log],
-                wrapper_class=structlog.make_filtering_bound_logger(0),
-                cache_logger_on_first_use=False,
-            )
-            try:
-                await agent._smart_search({"query": "what is the definition of revenue"})
-            finally:
-                # Reset structlog to defaults
-                structlog.reset_defaults()
+        ), patch("pam.agent.agent.logger", test_logger):
+            await agent._smart_search({"query": "what is the definition of revenue"})
 
         mode_events = [
             e for e in log_events if e.get("event") == "smart_search_mode_selected"
