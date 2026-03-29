@@ -433,8 +433,87 @@ async def _pam_entity_history(entity_name: str, since: str | None = None) -> str
 
 
 def _register_utility_tools(mcp: FastMCP) -> None:
-    """Register utility MCP tools. Implemented in Task 7."""
-    pass
+    """Register utility MCP tools."""
+
+    @mcp.tool()
+    async def pam_query_data(
+        sql: str | None = None,
+        list_tables: bool = False,
+    ) -> str:
+        """Run SQL queries against registered data files (CSV, Parquet, JSON) via DuckDB.
+
+        Set list_tables=true to see available tables and their schemas.
+        Queries must be read-only SELECT statements. Max 1000 rows returned.
+        """
+        return await _pam_query_data(sql=sql, list_tables=list_tables)
+
+    @mcp.tool()
+    async def pam_ingest(
+        folder_path: str,
+        source_type: str = "markdown",
+    ) -> str:
+        """Trigger document ingestion from a local folder.
+
+        Parses documents, chunks them, embeds, and stores in the knowledge base.
+        source_type: markdown, google_doc, google_sheets, github.
+        Returns a task ID for monitoring progress.
+        """
+        return await _pam_ingest(folder_path=folder_path, source_type=source_type)
+
+
+async def _pam_query_data(sql: str | None = None, list_tables: bool = False) -> str:
+    """Implementation of pam_query_data."""
+    services = get_services()
+    if services.duckdb_service is None:
+        return json.dumps({"error": "DuckDB analytics is not configured (no DUCKDB_DATA_DIR set)"})
+
+    if list_tables:
+        tables = services.duckdb_service.list_tables()
+        return json.dumps(tables, indent=2)
+
+    if not sql:
+        return json.dumps({"error": "Provide a SQL query or set list_tables=true"})
+
+    result = services.duckdb_service.query(sql)
+    return json.dumps(result, indent=2)
+
+
+async def _pam_ingest(folder_path: str, source_type: str = "markdown") -> str:
+    """Implementation of pam_ingest — triggers folder ingestion."""
+    import uuid as uuid_mod
+
+    from pam.ingestion import task_manager
+
+    services = get_services()
+    task_id = uuid_mod.uuid4()
+
+    try:
+        async with services.session_factory() as session:
+            await task_manager.create_task(folder_path=folder_path, session=session)
+
+        task_manager.spawn_ingestion_task(
+            task_id=task_id,
+            folder_path=folder_path,
+            es_client=services.es_client,
+            embedder=services.embedder,
+            session_factory=services.session_factory,
+            cache_service=services.cache_service,
+            graph_service=services.graph_service,
+            vdb_store=services.vdb_store,
+        )
+    except Exception as e:
+        return json.dumps({"error": f"Failed to start ingestion: {e}"})
+
+    return json.dumps(
+        {
+            "task_id": str(task_id),
+            "status": "started",
+            "folder_path": folder_path,
+            "source_type": source_type,
+            "message": "Ingestion task started. Poll /api/ingest/tasks/{task_id} for progress.",
+        },
+        indent=2,
+    )
 
 
 def _register_resources(mcp: FastMCP) -> None:
