@@ -61,6 +61,32 @@ Rules:
 
 MAX_TOOL_ITERATIONS = 5
 MAX_DOC_CHARS = 50_000  # ~12,500 tokens — prevents blowing context window
+MAX_HISTORY_CHARS = 400_000  # ~100K tokens — leaves room for system prompt + tool results
+
+
+def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) -> list[dict]:
+    """Drop oldest message pairs if total character count exceeds budget.
+
+    Always keeps the last message (the user's current question).
+    Drops from the front in pairs (user+assistant) to maintain conversation coherence.
+    """
+    if not messages:
+        return messages
+
+    total = sum(len(m.get("content", "") if isinstance(m.get("content"), str) else "") for m in messages)
+    if total <= max_chars:
+        return messages
+
+    # Keep dropping oldest pairs until under budget (or only 1 message left)
+    trimmed = list(messages)
+    while len(trimmed) > 1:
+        total = sum(len(m.get("content", "") if isinstance(m.get("content"), str) else "") for m in trimmed)
+        if total <= max_chars:
+            break
+        # Drop oldest message
+        trimmed.pop(0)
+
+    return trimmed
 
 
 @dataclass
@@ -125,6 +151,7 @@ class RetrievalAgent:
         self._default_source_type = source_type
         start = time.perf_counter()
         messages = list(conversation_history or [])
+        messages = _truncate_history(messages)
         messages.append({"role": "user", "content": question})
 
         all_citations: list[Citation] = []
@@ -259,6 +286,7 @@ class RetrievalAgent:
         self._default_source_type = source_type
         start = time.perf_counter()
         messages = list(conversation_history or [])
+        messages = _truncate_history(messages)
         messages.append({"role": "user", "content": question})
 
         all_citations: list[Citation] = []
