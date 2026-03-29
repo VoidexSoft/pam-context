@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from mcp.server.fastmcp import FastMCP
@@ -63,7 +63,18 @@ def _register_search_tools(mcp: FastMCP) -> None:
         """
         return await _pam_search(query=query, limit=limit, source_type=source_type)
 
-    # pam_smart_search registered in Task 4
+    @mcp.tool()
+    async def pam_smart_search(
+        query: str,
+        mode: str | None = None,
+    ) -> str:
+        """Search documents AND the knowledge graph in one call.
+
+        Runs hybrid document search, graph relationship search, entity VDB search,
+        and relationship VDB search concurrently. Returns results in separate sections.
+        Optional mode: entity, conceptual, temporal, factual, hybrid.
+        """
+        return await _pam_smart_search(query=query, mode=mode)
 
 
 async def _pam_search(
@@ -92,6 +103,93 @@ async def _pam_search(
             }
             for r in results
         ],
+        indent=2,
+    )
+
+
+async def _pam_smart_search(
+    query: str,
+    mode: str | None = None,
+) -> str:
+    """Implementation of pam_smart_search — concurrent 4-way search."""
+    import asyncio
+
+    services = get_services()
+    embedding = await services.embedder.embed(query)
+
+    # Build concurrent tasks
+    tasks: dict[str, Any] = {}
+    tasks["documents"] = services.search_service.search(
+        query=query, query_embedding=embedding, top_k=5,
+    )
+    if services.graph_service is not None:
+        tasks["graph"] = services.graph_service.client.search(query=query, num_results=5)
+    if services.vdb_store is not None:
+        tasks["entities"] = services.vdb_store.search_entities(
+            query_embedding=embedding, top_k=5,
+        )
+        tasks["relationships"] = services.vdb_store.search_relationships(
+            query_embedding=embedding, top_k=5,
+        )
+
+    keys = list(tasks.keys())
+    results_list = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    results_map: dict[str, Any] = {}
+    for key, result in zip(keys, results_list):
+        if isinstance(result, Exception):
+            logger.warning("smart_search_partial_failure", source=key, error=str(result))
+            results_map[key] = []
+        else:
+            results_map[key] = result
+
+    doc_results = [
+        {
+            "segment_id": str(r.segment_id),
+            "content": r.content,
+            "score": r.score,
+            "document_title": r.document_title,
+            "section_path": r.section_path,
+            "source_url": r.source_url,
+        }
+        for r in results_map.get("documents", [])
+    ]
+
+    graph_results = []
+    for edge in results_map.get("graph", []):
+        graph_results.append({
+            "fact": getattr(edge, "fact", str(edge)),
+            "source_name": getattr(edge, "source_node_name", None),
+            "target_name": getattr(edge, "target_node_name", None),
+            "relation_type": getattr(edge, "name", None),
+        })
+
+    entity_results = []
+    for hit in results_map.get("entities", []):
+        entity_results.append({
+            "name": hit.get("name", ""),
+            "type": hit.get("entity_type", ""),
+            "description": hit.get("description", ""),
+            "score": hit.get("score", 0),
+        })
+
+    rel_results = []
+    for hit in results_map.get("relationships", []):
+        rel_results.append({
+            "src_entity": hit.get("src_entity", ""),
+            "tgt_entity": hit.get("tgt_entity", ""),
+            "rel_type": hit.get("rel_type", ""),
+            "keywords": hit.get("keywords", ""),
+            "score": hit.get("score", 0),
+        })
+
+    return json.dumps(
+        {
+            "documents": doc_results,
+            "graph": graph_results,
+            "entities": entity_results,
+            "relationships": rel_results,
+            "mode": mode,
+        },
         indent=2,
     )
 

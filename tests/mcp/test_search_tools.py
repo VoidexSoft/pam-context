@@ -87,3 +87,52 @@ async def test_pam_search_with_source_filter(mock_services: PamServices):
     call_kwargs = mock_services.search_service.search.call_args
     assert call_kwargs.kwargs.get("source_type") == "markdown"
     assert call_kwargs.kwargs.get("top_k") == 3
+
+
+@pytest.mark.asyncio
+async def test_pam_smart_search_concurrent_results(mock_services: PamServices):
+    """pam_smart_search runs ES + graph + VDB searches concurrently."""
+    mock_services.embedder.embed = AsyncMock(return_value=[0.1] * 1536)
+    mock_services.search_service.search = AsyncMock(
+        return_value=[
+            SearchResult(
+                segment_id=uuid.uuid4(),
+                content="ES result",
+                score=0.9,
+                document_title="Doc A",
+            ),
+        ]
+    )
+    mock_services.graph_service.client.search = AsyncMock(return_value=[])
+    mock_services.vdb_store.search_entities = AsyncMock(return_value=[])
+    mock_services.vdb_store.search_relationships = AsyncMock(return_value=[])
+
+    from pam.mcp.server import _pam_smart_search
+
+    result = await _pam_smart_search(query="revenue targets")
+    parsed = json.loads(result)
+
+    assert "documents" in parsed
+    assert len(parsed["documents"]) == 1
+    assert parsed["documents"][0]["content"] == "ES result"
+    mock_services.search_service.search.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pam_smart_search_graph_unavailable(mock_services: PamServices):
+    """pam_smart_search gracefully handles graph service being None."""
+    mock_services.graph_service = None
+    mock_services.vdb_store = None
+    mock_services.embedder.embed = AsyncMock(return_value=[0.1] * 1536)
+    mock_services.search_service.search = AsyncMock(return_value=[])
+
+    mcp_server.initialize(mock_services)
+
+    from pam.mcp.server import _pam_smart_search
+
+    result = await _pam_smart_search(query="test")
+    parsed = json.loads(result)
+
+    assert "documents" in parsed
+    assert parsed["graph"] == []
+    assert parsed["entities"] == []
