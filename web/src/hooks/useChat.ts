@@ -47,141 +47,175 @@ export function useChat() {
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
+      // Create placeholder assistant message
+      const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: "assistant", content: "", citations: [] };
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      let streamingContent = "";
+      const streamingCitations: Citation[] = [];
+      let gotTokens = false;
+
+      let streamAttempts = 0;
+      const MAX_STREAM_RETRIES = 1;
+      let streamCompleted = false; // true when stream iteration ended without throwing
+
       try {
-        // Create placeholder assistant message
-        const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: "assistant", content: "", citations: [] };
-        setMessages((prev) => [...prev, assistantMsg]);
+        while (streamAttempts <= MAX_STREAM_RETRIES) {
+          try {
+            for await (const event of streamChatMessage(
+              content,
+              conversationId,
+              history.length > 0 ? history : undefined,
+              Object.keys(filters).length > 0 ? filters : undefined,
+              abortController.signal
+            )) {
+              switch (event.type) {
+                case "status":
+                  setStatusText(event.content);
+                  break;
 
-        let streamingContent = "";
-        const streamingCitations: Citation[] = [];
-        let gotTokens = false;
+                case "token":
+                  if (!gotTokens) {
+                    gotTokens = true;
+                    setIsStreaming(true);
+                    setStatusText(undefined);
+                  }
+                  streamingContent += event.content ?? "";
+                  setMessages((prev) => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    if (last?.role === "assistant") {
+                      updated[updated.length - 1] = {
+                        ...last,
+                        content: streamingContent,
+                      };
+                    }
+                    return updated;
+                  });
+                  break;
 
-        for await (const event of streamChatMessage(
-          content,
-          conversationId,
-          history.length > 0 ? history : undefined,
-          Object.keys(filters).length > 0 ? filters : undefined,
-          abortController.signal
-        )) {
-          switch (event.type) {
-            case "status":
-              setStatusText(event.content);
-              break;
+                case "citation":
+                  if (event.data) {
+                    streamingCitations.push(event.data);
+                    setMessages((prev) => {
+                      const updated = [...prev];
+                      const last = updated[updated.length - 1];
+                      if (last?.role === "assistant") {
+                        updated[updated.length - 1] = {
+                          ...last,
+                          citations: [...streamingCitations],
+                        };
+                      }
+                      return updated;
+                    });
+                  }
+                  break;
 
-            case "token":
-              if (!gotTokens) {
-                gotTokens = true;
-                setIsStreaming(true);
-                setStatusText(undefined);
+                case "done":
+                  if (event.conversation_id) {
+                    setConversationId(event.conversation_id);
+                  }
+                  if (event.metadata) {
+                    setMessages((prev) => {
+                      const updated = [...prev];
+                      const last = updated[updated.length - 1];
+                      if (last?.role === "assistant") {
+                        updated[updated.length - 1] = {
+                          ...last,
+                          token_usage: event.metadata!.token_usage,
+                          latency_ms: event.metadata!.latency_ms,
+                        };
+                      }
+                      return updated;
+                    });
+                  }
+                  break;
+
+                case "error":
+                  setError(event.message ?? "Unknown streaming error");
+                  // Update the assistant message with the error
+                  setMessages((prev) => {
+                    const updated = [...prev];
+                    const last = updated[updated.length - 1];
+                    if (last?.role === "assistant" && !last.content) {
+                      updated[updated.length - 1] = {
+                        ...last,
+                        content: `Error: ${event.message}`,
+                      };
+                    }
+                    return updated;
+                  });
+                  break;
               }
-              streamingContent += event.content ?? "";
+            }
+            streamCompleted = true;
+            break; // Stream ended normally, stop retrying
+          } catch (err) {
+            if ((err as Error).name === "AbortError") {
+              // User cancelled — keep partial response
+              return;
+            }
+            streamAttempts++;
+            if (streamAttempts <= MAX_STREAM_RETRIES) {
+              console.warn(`Streaming attempt ${streamAttempts} failed, retrying in 1s:`, err);
+              // Reset streaming state for retry
+              streamingContent = "";
+              streamingCitations.length = 0;
+              gotTokens = false;
+              setIsStreaming(false);
+              setStatusText(undefined);
+              setError(null);
               setMessages((prev) => {
                 const updated = [...prev];
                 const last = updated[updated.length - 1];
                 if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    content: streamingContent,
-                  };
+                  updated[updated.length - 1] = { ...last, content: "", citations: [] };
                 }
                 return updated;
               });
-              break;
-
-            case "citation":
-              if (event.data) {
-                streamingCitations.push(event.data);
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      citations: [...streamingCitations],
-                    };
-                  }
-                  return updated;
-                });
-              }
-              break;
-
-            case "done":
-              if (event.conversation_id) {
-                setConversationId(event.conversation_id);
-              }
-              if (event.metadata) {
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      token_usage: event.metadata!.token_usage,
-                      latency_ms: event.metadata!.latency_ms,
-                    };
-                  }
-                  return updated;
-                });
-              }
-              break;
-
-            case "error":
-              setError(event.message ?? "Unknown streaming error");
-              // Update the assistant message with the error
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant" && !last.content) {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    content: `Error: ${event.message}`,
-                  };
-                }
-                return updated;
-              });
-              break;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            // All retries exhausted — fall back to non-streaming
+            console.warn("Streaming failed after retries, falling back to non-streaming:", err);
+            break;
           }
         }
-      } catch (err) {
-        if ((err as Error).name === "AbortError") {
-          // User cancelled — keep partial response
-          return;
-        }
 
-        // Streaming failed — fall back to non-streaming API
-        console.warn("Streaming failed, falling back to non-streaming:", err);
-        // Remove the placeholder assistant message
-        setMessages((prev) => prev.filter((_, i) => i !== prev.length - 1));
+        if (!streamCompleted) {
+          // Remove the placeholder assistant message before falling back
+          setMessages((prev) => prev.filter((_, i) => i !== prev.length - 1));
 
-        try {
-          const res = await apiSendMessage(
-            content,
-            conversationId,
-            history.length > 0 ? history : undefined,
-            Object.keys(filters).length > 0 ? filters : undefined
-          );
-          if (res.conversation_id) setConversationId(res.conversation_id);
-          const assistantMsg: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: res.response,
-            citations: res.citations?.map((c) => ({
-              title: c.document_title ?? "",
-              document_id: c.document_title ?? "",
-              source_url: c.source_url,
-              segment_id: c.segment_id,
-            })),
-            token_usage: res.token_usage,
-            latency_ms: res.latency_ms,
-          };
-          setMessages((prev) => [...prev, assistantMsg]);
-        } catch (fallbackErr) {
-          const msg = fallbackErr instanceof Error ? fallbackErr.message : "Unknown error";
-          setError(msg);
-          setMessages((prev) => [
-            ...prev,
-            { id: crypto.randomUUID(), role: "assistant", content: `Error: ${msg}` },
-          ]);
+          try {
+            const res = await apiSendMessage(
+              content,
+              conversationId,
+              history.length > 0 ? history : undefined,
+              Object.keys(filters).length > 0 ? filters : undefined
+            );
+            if (res.conversation_id) setConversationId(res.conversation_id);
+            const assistantMsg: ChatMessage = {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: res.response,
+              citations: res.citations?.map((c) => ({
+                title: c.document_title ?? "",
+                document_id: c.document_title ?? "",
+                source_url: c.source_url,
+                segment_id: c.segment_id,
+              })),
+              token_usage: res.token_usage,
+              latency_ms: res.latency_ms,
+            };
+            setMessages((prev) => [...prev, assistantMsg]);
+          } catch (fallbackErr) {
+            const msg = fallbackErr instanceof Error ? fallbackErr.message : "Unknown error";
+            setError(msg);
+            setMessages((prev) => [
+              ...prev,
+              { id: crypto.randomUUID(), role: "assistant", content: `Error: ${msg}` },
+            ]);
+          }
         }
       } finally {
         setLoading(false);
