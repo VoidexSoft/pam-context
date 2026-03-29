@@ -122,6 +122,34 @@ class Settings(BaseSettings):
             raise ValueError("JWT_SECRET must be at least 32 characters when AUTH_REQUIRED=true.")
         return self
 
+    @model_validator(mode="after")
+    def _check_api_keys(self) -> "Settings":
+        """Reject empty API keys — app will fail at runtime without them."""
+        if not self.anthropic_api_key:
+            raise ValueError(
+                "anthropic_api_key is required. Set ANTHROPIC_API_KEY in your environment."
+            )
+        if not self.openai_api_key:
+            raise ValueError(
+                "openai_api_key is required. Set OPENAI_API_KEY in your environment."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_constraints(self) -> "Settings":
+        """Validate numeric constraints between settings."""
+        if not 0.0 <= self.mode_confidence_threshold <= 1.0:
+            raise ValueError(
+                f"mode_confidence_threshold must be 0.0-1.0, got {self.mode_confidence_threshold}"
+            )
+        if self.context_entity_budget + self.context_relationship_budget > self.context_max_tokens:
+            raise ValueError(
+                f"context budget overflow: entity ({self.context_entity_budget}) + "
+                f"relationship ({self.context_relationship_budget}) > "
+                f"max ({self.context_max_tokens})"
+            )
+        return self
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

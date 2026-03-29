@@ -65,6 +65,12 @@ class TestSettings:
             assert "http://localhost:3000" in s.cors_origins
 
 
+_VALID_API_KEYS = {
+    "anthropic_api_key": "sk-ant-test-key",
+    "openai_api_key": "sk-proj-test-key",
+}
+
+
 class TestJwtSecretValidation:
     def test_insecure_secret_with_auth_required_raises(self):
         """Should raise at construction if auth_required=True and JWT secret is insecure."""
@@ -73,6 +79,7 @@ class TestJwtSecretValidation:
                 _env_file=None,
                 auth_required=True,
                 jwt_secret="dev-secret-change-in-production-32b",
+                **_VALID_API_KEYS,
             )
 
     def test_insecure_secret_without_auth_is_ok(self):
@@ -81,6 +88,7 @@ class TestJwtSecretValidation:
             _env_file=None,
             auth_required=False,
             jwt_secret="dev-secret-change-in-production-32b",
+            **_VALID_API_KEYS,
         )
         assert s.jwt_secret == "dev-secret-change-in-production-32b"  # noqa: S105
 
@@ -90,6 +98,7 @@ class TestJwtSecretValidation:
             _env_file=None,
             auth_required=True,
             jwt_secret="a-very-strong-and-unique-secret-key-1234567890",
+            **_VALID_API_KEYS,
         )
         assert s.auth_required is True
 
@@ -100,13 +109,14 @@ class TestJwtSecretValidation:
                 _env_file=None,
                 auth_required=True,
                 jwt_secret="too-short-secret",
+                **_VALID_API_KEYS,
             )
 
     def test_other_insecure_defaults_also_blocked(self):
         """Other known-insecure secrets should also be rejected at construction."""
         for secret in ("secret", "changeme", "password"):
             with pytest.raises(ValidationError, match="Insecure JWT secret"):
-                Settings(_env_file=None, auth_required=True, jwt_secret=secret)
+                Settings(_env_file=None, auth_required=True, jwt_secret=secret, **_VALID_API_KEYS)
 
 
 class TestGetSettings:
