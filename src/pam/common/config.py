@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     ingest_root: str = ""  # Required base directory for folder ingestion; empty = reject all
     max_concurrent_ingestions: int = 3  # Max background ingestion tasks
 
+    # MCP Server
+    mcp_enabled: bool = True  # Enable MCP SSE transport on /mcp
+
     # CLI connectors
     github_repos: list[dict] = []  # [{"repo":"owner/repo","branch":"main","paths":[],"extensions":[]}]
     use_cli_connectors: bool = False  # Use gws CLI instead of Google API connectors
