@@ -273,12 +273,15 @@ def create_app() -> FastAPI:
         else:
             services["neo4j"] = "down"
 
-        all_up = all(v == "up" for v in services.values())
-        status_code = 200 if all_up else 503
+        # Required services determine overall status
+        required_ok = all(
+            services.get(s) == "up" for s in ("elasticsearch", "postgres")
+        )
+        status_code = 200 if required_ok else 503
         return JSONResponse(
             status_code=status_code,
             content={
-                "status": "healthy" if all_up else "unhealthy",
+                "status": "healthy" if required_ok else "unhealthy",
                 "services": services,
                 "auth_required": settings.auth_required,
             },

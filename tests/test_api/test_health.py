@@ -112,9 +112,28 @@ class TestHealthEndpoint:
 
         response = await client.get("/api/health")
 
-        assert response.status_code == 503
+        assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "unhealthy"
+        assert data["status"] == "healthy"
         assert data["services"]["elasticsearch"] == "up"
         assert data["services"]["postgres"] == "up"
         assert data["services"]["redis"] == "down"
+
+    async def test_health_returns_200_when_optional_services_down(self, app, client, mock_api_es_client, mock_api_db_session):
+        """Health returns 200 if only optional services (Redis, Neo4j) are down."""
+        # Mock: PG and ES up, Redis and Neo4j down
+        app.state.redis_client = None
+        app.state.graph_service = None
+
+        mock_api_es_client.ping = AsyncMock(return_value=True)
+        mock_api_db_session.execute = AsyncMock()
+
+        response = await client.get("/api/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["services"]["elasticsearch"] == "up"
+        assert data["services"]["postgres"] == "up"
+        assert data["services"]["redis"] == "down"
+        assert data["services"]["neo4j"] == "down"
