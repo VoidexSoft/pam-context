@@ -14,7 +14,7 @@ from elasticsearch import AsyncElasticsearch
 
 from pam.common.cache import CacheService
 from pam.retrieval.rerankers.base import BaseReranker
-from pam.retrieval.types import SearchQuery, SearchResult
+from pam.retrieval.types import SearchBackendError, SearchQuery, SearchResult
 
 logger = structlog.get_logger()
 
@@ -109,7 +109,7 @@ class HybridSearchService:
 
         try:
             response = await self.client.search(index=self.index_name, body=body)
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "hybrid_search_es_error",
                 query_length=len(query),
@@ -117,7 +117,7 @@ class HybridSearchService:
                 source_type=source_type,
                 project=project,
             )
-            return []
+            raise SearchBackendError(f"Elasticsearch search failed: {exc}") from exc
 
         results = []
         for hit in response["hits"]["hits"]:

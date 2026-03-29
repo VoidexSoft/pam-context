@@ -24,3 +24,9 @@ class SearchResult(BaseModel):
     section_path: str | None = None
     document_title: str | None = None
     segment_type: str = "text"
+
+
+class SearchBackendError(Exception):
+    """Raised when a search backend fails, so callers can distinguish 'no results' from 'backend down'."""
+
+    pass

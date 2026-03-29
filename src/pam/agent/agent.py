@@ -21,6 +21,7 @@ from pam.common.logging import CostTracker
 from pam.common.utils import escape_like
 from pam.ingestion.embedders.base import BaseEmbedder
 from pam.retrieval.search_protocol import SearchService
+from pam.retrieval.types import SearchBackendError
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -633,12 +634,16 @@ class RetrievalAgent:
         query_embedding = query_embeddings[0]
 
         # Search
-        results = await self.search.search(
-            query=query,
-            query_embedding=query_embedding,
-            top_k=10,
-            source_type=source_type,
-        )
+        try:
+            results = await self.search.search(
+                query=query,
+                query_embedding=query_embedding,
+                top_k=10,
+                source_type=source_type,
+            )
+        except SearchBackendError as exc:
+            logger.warning("search_backend_error", query=query[:100], error=str(exc))
+            return "Search is temporarily unavailable. Please try again.", []
 
         if not results:
             return "No relevant results found for this query.", []
