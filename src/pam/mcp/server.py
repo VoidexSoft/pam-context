@@ -288,9 +288,10 @@ async def _pam_list_documents(
     services = get_services()
 
     async with services.session_factory() as session:
-        stmt = select(Document).order_by(Document.updated_at.desc()).limit(limit)
+        stmt = select(Document).order_by(Document.updated_at.desc())
         if source_type:
             stmt = stmt.where(Document.source_type == source_type)
+        stmt = stmt.limit(limit)
 
         result = await session.execute(stmt)
         docs = result.scalars().all()
@@ -480,19 +481,29 @@ async def _pam_query_data(sql: str | None = None, list_tables: bool = False) -> 
 
 async def _pam_ingest(folder_path: str, source_type: str = "markdown") -> str:
     """Implementation of pam_ingest — triggers folder ingestion."""
-    import uuid as uuid_mod
+    from pathlib import Path
 
+    from pam.common.config import get_settings
     from pam.ingestion import task_manager
 
+    settings = get_settings()
+    if not settings.ingest_root:
+        return json.dumps({"error": "Ingestion root not configured (set INGEST_ROOT)"})
+    root = Path(settings.ingest_root).resolve()
+    folder = Path(folder_path).resolve()
+    if not folder.is_relative_to(root):
+        return json.dumps({"error": "Path outside allowed ingestion root"})
+    if not folder.is_dir():
+        return json.dumps({"error": f"Directory not found: {folder_path}"})
+
     services = get_services()
-    task_id = uuid_mod.uuid4()
 
     try:
         async with services.session_factory() as session:
-            await task_manager.create_task(folder_path=folder_path, session=session)
+            task = await task_manager.create_task(folder_path=folder_path, session=session)
 
         task_manager.spawn_ingestion_task(
-            task_id=task_id,
+            task_id=task.id,
             folder_path=folder_path,
             es_client=services.es_client,
             embedder=services.embedder,
@@ -506,7 +517,7 @@ async def _pam_ingest(folder_path: str, source_type: str = "markdown") -> str:
 
     return json.dumps(
         {
-            "task_id": str(task_id),
+            "task_id": str(task.id),
             "status": "started",
             "folder_path": folder_path,
             "source_type": source_type,
@@ -575,7 +586,7 @@ async def _get_entities(entity_type: str | None = None) -> str:
 
     body: dict[str, Any] = {"size": 100}
     if entity_type:
-        body["query"] = {"term": {"type": entity_type}}
+        body["query"] = {"term": {"entity_type": entity_type}}
     else:
         body["query"] = {"match_all": {}}
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -65,3 +65,38 @@ async def test_pam_query_data_unavailable(mock_services: PamServices):
     parsed = json.loads(result)
 
     assert "error" in parsed
+
+
+@pytest.mark.asyncio
+async def test_pam_ingest_no_ingest_root(mock_services: PamServices):
+    """_pam_ingest returns error when INGEST_ROOT is not configured."""
+    from pam.mcp.server import _pam_ingest
+
+    mock_settings = MagicMock()
+    mock_settings.ingest_root = ""
+
+    with patch("pam.common.config.get_settings", return_value=mock_settings):
+        result = await _pam_ingest(folder_path="/some/path")
+
+    parsed = json.loads(result)
+    assert "error" in parsed
+    assert "INGEST_ROOT" in parsed["error"]
+
+
+@pytest.mark.asyncio
+async def test_pam_ingest_path_traversal(mock_services: PamServices, tmp_path):
+    """_pam_ingest returns error when folder_path is outside the ingest root."""
+    from pam.mcp.server import _pam_ingest
+
+    ingest_root = tmp_path / "allowed"
+    ingest_root.mkdir()
+
+    mock_settings = MagicMock()
+    mock_settings.ingest_root = str(ingest_root)
+
+    with patch("pam.common.config.get_settings", return_value=mock_settings):
+        result = await _pam_ingest(folder_path="/etc")
+
+    parsed = json.loads(result)
+    assert "error" in parsed
+    assert "outside" in parsed["error"].lower()

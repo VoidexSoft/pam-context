@@ -7,7 +7,6 @@ LLM clients (Claude Code, Cursor) connect to this process via stdin/stdout.
 from __future__ import annotations
 
 import asyncio
-import sys
 
 import structlog
 
