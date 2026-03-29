@@ -195,8 +195,122 @@ async def _pam_smart_search(
 
 
 def _register_document_tools(mcp: FastMCP) -> None:
-    """Register document-related MCP tools. Implemented in Task 5."""
-    pass
+    """Register document-related MCP tools."""
+
+    @mcp.tool()
+    async def pam_get_document(
+        document_title: str | None = None,
+        source_id: str | None = None,
+    ) -> str:
+        """Fetch the full content of a specific document for deep reading.
+
+        Provide either document_title or source_id. Returns the document
+        metadata and all its segments (chunks) in order.
+        """
+        return await _pam_get_document(document_title=document_title, source_id=source_id)
+
+    @mcp.tool()
+    async def pam_list_documents(
+        limit: int = 20,
+        source_type: str | None = None,
+    ) -> str:
+        """List available documents in the knowledge base.
+
+        Returns document titles, source types, and timestamps.
+        Optional source_type filter: markdown, google_doc, google_sheets, github.
+        """
+        return await _pam_list_documents(limit=limit, source_type=source_type)
+
+
+async def _pam_get_document(
+    document_title: str | None = None,
+    source_id: str | None = None,
+) -> str:
+    """Implementation of pam_get_document."""
+    from sqlalchemy import select
+
+    from pam.common.models import Document, Segment
+
+    services = get_services()
+
+    async with services.session_factory() as session:
+        stmt = select(Document)
+        if document_title:
+            stmt = stmt.where(Document.title.ilike(f"%{document_title}%"))
+        elif source_id:
+            stmt = stmt.where(Document.source_id == source_id)
+        else:
+            return json.dumps({"error": "Provide either document_title or source_id"})
+
+        result = await session.execute(stmt)
+        doc = result.scalars().first()
+
+        if doc is None:
+            return json.dumps({"error": f"Document not found: {document_title or source_id}"})
+
+        seg_stmt = (
+            select(Segment)
+            .where(Segment.document_id == doc.id)
+            .order_by(Segment.position)
+        )
+        seg_result = await session.execute(seg_stmt)
+        segments = seg_result.scalars().all()
+
+        return json.dumps(
+            {
+                "id": str(doc.id),
+                "title": doc.title,
+                "source_type": doc.source_type,
+                "source_id": doc.source_id,
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "segments": [
+                    {
+                        "content": seg.content,
+                        "section_path": seg.section_path,
+                        "position": seg.position,
+                    }
+                    for seg in segments
+                ],
+            },
+            indent=2,
+        )
+
+
+async def _pam_list_documents(
+    limit: int = 20,
+    source_type: str | None = None,
+) -> str:
+    """Implementation of pam_list_documents."""
+    from sqlalchemy import select
+
+    from pam.common.models import Document
+
+    services = get_services()
+
+    async with services.session_factory() as session:
+        stmt = select(Document).order_by(Document.updated_at.desc()).limit(limit)
+        if source_type:
+            stmt = stmt.where(Document.source_type == source_type)
+
+        result = await session.execute(stmt)
+        docs = result.scalars().all()
+
+        return json.dumps(
+            {
+                "documents": [
+                    {
+                        "id": str(doc.id),
+                        "title": doc.title,
+                        "source_type": doc.source_type,
+                        "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                        "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
+                    }
+                    for doc in docs
+                ],
+                "count": len(docs),
+            },
+            indent=2,
+        )
 
 
 def _register_graph_tools(mcp: FastMCP) -> None:
