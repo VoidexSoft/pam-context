@@ -314,8 +314,122 @@ async def _pam_list_documents(
 
 
 def _register_graph_tools(mcp: FastMCP) -> None:
-    """Register graph-related MCP tools. Implemented in Task 6."""
-    pass
+    """Register graph-related MCP tools."""
+
+    @mcp.tool()
+    async def pam_graph_search(
+        query: str,
+        entity_name: str | None = None,
+    ) -> str:
+        """Search the knowledge graph for entity relationships and connections.
+
+        Use for questions about what entities relate to, depend on, or interact with.
+        Examples: 'what depends on AuthService?', 'what is connected to payments?'
+        """
+        return await _pam_graph_search(query=query, entity_name=entity_name)
+
+    @mcp.tool()
+    async def pam_graph_neighbors(
+        entity_name: str,
+    ) -> str:
+        """Explore the 1-hop neighborhood of an entity in the knowledge graph.
+
+        Returns the entity and all directly connected entities with their relationships.
+        """
+        return await _pam_graph_neighbors(entity_name=entity_name)
+
+    @mcp.tool()
+    async def pam_entity_history(
+        entity_name: str,
+        since: str | None = None,
+    ) -> str:
+        """Get the temporal change history of a specific entity.
+
+        Shows how an entity has changed over time. Optional 'since' parameter
+        accepts ISO datetime (e.g. '2026-01-01T00:00:00Z') to filter changes.
+        """
+        return await _pam_entity_history(entity_name=entity_name, since=since)
+
+
+async def _pam_graph_search(query: str, entity_name: str | None = None) -> str:
+    """Implementation of pam_graph_search."""
+    services = get_services()
+    if services.graph_service is None:
+        return json.dumps({"error": "Knowledge graph service is unavailable"})
+
+    search_query = f"{entity_name}: {query}" if entity_name else query
+    edges = await services.graph_service.client.search(query=search_query, num_results=10)
+
+    return json.dumps(
+        {
+            "results": [
+                {
+                    "fact": getattr(edge, "fact", str(edge)),
+                    "source_name": getattr(edge, "source_node_name", None),
+                    "target_name": getattr(edge, "target_node_name", None),
+                    "relation_type": getattr(edge, "name", None),
+                }
+                for edge in edges
+            ],
+            "count": len(edges),
+        },
+        indent=2,
+    )
+
+
+async def _pam_graph_neighbors(entity_name: str) -> str:
+    """Implementation of pam_graph_neighbors."""
+    services = get_services()
+    if services.graph_service is None:
+        return json.dumps({"error": "Knowledge graph service is unavailable"})
+
+    query = f"relationships of {entity_name}"
+    edges = await services.graph_service.client.search(query=query, num_results=20)
+
+    neighbors: list[dict[str, Any]] = []
+    for edge in edges:
+        src = getattr(edge, "source_node_name", None)
+        tgt = getattr(edge, "target_node_name", None)
+        if src and tgt:
+            neighbor_name = tgt if src.lower() == entity_name.lower() else src
+            neighbors.append({
+                "name": neighbor_name,
+                "relationship": getattr(edge, "name", None),
+                "fact": getattr(edge, "fact", str(edge)),
+                "direction": "outgoing" if src.lower() == entity_name.lower() else "incoming",
+            })
+
+    return json.dumps(
+        {"entity": entity_name, "neighbors": neighbors, "count": len(neighbors)},
+        indent=2,
+    )
+
+
+async def _pam_entity_history(entity_name: str, since: str | None = None) -> str:
+    """Implementation of pam_entity_history."""
+    services = get_services()
+    if services.graph_service is None:
+        return json.dumps({"error": "Knowledge graph service is unavailable"})
+
+    query = f"history of {entity_name}"
+    edges = await services.graph_service.client.search(query=query, num_results=20)
+
+    history = [
+        {
+            "fact": getattr(edge, "fact", str(edge)),
+            "relation_type": getattr(edge, "name", None),
+            "created_at": getattr(edge, "created_at", None),
+        }
+        for edge in edges
+    ]
+
+    if since:
+        history = [h for h in history if h.get("created_at") and h["created_at"] >= since]
+
+    return json.dumps(
+        {"entity": entity_name, "history": history, "count": len(history)},
+        indent=2,
+    )
 
 
 def _register_utility_tools(mcp: FastMCP) -> None:
