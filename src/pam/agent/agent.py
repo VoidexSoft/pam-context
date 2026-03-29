@@ -60,6 +60,7 @@ Rules:
 10. You can combine document search and graph tools in one answer to give comprehensive results."""
 
 MAX_TOOL_ITERATIONS = 5
+MAX_DOC_CHARS = 50_000  # ~12,500 tokens — prevents blowing context window
 
 
 @dataclass
@@ -702,6 +703,12 @@ class RetrievalAgent:
         segments = sorted(doc.segments, key=lambda s: s.position)
         full_content = "\n\n".join(s.content for s in segments)
 
+        # Truncate if too large to prevent context window overflow
+        truncated = False
+        if len(full_content) > MAX_DOC_CHARS:
+            full_content = full_content[:MAX_DOC_CHARS]
+            truncated = True
+
         citation = Citation(
             document_title=doc.title,
             section_path=None,
@@ -710,7 +717,10 @@ class RetrievalAgent:
         )
 
         header = f"Document: {doc.title}\nSource: {doc.source_id}\nSegments: {len(segments)}\n\n"
-        return header + full_content, [citation]
+        result = header + full_content
+        if truncated:
+            result += "\n\n[truncated] Document content was too large. Use search_knowledge for specific sections."
+        return result, [citation]
 
     async def _get_change_history(self, input_: dict) -> tuple[str, list[Citation]]:
         """Query sync_log for recent changes."""
