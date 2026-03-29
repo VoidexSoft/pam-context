@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     chunk_size_tokens: int = 512
     ingest_root: str = ""  # Required base directory for folder ingestion; empty = reject all
 
+    # CLI connectors
+    github_repos: list[dict] = []  # [{"repo":"owner/repo","branch":"main","paths":[],"extensions":[]}]
+    use_cli_connectors: bool = False  # Use gws CLI instead of Google API connectors
+    cli_timeout: int = 30  # Seconds per CLI subprocess call
+
     # App
     log_level: str = "INFO"
     cors_origins: list[str] = ["http://localhost:5173"]
