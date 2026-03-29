@@ -64,27 +64,30 @@ MAX_DOC_CHARS = 50_000  # ~12,500 tokens — prevents blowing context window
 MAX_HISTORY_CHARS = 400_000  # ~100K tokens — leaves room for system prompt + tool results
 
 
+def _content_len(m: dict) -> int:
+    c = m.get("content", "")
+    return len(c) if isinstance(c, str) else 0
+
+
 def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) -> list[dict]:
     """Drop oldest message pairs if total character count exceeds budget.
 
     Always keeps the last message (the user's current question).
-    Drops from the front in pairs (user+assistant) to maintain conversation coherence.
+    Drops from the front two at a time to maintain user/assistant alternation.
     """
     if not messages:
         return messages
 
-    total = sum(len(m.get("content", "") if isinstance(m.get("content"), str) else "") for m in messages)
+    total = sum(_content_len(m) for m in messages)
     if total <= max_chars:
         return messages
 
-    # Keep dropping oldest pairs until under budget (or only 1 message left)
     trimmed = list(messages)
-    while len(trimmed) > 1:
-        total = sum(len(m.get("content", "") if isinstance(m.get("content"), str) else "") for m in trimmed)
-        if total <= max_chars:
-            break
-        # Drop oldest message
-        trimmed.pop(0)
+    while len(trimmed) > 1 and total > max_chars:
+        total -= _content_len(trimmed.pop(0))
+        # Drop a second message if available to keep pairs aligned
+        if len(trimmed) > 1 and total > max_chars:
+            total -= _content_len(trimmed.pop(0))
 
     return trimmed
 
