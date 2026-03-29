@@ -517,5 +517,84 @@ async def _pam_ingest(folder_path: str, source_type: str = "markdown") -> str:
 
 
 def _register_resources(mcp: FastMCP) -> None:
-    """Register MCP resources. Implemented in Task 8."""
-    pass
+    """Register MCP resources for system introspection."""
+
+    @mcp.resource("pam://stats")
+    async def stats_resource() -> str:
+        """System statistics — document count, segment count, graph status."""
+        return await _get_stats()
+
+    @mcp.resource("pam://entities/{entity_type}")
+    async def entities_resource(entity_type: str) -> str:
+        """List entities of a given type from the entity VDB index."""
+        return await _get_entities(entity_type=entity_type)
+
+    @mcp.resource("pam://entities")
+    async def all_entities_resource() -> str:
+        """List all entities from the entity VDB index."""
+        return await _get_entities(entity_type=None)
+
+
+async def _get_stats() -> str:
+    """Implementation of pam://stats resource."""
+    from sqlalchemy import func, select
+
+    from pam.common.config import get_settings
+    from pam.common.models import Document
+
+    services = get_services()
+    settings = get_settings()
+
+    stats: dict[str, Any] = {}
+
+    async with services.session_factory() as session:
+        result = await session.execute(select(func.count(Document.id)))
+        stats["document_count"] = result.scalar() or 0
+
+    try:
+        es_count = await services.es_client.count(index=settings.elasticsearch_index)
+        stats["segment_count"] = es_count.get("count", 0)
+    except Exception:
+        stats["segment_count"] = "unavailable"
+
+    stats["graph_available"] = services.graph_service is not None
+    stats["duckdb_available"] = services.duckdb_service is not None
+
+    return json.dumps(stats, indent=2)
+
+
+async def _get_entities(entity_type: str | None = None) -> str:
+    """Implementation of pam://entities resource."""
+    from pam.common.config import get_settings
+
+    services = get_services()
+    settings = get_settings()
+
+    if services.vdb_store is None:
+        return json.dumps({"entities": [], "error": "Entity VDB not available"})
+
+    body: dict[str, Any] = {"size": 100}
+    if entity_type:
+        body["query"] = {"term": {"type": entity_type}}
+    else:
+        body["query"] = {"match_all": {}}
+
+    try:
+        result = await services.es_client.search(
+            index=settings.entity_index,
+            body=body,
+        )
+        entities = [
+            {
+                "name": hit["_source"].get("name", ""),
+                "type": hit["_source"].get("type", ""),
+                "description": hit["_source"].get("description", ""),
+            }
+            for hit in result["hits"]["hits"]
+        ]
+        return json.dumps(
+            {"entities": entities, "count": result["hits"]["total"]["value"]},
+            indent=2,
+        )
+    except Exception as e:
+        return json.dumps({"entities": [], "error": str(e)})
