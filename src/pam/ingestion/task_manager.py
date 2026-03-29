@@ -38,6 +38,16 @@ logger = structlog.get_logger()
 # Registry of running asyncio tasks
 _running_tasks: dict[uuid.UUID, asyncio.Task] = {}
 
+_ingestion_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """Lazy-init semaphore (must be created inside a running event loop)."""
+    global _ingestion_semaphore
+    if _ingestion_semaphore is None:
+        _ingestion_semaphore = asyncio.Semaphore(settings.max_concurrent_ingestions)
+    return _ingestion_semaphore
+
 
 async def create_task(folder_path: str, session: AsyncSession) -> IngestionTask:
     """Create a pending ingestion task record in the database."""
@@ -77,148 +87,150 @@ async def _run_pipeline(
     Handles the full lifecycle: mark running, count docs, run pipeline(s),
     mark completed, invalidate cache, and error handling.
     """
-    try:
-        async with session_factory() as status_session:
-            # Mark task as running
-            await status_session.execute(
-                update(IngestionTask)
-                .where(IngestionTask.id == task_id)
-                .values(status="running", started_at=datetime.now(UTC))
-            )
-            await status_session.commit()
+    semaphore = _get_semaphore()
+    async with semaphore:
+        try:
+            async with session_factory() as status_session:
+                # Mark task as running
+                await status_session.execute(
+                    update(IngestionTask)
+                    .where(IngestionTask.id == task_id)
+                    .values(status="running", started_at=datetime.now(UTC))
+                )
+                await status_session.commit()
 
-            # Count documents across all connectors
-            total = 0
-            for _source_type, connector in connectors:
-                docs = await connector.list_documents()
-                total += len(docs)
+                # Count documents across all connectors
+                total = 0
+                for _source_type, connector in connectors:
+                    docs = await connector.list_documents()
+                    total += len(docs)
 
-            await status_session.execute(
-                update(IngestionTask).where(IngestionTask.id == task_id).values(total_documents=total)
-            )
-            await status_session.commit()
+                await status_session.execute(
+                    update(IngestionTask).where(IngestionTask.id == task_id).values(total_documents=total)
+                )
+                await status_session.commit()
 
-            if total == 0:
+                if total == 0:
+                    await status_session.execute(
+                        update(IngestionTask)
+                        .where(IngestionTask.id == task_id)
+                        .values(status="completed", completed_at=datetime.now(UTC))
+                    )
+                    await status_session.commit()
+                    return
+
+                # Progress callback — updates task record after each document
+                # Uses SQL-level increments for atomicity (no read-modify-write race)
+                async def on_progress(result: IngestionResult) -> None:
+                    result_entry = [
+                        {
+                            "source_id": result.source_id,
+                            "title": result.title,
+                            "segments_created": result.segments_created,
+                            "skipped": result.skipped,
+                            "error": result.error,
+                            "graph_synced": result.graph_synced,
+                            "graph_entities_extracted": result.graph_entities_extracted,
+                        }
+                    ]
+                    succeeded_inc = 1 if not result.error and not result.skipped else 0
+                    skipped_inc = 1 if result.skipped else 0
+                    failed_inc = 1 if result.error else 0
+
+                    await status_session.execute(
+                        update(IngestionTask)
+                        .where(IngestionTask.id == task_id)
+                        .values(
+                            processed_documents=IngestionTask.processed_documents + 1,
+                            succeeded=IngestionTask.succeeded + succeeded_inc,
+                            skipped=IngestionTask.skipped + skipped_inc,
+                            failed=IngestionTask.failed + failed_inc,
+                            results=IngestionTask.results
+                            + cast(
+                                literal(json_module.dumps(result_entry)),
+                                JSONB,
+                            ),
+                        )
+                    )
+                    await status_session.commit()
+
+                # Run the pipeline for each connector with a separate DB session
+                for source_type, connector in connectors:
+                    async with session_factory() as pipeline_session:
+                        parser = DoclingParser()
+                        es_store = ElasticsearchStore(
+                            es_client,
+                            index_name=settings.elasticsearch_index,
+                            embedding_dims=settings.embedding_dims,
+                        )
+                        pipeline = IngestionPipeline(
+                            connector=connector,
+                            parser=parser,
+                            embedder=embedder,
+                            es_store=es_store,
+                            session=pipeline_session,
+                            source_type=source_type,
+                            progress_callback=on_progress,
+                            graph_service=graph_service,
+                            vdb_store=vdb_store,
+                            skip_graph=skip_graph,
+                        )
+                        await pipeline.ingest_all()
+
+                # Mark completed
                 await status_session.execute(
                     update(IngestionTask)
                     .where(IngestionTask.id == task_id)
                     .values(status="completed", completed_at=datetime.now(UTC))
                 )
                 await status_session.commit()
-                return
 
-            # Progress callback — updates task record after each document
-            # Uses SQL-level increments for atomicity (no read-modify-write race)
-            async def on_progress(result: IngestionResult) -> None:
-                result_entry = [
-                    {
-                        "source_id": result.source_id,
-                        "title": result.title,
-                        "segments_created": result.segments_created,
-                        "skipped": result.skipped,
-                        "error": result.error,
-                        "graph_synced": result.graph_synced,
-                        "graph_entities_extracted": result.graph_entities_extracted,
-                    }
-                ]
-                succeeded_inc = 1 if not result.error and not result.skipped else 0
-                skipped_inc = 1 if result.skipped else 0
-                failed_inc = 1 if result.error else 0
+                # Invalidate search cache after successful ingestion
+                if cache_service:
+                    try:
+                        cleared = await cache_service.invalidate_search()
+                        logger.info("cache_invalidated_after_ingest", keys_cleared=cleared)
+                    except Exception:
+                        logger.warning("cache_invalidate_failed", exc_info=True)
 
-                await status_session.execute(
-                    update(IngestionTask)
-                    .where(IngestionTask.id == task_id)
-                    .values(
-                        processed_documents=IngestionTask.processed_documents + 1,
-                        succeeded=IngestionTask.succeeded + succeeded_inc,
-                        skipped=IngestionTask.skipped + skipped_inc,
-                        failed=IngestionTask.failed + failed_inc,
-                        results=IngestionTask.results
-                        + cast(
-                            literal(json_module.dumps(result_entry)),
-                            JSONB,
-                        ),
+            logger.info("task_completed", task_id=str(task_id))
+
+        except asyncio.CancelledError:
+            logger.warning("task_cancelled", task_id=str(task_id))
+            try:
+                async with session_factory() as err_session:
+                    await err_session.execute(
+                        update(IngestionTask)
+                        .where(IngestionTask.id == task_id)
+                        .values(
+                            status="failed",
+                            error="Task was cancelled",
+                            completed_at=datetime.now(UTC),
+                        )
                     )
-                )
-                await status_session.commit()
+                    await err_session.commit()
+            except Exception:
+                logger.exception("task_cancelled_status_update_error", task_id=str(task_id))
 
-            # Run the pipeline for each connector with a separate DB session
-            for source_type, connector in connectors:
-                async with session_factory() as pipeline_session:
-                    parser = DoclingParser()
-                    es_store = ElasticsearchStore(
-                        es_client,
-                        index_name=settings.elasticsearch_index,
-                        embedding_dims=settings.embedding_dims,
+        except Exception as e:
+            logger.exception("task_failed", task_id=str(task_id))
+            try:
+                async with session_factory() as err_session:
+                    await err_session.execute(
+                        update(IngestionTask)
+                        .where(IngestionTask.id == task_id)
+                        .values(
+                            status="failed",
+                            error=str(e),
+                            completed_at=datetime.now(UTC),
+                        )
                     )
-                    pipeline = IngestionPipeline(
-                        connector=connector,
-                        parser=parser,
-                        embedder=embedder,
-                        es_store=es_store,
-                        session=pipeline_session,
-                        source_type=source_type,
-                        progress_callback=on_progress,
-                        graph_service=graph_service,
-                        vdb_store=vdb_store,
-                        skip_graph=skip_graph,
-                    )
-                    await pipeline.ingest_all()
+                    await err_session.commit()
+            except Exception:
+                logger.exception("task_failed_status_update_error", task_id=str(task_id))
 
-            # Mark completed
-            await status_session.execute(
-                update(IngestionTask)
-                .where(IngestionTask.id == task_id)
-                .values(status="completed", completed_at=datetime.now(UTC))
-            )
-            await status_session.commit()
-
-            # Invalidate search cache after successful ingestion
-            if cache_service:
-                try:
-                    cleared = await cache_service.invalidate_search()
-                    logger.info("cache_invalidated_after_ingest", keys_cleared=cleared)
-                except Exception:
-                    logger.warning("cache_invalidate_failed", exc_info=True)
-
-        logger.info("task_completed", task_id=str(task_id))
-
-    except asyncio.CancelledError:
-        logger.warning("task_cancelled", task_id=str(task_id))
-        try:
-            async with session_factory() as err_session:
-                await err_session.execute(
-                    update(IngestionTask)
-                    .where(IngestionTask.id == task_id)
-                    .values(
-                        status="failed",
-                        error="Task was cancelled",
-                        completed_at=datetime.now(UTC),
-                    )
-                )
-                await err_session.commit()
-        except Exception:
-            logger.exception("task_cancelled_status_update_error", task_id=str(task_id))
-
-    except Exception as e:
-        logger.exception("task_failed", task_id=str(task_id))
-        try:
-            async with session_factory() as err_session:
-                await err_session.execute(
-                    update(IngestionTask)
-                    .where(IngestionTask.id == task_id)
-                    .values(
-                        status="failed",
-                        error=str(e),
-                        completed_at=datetime.now(UTC),
-                    )
-                )
-                await err_session.commit()
-        except Exception:
-            logger.exception("task_failed_status_update_error", task_id=str(task_id))
-
-    finally:
-        _running_tasks.pop(task_id, None)
+        finally:
+            _running_tasks.pop(task_id, None)
 
 
 def spawn_ingestion_task(

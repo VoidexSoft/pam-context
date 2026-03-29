@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     # Ingestion
     chunk_size_tokens: int = 512
     ingest_root: str = ""  # Required base directory for folder ingestion; empty = reject all
+    max_concurrent_ingestions: int = 3  # Max background ingestion tasks
 
     # CLI connectors
     github_repos: list[dict] = []  # [{"repo":"owner/repo","branch":"main","paths":[],"extensions":[]}]
