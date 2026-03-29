@@ -43,6 +43,8 @@ dependencies = [
     "tenacity>=8.0",
     "httpx>=0.27",
     "slowapi>=0.1.9",
+    # MCP Server
+    "mcp[cli]>=1.0",
 ]
 
 [project.optional-dependencies]
