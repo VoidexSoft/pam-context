@@ -10,7 +10,7 @@ import pytest
 from haystack import Document
 
 from pam.retrieval.haystack_search import HaystackSearchService
-from pam.retrieval.types import SearchQuery, SearchResult
+from pam.retrieval.types import SearchBackendError, SearchQuery, SearchResult
 
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
@@ -282,8 +282,8 @@ class TestRunPipelineSync:
         results = service._run_pipeline_sync("q", [0.1], 5, None)
         assert results == []
 
-    def test_pipeline_exception_returns_empty(self):
-        """Issue #30.3: Pipeline errors are caught and return empty results."""
+    def test_pipeline_exception_raises_search_backend_error(self):
+        """Pipeline errors raise SearchBackendError instead of returning empty."""
         mock_pipeline = MagicMock()
         mock_pipeline.run.side_effect = RuntimeError("ES connection lost")
 
@@ -294,10 +294,10 @@ class TestRunPipelineSync:
         )
         service._pipeline = mock_pipeline
 
-        results = service._run_pipeline_sync("q", [0.1], 5, None)
-        assert results == []
+        with pytest.raises(SearchBackendError, match="ES connection lost"):
+            service._run_pipeline_sync("q", [0.1], 5, None)
 
-    def test_pipeline_connection_error_returns_empty(self):
+    def test_pipeline_connection_error_raises_search_backend_error(self):
         mock_pipeline = MagicMock()
         mock_pipeline.run.side_effect = ConnectionError("Connection refused")
 
@@ -308,8 +308,8 @@ class TestRunPipelineSync:
         )
         service._pipeline = mock_pipeline
 
-        results = service._run_pipeline_sync("q", [0.1], 5, None)
-        assert results == []
+        with pytest.raises(SearchBackendError, match="Connection refused"):
+            service._run_pipeline_sync("q", [0.1], 5, None)
 
 
 # ---------------------------------------------------------------------------
