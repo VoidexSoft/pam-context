@@ -39,7 +39,7 @@ export function useAuth() {
             id: payload.sub || "",
             email: payload.email || "",
             name: payload.name || payload.email || "",
-            role: payload.role || "viewer",
+            role: "viewer", // Role is per-project, not in JWT
           });
         }
       } catch {
