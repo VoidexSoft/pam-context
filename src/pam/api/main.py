@@ -8,12 +8,15 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import func, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
+from pam.api.rate_limit import limiter, rate_limit_exceeded_handler
 from pam.api.routes import admin, auth, chat, documents, graph, ingest, search
 from pam.common.cache import CacheService
 from pam.common.config import settings
@@ -202,6 +205,11 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
+
+    # Rate limiting
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     # Routes
     app.include_router(chat.router, prefix="/api", tags=["chat"])

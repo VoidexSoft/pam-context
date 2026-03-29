@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     use_cli_connectors: bool = False  # Use gws CLI instead of Google API connectors
     cli_timeout: int = 30  # Seconds per CLI subprocess call
 
+    # Rate limiting
+    rate_limit_default: str = "100/minute"
+    rate_limit_chat: str = "10/minute"
+    rate_limit_ingest: str = "5/minute"
+    rate_limit_search: str = "30/minute"
+
     # App
     log_level: str = "INFO"
     cors_origins: list[str] = ["http://localhost:5173"]
