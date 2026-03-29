@@ -1,6 +1,23 @@
 """Tests for MCP search tools."""
 
+import json
+import uuid
+from unittest.mock import AsyncMock
+
+import pytest
+
+from pam.mcp import server as mcp_server
 from pam.mcp.server import create_mcp_server
+from pam.mcp.services import PamServices
+from pam.retrieval.types import SearchResult
+
+
+@pytest.fixture(autouse=True)
+def _init_services(mock_services: PamServices):
+    """Initialize MCP services for every test in this module."""
+    mcp_server.initialize(mock_services)
+    yield
+    mcp_server._services = None
 
 
 def test_create_mcp_server():
@@ -8,9 +25,6 @@ def test_create_mcp_server():
     server = create_mcp_server()
     assert server is not None
     assert server.name == "PAM Context"
-
-
-from pam.mcp.services import PamServices
 
 
 def test_pam_services_fields():
@@ -26,3 +40,50 @@ def test_pam_services_fields():
     assert "vdb_store" in fields
     assert "duckdb_service" in fields
     assert "cache_service" in fields
+
+
+@pytest.mark.asyncio
+async def test_pam_search_returns_results(mock_services: PamServices):
+    """pam_search calls search_service and returns JSON results."""
+    segment_id = uuid.uuid4()
+    mock_services.embedder.embed = AsyncMock(return_value=[0.1] * 1536)
+    mock_services.search_service.search = AsyncMock(
+        return_value=[
+            SearchResult(
+                segment_id=segment_id,
+                content="Revenue grew 15% YoY",
+                score=0.95,
+                document_title="Q1 Report",
+                section_path="financials > revenue",
+                source_url="/docs/q1-report.md",
+            ),
+        ]
+    )
+
+    from pam.mcp.server import _pam_search
+
+    result = await _pam_search(query="revenue growth", limit=5, source_type=None)
+    parsed = json.loads(result)
+
+    assert len(parsed) == 1
+    assert parsed[0]["content"] == "Revenue grew 15% YoY"
+    assert parsed[0]["document_title"] == "Q1 Report"
+    mock_services.embedder.embed.assert_awaited_once_with("revenue growth")
+    mock_services.search_service.search.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pam_search_with_source_filter(mock_services: PamServices):
+    """pam_search passes source_type filter to search service."""
+    mock_services.embedder.embed = AsyncMock(return_value=[0.1] * 1536)
+    mock_services.search_service.search = AsyncMock(return_value=[])
+
+    from pam.mcp.server import _pam_search
+
+    result = await _pam_search(query="test", limit=3, source_type="markdown")
+    parsed = json.loads(result)
+
+    assert parsed == []
+    call_kwargs = mock_services.search_service.search.call_args
+    assert call_kwargs.kwargs.get("source_type") == "markdown"
+    assert call_kwargs.kwargs.get("top_k") == 3

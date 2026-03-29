@@ -48,8 +48,52 @@ def create_mcp_server() -> FastMCP:
 
 
 def _register_search_tools(mcp: FastMCP) -> None:
-    """Register search-related MCP tools. Implemented in Task 3-4."""
-    pass
+    """Register search-related MCP tools."""
+
+    @mcp.tool()
+    async def pam_search(
+        query: str,
+        limit: int = 5,
+        source_type: str | None = None,
+    ) -> str:
+        """Search PAM's knowledge base with hybrid BM25 + vector search.
+
+        Returns relevant document segments with source citations, scores, and
+        section paths. Use this for factual lookups, definitions, and document Q&A.
+        """
+        return await _pam_search(query=query, limit=limit, source_type=source_type)
+
+    # pam_smart_search registered in Task 4
+
+
+async def _pam_search(
+    query: str,
+    limit: int = 5,
+    source_type: str | None = None,
+) -> str:
+    """Implementation of pam_search, extracted for direct testing."""
+    services = get_services()
+    embedding = await services.embedder.embed(query)
+    results = await services.search_service.search(
+        query=query,
+        query_embedding=embedding,
+        top_k=limit,
+        source_type=source_type,
+    )
+    return json.dumps(
+        [
+            {
+                "segment_id": str(r.segment_id),
+                "content": r.content,
+                "score": r.score,
+                "document_title": r.document_title,
+                "section_path": r.section_path,
+                "source_url": r.source_url,
+            }
+            for r in results
+        ],
+        indent=2,
+    )
 
 
 def _register_document_tools(mcp: FastMCP) -> None:
