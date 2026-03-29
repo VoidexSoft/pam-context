@@ -28,7 +28,13 @@ from pam.graph.extraction import extract_graph_for_document, rollback_graph_for_
 from pam.graph.service import GraphitiService
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
 from pam.ingestion.stores.postgres_store import PostgresStore
-from pam.ingestion.task_manager import create_task, get_task, spawn_ingestion_task
+from pam.ingestion.task_manager import (
+    create_task,
+    get_task,
+    spawn_github_ingestion_task,
+    spawn_ingestion_task,
+    spawn_sync_task,
+)
 
 logger = structlog.get_logger()
 
@@ -37,6 +43,18 @@ router = APIRouter()
 
 class IngestFolderRequest(BaseModel):
     path: str
+
+
+class IngestGithubRequest(BaseModel):
+    repo: str
+    branch: str = "main"
+    paths: list[str] = []
+    extensions: list[str] = [".md", ".txt"]
+
+
+class IngestSyncRequest(BaseModel):
+    sources: list[str] = ["github", "google_docs", "google_sheets"]
+    skip_graph: bool = False
 
 
 @router.post("/ingest/folder", response_model=TaskCreatedResponse, status_code=202)
@@ -141,6 +159,68 @@ async def list_task_statuses(
         )
 
     return PaginatedResponse(items=items, total=total, cursor=next_cursor)
+
+
+@router.post("/ingest/github", response_model=TaskCreatedResponse, status_code=202)
+async def ingest_github(
+    request: Request,
+    body: IngestGithubRequest,
+    skip_graph: bool = Query(default=False, description="Skip graph extraction"),
+    db: AsyncSession = Depends(get_db),
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    embedder: OpenAIEmbedder = Depends(get_embedder),
+    _admin: User | None = Depends(require_admin),
+):
+    """Start background ingestion of files from a GitHub repo via gh CLI."""
+    repo_config = {
+        "repo": body.repo,
+        "branch": body.branch,
+        "paths": body.paths,
+        "extensions": body.extensions,
+    }
+    task = await create_task(body.repo, db)
+    graph_service = getattr(request.app.state, "graph_service", None)
+    vdb_store = getattr(request.app.state, "vdb_store", None)
+    spawn_github_ingestion_task(
+        task.id,
+        repo_config,
+        es_client,
+        embedder,
+        session_factory=request.app.state.session_factory,
+        cache_service=request.app.state.cache_service,
+        graph_service=graph_service,
+        skip_graph=skip_graph,
+        vdb_store=vdb_store,
+    )
+    return TaskCreatedResponse(task_id=task.id)
+
+
+@router.post("/ingest/sync", response_model=TaskCreatedResponse, status_code=202)
+async def ingest_sync(
+    request: Request,
+    body: IngestSyncRequest,
+    db: AsyncSession = Depends(get_db),
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    embedder: OpenAIEmbedder = Depends(get_embedder),
+    _admin: User | None = Depends(require_admin),
+):
+    """Sync all configured sources (GitHub repos, Google folders)."""
+    task = await create_task("sync", db)
+    graph_service = getattr(request.app.state, "graph_service", None)
+    vdb_store = getattr(request.app.state, "vdb_store", None)
+    spawn_sync_task(
+        task.id,
+        sources=body.sources,
+        github_repos=settings.github_repos,
+        es_client=es_client,
+        embedder=embedder,
+        session_factory=request.app.state.session_factory,
+        cache_service=request.app.state.cache_service,
+        graph_service=graph_service,
+        skip_graph=body.skip_graph,
+        vdb_store=vdb_store,
+    )
+    return TaskCreatedResponse(task_id=task.id)
 
 
 MAX_GRAPH_SYNC_RETRIES = 3
