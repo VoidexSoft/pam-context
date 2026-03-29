@@ -64,12 +64,12 @@ class CliConnector(BaseConnector, ABC):
             try:
                 async with asyncio.timeout(timeout):
                     stdout, stderr = await proc.communicate()
-            except (asyncio.TimeoutError, TimeoutError):
+            except TimeoutError:
                 proc.kill()
                 raise ConnectorError(
                     f"Command timed out after {timeout}s: {' '.join(full_cmd)}",
                     command=full_cmd,
-                )
+                ) from None
 
             stderr_text = stderr.decode(errors="replace").strip()
 
@@ -84,17 +84,16 @@ class CliConnector(BaseConnector, ABC):
 
             # Check rate limit — retry with backoff
             stderr_lower = stderr_text.lower()
-            if any(kw in stderr_lower for kw in _RATE_LIMIT_KEYWORDS):
-                if attempt < _MAX_RETRIES - 1:
-                    delay = _BACKOFF_BASE * (3 ** attempt)  # 5, 15, 45
-                    logger.warning(
-                        "cli_rate_limited",
-                        binary=self.cli_binary,
-                        attempt=attempt + 1,
-                        retry_in=delay,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
+            if any(kw in stderr_lower for kw in _RATE_LIMIT_KEYWORDS) and attempt < _MAX_RETRIES - 1:
+                delay = _BACKOFF_BASE * (3 ** attempt)  # 5, 15, 45
+                logger.warning(
+                    "cli_rate_limited",
+                    binary=self.cli_binary,
+                    attempt=attempt + 1,
+                    retry_in=delay,
+                )
+                await asyncio.sleep(delay)
+                continue
 
             # Check auth error — don't retry
             if any(kw in stderr_lower for kw in _AUTH_KEYWORDS):
@@ -134,12 +133,12 @@ class CliConnector(BaseConnector, ABC):
         try:
             async with asyncio.timeout(timeout):
                 stdout, stderr = await proc.communicate()
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             proc.kill()
             raise ConnectorError(
                 f"Command timed out after {timeout}s: {' '.join(full_cmd)}",
                 command=full_cmd,
-            )
+            ) from None
 
         if proc.returncode != 0:
             stderr_text = stderr.decode(errors="replace").strip()

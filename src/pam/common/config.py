@@ -84,7 +84,9 @@ class Settings(BaseSettings):
     mode_confidence_threshold: float = 0.7  # Below this, fall back to hybrid
     mode_temporal_keywords: str = "when,history,changed,before,after,since,recently,timeline,evolution,over time"
     mode_factual_patterns: str = "what is,define,how many,who is,list the,describe,what does,what are"
-    mode_conceptual_keywords: str = "depends on,related to,connect,impact,affects,why does,relationship,architecture,pattern,interaction"
+    mode_conceptual_keywords: str = (
+        "depends on,related to,connect,impact,affects,why does,relationship,architecture,pattern,interaction"
+    )
     mode_llm_fallback_enabled: bool = True  # Set False to use rules-only (no LLM call)
 
     # Ingestion
