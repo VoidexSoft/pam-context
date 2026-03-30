@@ -41,60 +41,64 @@ PAM Context evolves from a knowledge base with a chat UI into a **universal memo
      │ (stdio/SSE)│                   │ (FastAPI) │
      └─────┬─────┘                   └─────┬─────┘
            │                               │
-     ┌─────▼───────────────────────────────▼────────────────┐
-     │                  PAM Core Services                    │
-     │                                                       │
-     │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-     │  │ Memory      │  │ Knowledge   │  │ Conversation │  │
-     │  │ Service     │  │ Service     │  │ Service      │  │
-     │  └──────┬──────┘  └──────┬──────┘  └──────┬───────┘  │
-     │         │                │                 │          │
-     │  ┌──────▼────────────────▼─────────────────▼───────┐  │
-     │  │         Context Assembly Engine                  │  │
-     │  │         (exposed as a service)                   │  │
-     │  └──────────────────────┬───────────────────────────┘  │
-     │                         │                              │
-     │  ┌──────────────────────▼───────────────────────────┐  │
-     │  │              Supervisor Agent                     │  │
-     │  │         (intent routing & orchestration)          │  │
-     │  └────┬─────────────────┬───────────────────┬───────┘  │
-     │       │                 │                   │          │
-     │  ┌────▼────┐      ┌────▼────┐         ┌────▼────┐    │
-     │  │  Doc    │      │  Graph  │         │  Data   │    │
-     │  │  Agent  │      │  Agent  │         │  Agent  │    │
-     │  │         │      │         │         │         │    │
-     │  │search   │      │graph    │         │query_db │    │
-     │  │get_doc  │      │entities │         │search   │    │
-     │  │smart    │      │history  │         │entities │    │
-     │  └────┬────┘      └────┬────┘         └────┬────┘    │
-     │       │                │                   │          │
-     │  ┌────▼────────────────▼───────────────────▼───────┐  │
-     │  │              Intelligence Layer                  │  │
-     │  │                                                  │  │
-     │  │  ┌──────────────┐  ┌──────────────────────────┐ │  │
-     │  │  │  Semantic    │  │   Fact Extraction        │ │  │
-     │  │  │  Metadata    │  │   Engine                 │ │  │
-     │  │  │  • Glossary  │  │   • Facts → Memory       │ │  │
-     │  │  │  • Aliases   │  │   • Terms → Glossary     │ │  │
-     │  │  │  • Fuzzy     │  │   • Relations → Graph    │ │  │
-     │  │  │    matching  │  │   • Prefs → Memory       │ │  │
-     │  │  └──────────────┘  └──────────────────────────┘ │  │
-     │  │                                                  │  │
-     │  │  ┌──────────────────────────────────────────────┐│  │
-     │  │  │  Terminology Resolution & Query Expansion    ││  │
-     │  │  └──────────────────────────────────────────────┘│  │
-     │  └──────────────────────────────────────────────────┘  │
-     │                                                       │
-     │  ┌───────────────────────────────────────────────────┐ │
-     │  │                 Storage Layer                      │ │
-     │  │  ┌────┐  ┌────┐  ┌───────┐  ┌───────┐  ┌──────┐ │ │
-     │  │  │ PG │  │ ES │  │ Neo4j │  │ Redis │  │DuckDB│ │ │
-     │  │  └────┘  └────┘  └───────┘  └───────┘  └──────┘ │ │
-     │  └───────────────────────────────────────────────────┘ │
-     └───────────────────────────────────────────────────────┘
+     ┌─────▼───────────────────────────────▼────────────────────┐
+     │                                                           │
+     │  ┌───────────────────────────────────────────────────┐    │
+     │  │              Supervisor Agent                      │    │
+     │  │         (intent routing & orchestration)           │    │
+     │  └────┬─────────────────┬───────────────────┬────────┘    │
+     │       │                 │                   │             │
+     │  ┌────▼────┐      ┌────▼────┐         ┌────▼────┐       │
+     │  │  Doc    │      │  Graph  │         │  Data   │       │
+     │  │  Agent  │      │  Agent  │         │  Agent  │       │
+     │  │         │      │         │         │         │       │
+     │  │search   │      │graph    │         │query_db │       │
+     │  │get_doc  │      │entities │         │search   │       │
+     │  │smart    │      │history  │         │entities │       │
+     │  └────┬────┘      └────┬────┘         └────┬────┘       │
+     │       │                │                   │             │
+     │  ┌────▼────────────────▼───────────────────▼──────────┐  │
+     │  │              Intelligence Layer                     │  │
+     │  │                                                     │  │
+     │  │  ┌──────────────┐  ┌─────────────────────────────┐ │  │
+     │  │  │  Semantic    │  │  Terminology Resolution     │ │  │
+     │  │  │  Metadata    │  │  & Query Expansion          │ │  │
+     │  │  │  • Glossary  │  └─────────────────────────────┘ │  │
+     │  │  │  • Aliases   │  ┌─────────────────────────────┐ │  │
+     │  │  │  • Fuzzy     │  │  Fact Extraction Engine     │ │  │
+     │  │  │    matching  │  │  • Facts → Memory           │ │  │
+     │  │  └──────────────┘  │  • Terms → Glossary         │ │  │
+     │  │                    │  • Relations → Graph         │ │  │
+     │  │                    │  • Prefs → Memory            │ │  │
+     │  │                    └─────────────────────────────┘ │  │
+     │  └────────────────────────────────────────────────────┘  │
+     │                              │                           │
+     │  ┌───────────────────────────▼────────────────────────┐  │
+     │  │               Core Services                         │  │
+     │  │                                                     │  │
+     │  │  ┌──────────┐  ┌────────────┐  ┌──────────────┐   │  │
+     │  │  │ Memory   │  │ Knowledge  │  │ Conversation │   │  │
+     │  │  │ Service  │  │ Service    │  │ Service      │   │  │
+     │  │  └──────────┘  └────────────┘  └──────────────┘   │  │
+     │  │                                                     │  │
+     │  │  ┌──────────────────────────────────────────────┐  │  │
+     │  │  │       Context Assembly Engine                 │  │  │
+     │  │  │       (exposed as a service)                  │  │  │
+     │  │  └──────────────────────────────────────────────┘  │  │
+     │  └────────────────────────────────────────────────────┘  │
+     │                              │                           │
+     │  ┌───────────────────────────▼────────────────────────┐  │
+     │  │                 Storage Layer                       │  │
+     │  │  ┌────┐  ┌────┐  ┌───────┐  ┌───────┐  ┌──────┐  │  │
+     │  │  │ PG │  │ ES │  │ Neo4j │  │ Redis │  │DuckDB│  │  │
+     │  │  └────┘  └────┘  └───────┘  └───────┘  └──────┘  │  │
+     │  └────────────────────────────────────────────────────┘  │
+     └──────────────────────────────────────────────────────────┘
 ```
 
-Both MCP and REST are thin access layers over the same core services. No logic duplication.
+**Data flow:** Request enters via MCP/REST → Supervisor classifies intent and routes to specialist agents → Specialists use Intelligence Layer (terminology resolution, query expansion) and Core Services (memory, knowledge, conversations) to retrieve → Context Assembly Engine merges results into a token-budgeted response → Response returns to client.
+
+Both MCP and REST are thin access layers. No logic duplication.
 
 ## Track 1: Integration Layer
 
