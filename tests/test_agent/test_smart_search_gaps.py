@@ -10,7 +10,6 @@ from pam.agent.agent import RetrievalAgent
 from pam.agent.keyword_extractor import QueryKeywords
 from pam.agent.query_classifier import ClassificationResult, RetrievalMode
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -36,7 +35,7 @@ def _build_agent(
     mock_embedder = AsyncMock()
     mock_embedder.embed_texts = AsyncMock(return_value=[[0.0] * 1536, [0.0] * 1536])
 
-    agent = RetrievalAgent(
+    return RetrievalAgent(
         search_service=mock_search,
         embedder=mock_embedder,
         api_key="test-key",
@@ -44,7 +43,6 @@ def _build_agent(
         graph_service=graph_service,
         vdb_store=vdb_store,
     )
-    return agent
 
 
 def _make_search_result(
@@ -85,9 +83,7 @@ class TestEmptyKeywordFallbacks:
     def _mock_classify(self):
         with patch(
             "pam.agent.agent.classify_query_mode",
-            return_value=ClassificationResult(
-                mode=RetrievalMode.HYBRID, confidence=0.5, method="default"
-            ),
+            return_value=ClassificationResult(mode=RetrievalMode.HYBRID, confidence=0.5, method="default"),
         ):
             yield
 
@@ -203,9 +199,7 @@ class TestCitationExtraction:
     def _mock_classify(self):
         with patch(
             "pam.agent.agent.classify_query_mode",
-            return_value=ClassificationResult(
-                mode=RetrievalMode.FACTUAL, confidence=0.9, method="rules"
-            ),
+            return_value=ClassificationResult(mode=RetrievalMode.FACTUAL, confidence=0.9, method="rules"),
         ):
             yield
 
@@ -260,9 +254,7 @@ class TestNullServiceGraceful:
     def _mock_classify(self):
         with patch(
             "pam.agent.agent.classify_query_mode",
-            return_value=ClassificationResult(
-                mode=RetrievalMode.HYBRID, confidence=0.5, method="default"
-            ),
+            return_value=ClassificationResult(mode=RetrievalMode.HYBRID, confidence=0.5, method="default"),
         ):
             yield
 
@@ -313,9 +305,7 @@ class TestLastClassificationStored:
     async def test_last_classification_stored(self):
         agent = _build_agent()
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.ENTITY, confidence=0.85, method="rules"
-        )
+        classification = ClassificationResult(mode=RetrievalMode.ENTITY, confidence=0.85, method="rules")
         with patch(
             "pam.agent.agent.classify_query_mode",
             return_value=classification,

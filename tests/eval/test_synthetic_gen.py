@@ -1,11 +1,12 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "eval"))
 
-from synthetic_gen import generate_qa_pair, build_prompt_for_chunk
+from synthetic_gen import build_prompt_for_chunk, generate_qa_pair
 
 
 def test_build_prompt_for_chunk():
@@ -19,7 +20,15 @@ def test_build_prompt_for_chunk():
 @pytest.mark.asyncio
 async def test_generate_qa_pair():
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text='{"question": "What is DAU?", "expected_answer": "DAU is the count of unique users who performed at least one qualifying action.", "difficulty": "simple"}')]
+    mock_response.content = [
+        MagicMock(
+            text=(
+                '{"question": "What is DAU?", "expected_answer": '
+                '"DAU is the count of unique users who performed at least one qualifying action.", '
+                '"difficulty": "simple"}'
+            )
+        )
+    ]
 
     with patch("synthetic_gen.get_client") as mock_get:
         mock_client = AsyncMock()

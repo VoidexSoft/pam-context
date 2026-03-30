@@ -46,54 +46,58 @@ def mock_task():
 
 class TestIngestGithub:
     async def test_returns_202_with_task_id(self, app, mock_task):
-        with patch("pam.api.routes.ingest.create_task", new_callable=AsyncMock, return_value=mock_task), \
-             patch("pam.api.routes.ingest.spawn_github_ingestion_task") as mock_spawn, \
-             patch("pam.api.routes.ingest.require_admin", return_value=None):
-            async with AsyncClient(
-                transport=ASGITransport(app=app), base_url="http://test"
-            ) as client:
-                resp = await client.post("/ingest/github", json={
-                    "repo": "owner/repo",
-                    "branch": "main",
-                    "paths": ["docs/"],
-                })
+        with (
+            patch("pam.api.routes.ingest.create_task", new_callable=AsyncMock, return_value=mock_task),
+            patch("pam.api.routes.ingest.spawn_github_ingestion_task"),
+            patch("pam.api.routes.ingest.require_admin", return_value=None),
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/ingest/github",
+                    json={
+                        "repo": "owner/repo",
+                        "branch": "main",
+                        "paths": ["docs/"],
+                    },
+                )
             assert resp.status_code == 202
             data = resp.json()
             assert "task_id" in data
 
     async def test_requires_repo_field(self, app):
         with patch("pam.api.routes.ingest.require_admin", return_value=None):
-            async with AsyncClient(
-                transport=ASGITransport(app=app), base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.post("/ingest/github", json={})
             assert resp.status_code == 422
 
 
 class TestIngestSync:
     async def test_returns_202_with_task_id(self, app, mock_task):
-        with patch("pam.api.routes.ingest.create_task", new_callable=AsyncMock, return_value=mock_task), \
-             patch("pam.api.routes.ingest.spawn_sync_task") as mock_spawn, \
-             patch("pam.api.routes.ingest.require_admin", return_value=None), \
-             patch("pam.api.routes.ingest.settings") as mock_settings:
+        with (
+            patch("pam.api.routes.ingest.create_task", new_callable=AsyncMock, return_value=mock_task),
+            patch("pam.api.routes.ingest.spawn_sync_task"),
+            patch("pam.api.routes.ingest.require_admin", return_value=None),
+            patch("pam.api.routes.ingest.settings") as mock_settings,
+        ):
             mock_settings.github_repos = [{"repo": "org/wiki"}]
-            async with AsyncClient(
-                transport=ASGITransport(app=app), base_url="http://test"
-            ) as client:
-                resp = await client.post("/ingest/sync", json={
-                    "sources": ["github"],
-                })
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                resp = await client.post(
+                    "/ingest/sync",
+                    json={
+                        "sources": ["github"],
+                    },
+                )
             assert resp.status_code == 202
 
     async def test_defaults_sources_to_all(self, app, mock_task):
-        with patch("pam.api.routes.ingest.create_task", new_callable=AsyncMock, return_value=mock_task), \
-             patch("pam.api.routes.ingest.spawn_sync_task") as mock_spawn, \
-             patch("pam.api.routes.ingest.require_admin", return_value=None), \
-             patch("pam.api.routes.ingest.settings") as mock_settings:
+        with (
+            patch("pam.api.routes.ingest.create_task", new_callable=AsyncMock, return_value=mock_task),
+            patch("pam.api.routes.ingest.spawn_sync_task") as mock_spawn,
+            patch("pam.api.routes.ingest.require_admin", return_value=None),
+            patch("pam.api.routes.ingest.settings") as mock_settings,
+        ):
             mock_settings.github_repos = []
-            async with AsyncClient(
-                transport=ASGITransport(app=app), base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                 resp = await client.post("/ingest/sync", json={})
             assert resp.status_code == 202
             call_kwargs = mock_spawn.call_args

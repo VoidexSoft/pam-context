@@ -9,7 +9,7 @@ import structlog
 
 if TYPE_CHECKING:
     from elasticsearch import AsyncElasticsearch
-    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from pam.agent.duckdb_service import DuckDBService
     from pam.common.cache import CacheService
@@ -38,10 +38,10 @@ class PamServices:
 def from_app_state(app_state: object) -> PamServices:
     """Extract PamServices from a FastAPI app.state object."""
     return PamServices(
-        search_service=getattr(app_state, "search_service"),
-        embedder=getattr(app_state, "embedder"),
-        session_factory=getattr(app_state, "session_factory"),
-        es_client=getattr(app_state, "es_client"),
+        search_service=app_state.search_service,
+        embedder=app_state.embedder,
+        session_factory=app_state.session_factory,
+        es_client=app_state.es_client,
         graph_service=getattr(app_state, "graph_service", None),
         vdb_store=getattr(app_state, "vdb_store", None),
         duckdb_service=getattr(app_state, "duckdb_service", None),

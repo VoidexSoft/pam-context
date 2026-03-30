@@ -257,9 +257,7 @@ async def sync_graph(
         raise HTTPException(status_code=503, detail="Graph service not available")
 
     pg_store = PostgresStore(db)
-    unsynced = await pg_store.get_unsynced_documents(
-        max_retries=MAX_GRAPH_SYNC_RETRIES, limit=limit
-    )
+    unsynced = await pg_store.get_unsynced_documents(max_retries=MAX_GRAPH_SYNC_RETRIES, limit=limit)
 
     synced: list[dict] = []
     failed: list[dict] = []
@@ -288,11 +286,13 @@ async def sync_graph(
             )
             await db.commit()
 
-            synced.append({
-                "doc_id": str(doc.id),
-                "status": "synced",
-                "entities_added": len(result.entities_extracted),
-            })
+            synced.append(
+                {
+                    "doc_id": str(doc.id),
+                    "status": "synced",
+                    "entities_added": len(result.entities_extracted),
+                }
+            )
 
             logger.info(
                 "sync_graph_document_success",
@@ -317,15 +317,15 @@ async def sync_graph(
             except Exception:
                 logger.error("sync_graph_rollback_failed", doc_id=str(doc.id))
 
-            failed.append({
-                "doc_id": str(doc.id),
-                "error": str(e),
-            })
+            failed.append(
+                {
+                    "doc_id": str(doc.id),
+                    "error": str(e),
+                }
+            )
 
     # Count remaining unsynced documents
-    remaining_docs = await pg_store.get_unsynced_documents(
-        max_retries=MAX_GRAPH_SYNC_RETRIES
-    )
+    remaining_docs = await pg_store.get_unsynced_documents(max_retries=MAX_GRAPH_SYNC_RETRIES)
     remaining = len(remaining_docs)
 
     return {

@@ -1,6 +1,5 @@
 """Tests for document content size limiting in agent tools."""
 
-import uuid
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -26,10 +25,7 @@ def _make_doc(segment_count: int, segment_size: int = 2000) -> Mock:
     doc.title = "Big Document"
     doc.source_id = "big.md"
     doc.source_url = "file:///big.md"
-    doc.segments = [
-        Mock(content="x" * segment_size, position=i)
-        for i in range(segment_count)
-    ]
+    doc.segments = [Mock(content="x" * segment_size, position=i) for i in range(segment_count)]
     return doc
 
 
@@ -44,7 +40,7 @@ async def test_large_document_truncated():
     db.execute = AsyncMock(return_value=result_mock)
 
     agent = _make_agent(db)
-    result_text, citations = await agent._get_document_context({"document_title": "Big Document"})
+    result_text, _citations = await agent._get_document_context({"document_title": "Big Document"})
 
     assert len(result_text) <= MAX_DOC_CHARS + 500  # header + truncation notice
     assert "[truncated]" in result_text
@@ -60,6 +56,6 @@ async def test_small_document_not_truncated():
     db.execute = AsyncMock(return_value=result_mock)
 
     agent = _make_agent(db)
-    result_text, citations = await agent._get_document_context({"document_title": "Small Document"})
+    result_text, _citations = await agent._get_document_context({"document_title": "Small Document"})
 
     assert "[truncated]" not in result_text

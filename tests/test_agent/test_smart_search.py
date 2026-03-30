@@ -32,10 +32,12 @@ class TestSmartSearchToolInAllTools:
 class TestKeywordExtractorParseSuccess:
     async def test_extracts_keywords_from_valid_json(self):
         mock_text_block = MagicMock()
-        mock_text_block.text = json.dumps({
-            "high_level_keywords": ["theme"],
-            "low_level_keywords": ["entity"],
-        })
+        mock_text_block.text = json.dumps(
+            {
+                "high_level_keywords": ["theme"],
+                "low_level_keywords": ["entity"],
+            }
+        )
         mock_response = MagicMock()
         mock_response.content = [mock_text_block]
 

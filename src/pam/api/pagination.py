@@ -2,7 +2,7 @@
 
 import base64
 import json
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel
 
@@ -23,7 +23,7 @@ def decode_cursor(cursor: str) -> dict:
     return json.loads(raw)
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     """Generic paginated response envelope."""
 
     items: list[T]

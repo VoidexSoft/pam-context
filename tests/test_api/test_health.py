@@ -119,7 +119,13 @@ class TestHealthEndpoint:
         assert data["services"]["postgres"] == "up"
         assert data["services"]["redis"] == "down"
 
-    async def test_health_returns_200_when_optional_services_down(self, app, client, mock_api_es_client, mock_api_db_session):
+    async def test_health_returns_200_when_optional_services_down(
+        self,
+        app,
+        client,
+        mock_api_es_client,
+        mock_api_db_session,
+    ):
         """Health returns 200 if only optional services (Redis, Neo4j) are down."""
         # Mock: PG and ES up, Redis and Neo4j down
         app.state.redis_client = None

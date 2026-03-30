@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -29,7 +29,7 @@ async def test_pam_get_document_by_title(mock_services: PamServices):
     mock_doc.title = "Q1 Report"
     mock_doc.source_type = "markdown"
     mock_doc.source_id = "/docs/q1.md"
-    mock_doc.created_at = datetime(2026, 1, 15, tzinfo=timezone.utc)
+    mock_doc.created_at = datetime(2026, 1, 15, tzinfo=UTC)
 
     mock_segment = MagicMock()
     mock_segment.content = "Revenue grew 15%"
@@ -82,8 +82,8 @@ async def test_pam_list_documents(mock_services: PamServices):
     mock_doc.id = uuid.uuid4()
     mock_doc.title = "Q1 Report"
     mock_doc.source_type = "markdown"
-    mock_doc.created_at = datetime(2026, 1, 15, tzinfo=timezone.utc)
-    mock_doc.updated_at = datetime(2026, 1, 15, tzinfo=timezone.utc)
+    mock_doc.created_at = datetime(2026, 1, 15, tzinfo=UTC)
+    mock_doc.updated_at = datetime(2026, 1, 15, tzinfo=UTC)
 
     mock_session = AsyncMock()
     mock_result = MagicMock()

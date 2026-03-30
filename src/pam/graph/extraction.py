@@ -101,11 +101,7 @@ async def extract_graph_for_document(
                 if hasattr(episode, "nodes") and episode.nodes:
                     for node in episode.nodes:
                         node_name = node.name if hasattr(node, "name") else str(node)
-                        labels = (
-                            [la for la in node.labels if la != "Entity"]
-                            if hasattr(node, "labels")
-                            else []
-                        )
+                        labels = [la for la in node.labels if la != "Entity"] if hasattr(node, "labels") else []
                         old_entities[node_name] = {
                             "type": labels[0] if labels else "Unknown",
                         }
@@ -132,9 +128,7 @@ async def extract_graph_for_document(
             name=f"chunk-{seg.id}",
             episode_body=seg.content,
             source=EpisodeType.text,
-            source_description=(
-                f"Document: {document_title} | Source: {source_id} | Chunk: {seg.position}"
-            ),
+            source_description=(f"Document: {document_title} | Source: {source_id} | Chunk: {seg.position}"),
             reference_time=reference_time,
             group_id=group_id,
             entity_types=ENTITY_TYPES,
@@ -150,11 +144,7 @@ async def extract_graph_for_document(
         for node in episode_result.nodes:
             node_name = node.name if hasattr(node, "name") else str(node)
             uuid_to_name[node.uuid] = node_name
-            labels = (
-                [la for la in node.labels if la != "Entity"]
-                if hasattr(node, "labels")
-                else []
-            )
+            labels = [la for la in node.labels if la != "Entity"] if hasattr(node, "labels") else []
             entity_info: dict[str, Any] = {
                 "type": labels[0] if labels else "Unknown",
             }
@@ -163,10 +153,12 @@ async def extract_graph_for_document(
                 entity_info["summary"] = node.summary
             new_entities[node_name] = entity_info
 
-            result.entities_extracted.append({
-                "name": node_name,
-                "type": entity_info["type"],
-            })
+            result.entities_extracted.append(
+                {
+                    "name": node_name,
+                    "type": entity_info["type"],
+                }
+            )
 
         # Accumulate relationship edges across all chunks
         for edge in episode_result.edges:
@@ -224,12 +216,8 @@ async def extract_graph_for_document(
         ]
 
         try:
-            entities_upserted = await vdb_store.upsert_entities(
-                entity_records, embedder, source_id
-            )
-            rels_upserted = await vdb_store.upsert_relationships(
-                rel_records, embedder, source_id
-            )
+            entities_upserted = await vdb_store.upsert_entities(entity_records, embedder, source_id)
+            rels_upserted = await vdb_store.upsert_relationships(rel_records, embedder, source_id)
             result.entities_embedded = entities_upserted
             result.relationships_embedded = rels_upserted
             logger.info(

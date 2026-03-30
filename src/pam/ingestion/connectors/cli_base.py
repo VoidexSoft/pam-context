@@ -36,7 +36,8 @@ class CliConnector(BaseConnector, ABC):
         """Verify the CLI binary is installed and reachable."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.cli_binary, "--version",
+                self.cli_binary,
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -46,7 +47,10 @@ class CliConnector(BaseConnector, ABC):
             return False
 
     async def run_cli(
-        self, args: list[str], *, timeout: int | None = None,
+        self,
+        args: list[str],
+        *,
+        timeout: int | None = None,
     ) -> dict | list:
         """Run CLI command, parse JSON stdout, raise ConnectorError on failure.
 
@@ -85,7 +89,7 @@ class CliConnector(BaseConnector, ABC):
             # Check rate limit — retry with backoff
             stderr_lower = stderr_text.lower()
             if any(kw in stderr_lower for kw in _RATE_LIMIT_KEYWORDS) and attempt < _MAX_RETRIES - 1:
-                delay = _BACKOFF_BASE * (3 ** attempt)  # 5, 15, 45
+                delay = _BACKOFF_BASE * (3**attempt)  # 5, 15, 45
                 logger.warning(
                     "cli_rate_limited",
                     binary=self.cli_binary,
@@ -119,7 +123,10 @@ class CliConnector(BaseConnector, ABC):
         )
 
     async def run_cli_raw(
-        self, args: list[str], *, timeout: int | None = None,
+        self,
+        args: list[str],
+        *,
+        timeout: int | None = None,
     ) -> bytes:
         """Run CLI command, return raw stdout bytes (for file content)."""
         timeout = timeout or settings.cli_timeout

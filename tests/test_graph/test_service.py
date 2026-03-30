@@ -29,9 +29,7 @@ class TestGraphitiServiceCreate:
     @patch("pam.graph.service.Graphiti")
     @patch("pam.graph.service.OpenAIEmbedder")
     @patch("pam.graph.service.AnthropicClient")
-    async def test_create_returns_graphiti_service(
-        self, mock_anthropic_cls, mock_embedder_cls, mock_graphiti_cls
-    ):
+    async def test_create_returns_graphiti_service(self, mock_anthropic_cls, mock_embedder_cls, mock_graphiti_cls):
         mock_graphiti_instance = AsyncMock()
         mock_graphiti_cls.return_value = mock_graphiti_instance
 

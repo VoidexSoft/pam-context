@@ -186,15 +186,11 @@ class EntityRelationshipVDBStore:
 
         # Build embedding texts (LightRAG format: name\ndescription)
         embedding_texts = [f"{e.name}\n{e.description}" for e in entities]
-        content_hashes = [
-            hashlib.sha256(text.encode()).hexdigest() for text in embedding_texts
-        ]
+        content_hashes = [hashlib.sha256(text.encode()).hexdigest() for text in embedding_texts]
         doc_ids = [e.name for e in entities]
 
         # Filter out unchanged entities
-        _, changed_indices = await self._filter_unchanged(
-            self.entity_index, doc_ids, content_hashes
-        )
+        _, changed_indices = await self._filter_unchanged(self.entity_index, doc_ids, content_hashes)
 
         if not changed_indices:
             logger.info(
@@ -235,9 +231,7 @@ class EntityRelationshipVDBStore:
             errors = response.get("errors", False)
             if errors:
                 failed_items = [
-                    item["index"]["error"]
-                    for item in response["items"]
-                    if "error" in item.get("index", {})
+                    item["index"]["error"] for item in response["items"] if "error" in item.get("index", {})
                 ]
                 for error in failed_items:
                     logger.error("vdb_entity_bulk_error", error=error)
@@ -267,22 +261,12 @@ class EntityRelationshipVDBStore:
             return 0
 
         # Build embedding texts (LightRAG format)
-        embedding_texts = [
-            f"{r.keywords}\t{r.src_entity}\n{r.tgt_entity}\n{r.description}"
-            for r in relationships
-        ]
-        content_hashes = [
-            hashlib.sha256(text.encode()).hexdigest() for text in embedding_texts
-        ]
-        doc_ids = [
-            make_relationship_doc_id(r.src_entity, r.rel_type, r.tgt_entity)
-            for r in relationships
-        ]
+        embedding_texts = [f"{r.keywords}\t{r.src_entity}\n{r.tgt_entity}\n{r.description}" for r in relationships]
+        content_hashes = [hashlib.sha256(text.encode()).hexdigest() for text in embedding_texts]
+        doc_ids = [make_relationship_doc_id(r.src_entity, r.rel_type, r.tgt_entity) for r in relationships]
 
         # Filter out unchanged relationships
-        _, changed_indices = await self._filter_unchanged(
-            self.relationship_index, doc_ids, content_hashes
-        )
+        _, changed_indices = await self._filter_unchanged(self.relationship_index, doc_ids, content_hashes)
 
         if not changed_indices:
             logger.info(
@@ -325,9 +309,7 @@ class EntityRelationshipVDBStore:
             errors = response.get("errors", False)
             if errors:
                 failed_items = [
-                    item["index"]["error"]
-                    for item in response["items"]
-                    if "error" in item.get("index", {})
+                    item["index"]["error"] for item in response["items"] if "error" in item.get("index", {})
                 ]
                 for error in failed_items:
                     logger.error("vdb_relationship_bulk_error", error=error)
@@ -419,9 +401,7 @@ class EntityRelationshipVDBStore:
         }
 
         try:
-            response = await self.client.search(
-                index=self.relationship_index, body=body
-            )
+            response = await self.client.search(index=self.relationship_index, body=body)
         except NotFoundError:
             logger.debug(
                 "search_relationships_index_not_found",

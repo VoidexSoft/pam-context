@@ -31,9 +31,7 @@ class GitHubConnector(CliConnector):
         self._tree_cache: dict[str, str] = {}  # source_id -> git SHA
 
     async def list_documents(self) -> list[DocumentInfo]:
-        tree_data = await self.run_cli(
-            ["api", f"/repos/{self.repo}/git/trees/{self.branch}?recursive=1"]
-        )
+        tree_data = await self.run_cli(["api", f"/repos/{self.repo}/git/trees/{self.branch}?recursive=1"])
 
         docs: list[DocumentInfo] = []
         for entry in tree_data.get("tree", []):
@@ -51,11 +49,13 @@ class GitHubConnector(CliConnector):
             source_id = f"{self.repo}:{path}"
             self._tree_cache[source_id] = entry["sha"]
 
-            docs.append(DocumentInfo(
-                source_id=source_id,
-                title=PurePosixPath(path).name,
-                source_url=f"https://github.com/{self.repo}/blob/{self.branch}/{path}",
-            ))
+            docs.append(
+                DocumentInfo(
+                    source_id=source_id,
+                    title=PurePosixPath(path).name,
+                    source_url=f"https://github.com/{self.repo}/blob/{self.branch}/{path}",
+                )
+            )
 
         logger.info("github_list_documents", repo=self.repo, count=len(docs))
         return docs
@@ -64,10 +64,14 @@ class GitHubConnector(CliConnector):
         _, path = source_id.split(":", 1)
         ext = PurePosixPath(path).suffix.lower()
 
-        content = await self.run_cli_raw([
-            "api", f"/repos/{self.repo}/contents/{path}?ref={self.branch}",
-            "-H", "Accept: application/vnd.github.raw+json",
-        ])
+        content = await self.run_cli_raw(
+            [
+                "api",
+                f"/repos/{self.repo}/contents/{path}?ref={self.branch}",
+                "-H",
+                "Accept: application/vnd.github.raw+json",
+            ]
+        )
 
         content_type = "text/markdown" if ext == ".md" else "text/plain"
 

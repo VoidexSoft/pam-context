@@ -239,9 +239,8 @@ class RetrievalAgent:
                     if block.type == "tool_use":
                         tool_call_count += 1
                         result, citations = await self._execute_tool(block.name, block.input)
-                        if block.name in ("search_knowledge", "smart_search"):
-                            if isinstance(result, str):
-                                all_retrieved_context.append(result)
+                        if block.name in ("search_knowledge", "smart_search") and isinstance(result, str):
+                            all_retrieved_context.append(result)
                         all_citations.extend(citations)
                         tool_results.append(
                             {
@@ -471,10 +470,7 @@ class RetrievalAgent:
             keywords = await extract_query_keywords(self.client, query)
         except Exception as exc:
             logger.warning("smart_search_keyword_extraction_failed", error=str(exc))
-            return (
-                f"Keyword extraction failed: {exc}. "
-                "Try search_knowledge or search_knowledge_graph instead."
-            ), []
+            return (f"Keyword extraction failed: {exc}. Try search_knowledge or search_knowledge_graph instead."), []
 
         # Step A2: Classify query mode
         forced_mode_str = input_.get("mode")
@@ -485,12 +481,16 @@ class RetrievalAgent:
             except ValueError:
                 # Invalid mode string from tool input; fall back to auto-classification
                 classification = await classify_query_mode(
-                    query, client=self.client, vdb_store=self.vdb_store,
+                    query,
+                    client=self.client,
+                    vdb_store=self.vdb_store,
                 )
                 mode = classification.mode
         else:
             classification = await classify_query_mode(
-                query, client=self.client, vdb_store=self.vdb_store,
+                query,
+                client=self.client,
+                vdb_store=self.vdb_store,
             )
             mode = classification.mode
 
@@ -581,7 +581,10 @@ class RetrievalAgent:
             rel_vdb_coro = _rel_vdb_search_coro()
 
         es_result, graph_result, entity_vdb_result, rel_vdb_result = await asyncio.gather(
-            es_coro, graph_coro, entity_vdb_coro, rel_vdb_coro,
+            es_coro,
+            graph_coro,
+            entity_vdb_coro,
+            rel_vdb_coro,
             return_exceptions=True,
         )
 
@@ -650,10 +653,7 @@ class RetrievalAgent:
 
         if warnings:
             parts.append("")
-            parts.extend(
-                f"Warning: {w} search was unavailable, showing partial results."
-                for w in warnings
-            )
+            parts.extend(f"Warning: {w} search was unavailable, showing partial results." for w in warnings)
 
         # Store classification for response metadata propagation
         self._last_classification = classification

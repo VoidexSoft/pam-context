@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pam.agent.keyword_extractor import (
-    KEYWORD_EXTRACTION_PROMPT,
     QueryKeywords,
     extract_query_keywords,
 )
@@ -28,9 +27,13 @@ class TestGetDefaults:
     """Verify .get() returns empty list when JSON keys are missing."""
 
     async def test_missing_high_level_key_returns_empty_list(self):
-        client = _mock_client_returning(json.dumps({
-            "low_level_keywords": ["entity"],
-        }))
+        client = _mock_client_returning(
+            json.dumps(
+                {
+                    "low_level_keywords": ["entity"],
+                }
+            )
+        )
 
         result = await extract_query_keywords(client, "test query")
 
@@ -39,9 +42,13 @@ class TestGetDefaults:
         assert result.low_level_keywords == ["entity"]
 
     async def test_missing_low_level_key_returns_empty_list(self):
-        client = _mock_client_returning(json.dumps({
-            "high_level_keywords": ["theme"],
-        }))
+        client = _mock_client_returning(
+            json.dumps(
+                {
+                    "high_level_keywords": ["theme"],
+                }
+            )
+        )
 
         result = await extract_query_keywords(client, "test query")
 
@@ -75,10 +82,14 @@ class TestPromptAndTimeout:
     """Verify prompt formatting and timeout forwarding."""
 
     async def test_prompt_contains_query(self):
-        client = _mock_client_returning(json.dumps({
-            "high_level_keywords": ["a"],
-            "low_level_keywords": ["b"],
-        }))
+        client = _mock_client_returning(
+            json.dumps(
+                {
+                    "high_level_keywords": ["a"],
+                    "low_level_keywords": ["b"],
+                }
+            )
+        )
 
         await extract_query_keywords(client, "What services depend on auth?")
 
@@ -88,10 +99,14 @@ class TestPromptAndTimeout:
         assert "What services depend on auth?" in prompt_text
 
     async def test_timeout_parameter_forwarded(self):
-        client = _mock_client_returning(json.dumps({
-            "high_level_keywords": [],
-            "low_level_keywords": [],
-        }))
+        client = _mock_client_returning(
+            json.dumps(
+                {
+                    "high_level_keywords": [],
+                    "low_level_keywords": [],
+                }
+            )
+        )
 
         await extract_query_keywords(client, "test", timeout=7.5)
 

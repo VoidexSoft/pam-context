@@ -51,6 +51,7 @@ async def _create_services():
 
     if settings.use_haystack_retrieval:
         from pam.retrieval.haystack_search import HaystackSearchService
+
         search_service = HaystackSearchService(
             es_url=settings.elasticsearch_url,
             index_name=settings.elasticsearch_index,
@@ -60,6 +61,7 @@ async def _create_services():
         )
     else:
         from pam.retrieval.hybrid_search import HybridSearchService
+
         search_service = HybridSearchService(
             es_client,
             index_name=settings.elasticsearch_index,
@@ -70,6 +72,7 @@ async def _create_services():
     duckdb_service = None
     if settings.duckdb_data_dir:
         from pam.agent.duckdb_service import DuckDBService
+
         duckdb_service = DuckDBService(
             data_dir=settings.duckdb_data_dir,
             max_rows=settings.duckdb_max_rows,
@@ -79,6 +82,7 @@ async def _create_services():
     graph_service = None
     try:
         from pam.graph.service import GraphitiService
+
         graph_service = await GraphitiService.create(
             neo4j_uri=settings.neo4j_uri,
             neo4j_user=settings.neo4j_user,
@@ -94,6 +98,7 @@ async def _create_services():
     vdb_store = None
     try:
         from pam.ingestion.stores.entity_relationship_store import EntityRelationshipVDBStore
+
         vdb_store = EntityRelationshipVDBStore(
             client=es_client,
             entity_index=settings.entity_index,

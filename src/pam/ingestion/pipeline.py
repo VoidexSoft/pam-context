@@ -185,16 +185,12 @@ class IngestionPipeline:
                     for seg in segments:
                         if seg.metadata.get("graph_episode_uuid"):
                             await self.session.execute(
-                                sa_update(Segment)
-                                .where(Segment.id == seg.id)
-                                .values(metadata_=seg.metadata)
+                                sa_update(Segment).where(Segment.id == seg.id).values(metadata_=seg.metadata)
                             )
                     await self.session.commit()
 
                     # Log graph sync event with diff summary
-                    await pg_store.log_sync(
-                        doc_id, "graph_synced", graph_entities_count, details=diff_summary or {}
-                    )
+                    await pg_store.log_sync(doc_id, "graph_synced", graph_entities_count, details=diff_summary or {})
                     await self.session.commit()
 
                     logger.info(

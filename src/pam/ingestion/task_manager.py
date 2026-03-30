@@ -252,8 +252,15 @@ def spawn_ingestion_task(
     """Spawn a background asyncio task for ingestion."""
     asyncio_task = asyncio.create_task(
         run_ingestion_background(
-            task_id, folder_path, es_client, embedder, session_factory,
-            cache_service, graph_service, skip_graph, vdb_store,
+            task_id,
+            folder_path,
+            es_client,
+            embedder,
+            session_factory,
+            cache_service,
+            graph_service,
+            skip_graph,
+            vdb_store,
         ),
         name=f"ingest-{task_id}",
     )
@@ -275,8 +282,15 @@ async def run_ingestion_background(
     """Background coroutine that runs the ingestion pipeline and updates task state."""
     connector = MarkdownConnector(folder_path)
     await _run_pipeline(
-        task_id, [("markdown", connector)], es_client, embedder, session_factory,
-        cache_service, graph_service, skip_graph, vdb_store,
+        task_id,
+        [("markdown", connector)],
+        es_client,
+        embedder,
+        session_factory,
+        cache_service,
+        graph_service,
+        skip_graph,
+        vdb_store,
     )
 
 
@@ -294,8 +308,15 @@ def spawn_github_ingestion_task(
     """Spawn a background asyncio task for GitHub ingestion."""
     asyncio_task = asyncio.create_task(
         run_github_ingestion_background(
-            task_id, repo_config, es_client, embedder, session_factory,
-            cache_service, graph_service, skip_graph, vdb_store,
+            task_id,
+            repo_config,
+            es_client,
+            embedder,
+            session_factory,
+            cache_service,
+            graph_service,
+            skip_graph,
+            vdb_store,
         ),
         name=f"ingest-github-{task_id}",
     )
@@ -322,8 +343,15 @@ async def run_github_ingestion_background(
         extensions=repo_config.get("extensions", [".md", ".txt"]),
     )
     await _run_pipeline(
-        task_id, [("github", connector)], es_client, embedder, session_factory,
-        cache_service, graph_service, skip_graph, vdb_store,
+        task_id,
+        [("github", connector)],
+        es_client,
+        embedder,
+        session_factory,
+        cache_service,
+        graph_service,
+        skip_graph,
+        vdb_store,
     )
 
 
@@ -342,8 +370,16 @@ def spawn_sync_task(
     """Spawn a background asyncio task for multi-source sync."""
     asyncio_task = asyncio.create_task(
         run_sync_background(
-            task_id, sources, github_repos, es_client, embedder, session_factory,
-            cache_service, graph_service, skip_graph, vdb_store,
+            task_id,
+            sources,
+            github_repos,
+            es_client,
+            embedder,
+            session_factory,
+            cache_service,
+            graph_service,
+            skip_graph,
+            vdb_store,
         ),
         name=f"ingest-sync-{task_id}",
     )
@@ -381,8 +417,15 @@ async def run_sync_background(
     if "google_sheets" in sources:
         connectors.append(("google_sheets", get_google_sheets_connector(settings)))
     await _run_pipeline(
-        task_id, connectors, es_client, embedder, session_factory,
-        cache_service, graph_service, skip_graph, vdb_store,
+        task_id,
+        connectors,
+        es_client,
+        embedder,
+        session_factory,
+        cache_service,
+        graph_service,
+        skip_graph,
+        vdb_store,
     )
 
 

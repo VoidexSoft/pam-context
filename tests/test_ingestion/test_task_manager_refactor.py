@@ -1,7 +1,7 @@
 """Tests for the refactored _run_pipeline helper in task_manager."""
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

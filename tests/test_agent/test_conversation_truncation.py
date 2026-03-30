@@ -1,7 +1,5 @@
 """Tests for conversation history token-based truncation."""
 
-import pytest
-
 from pam.agent.agent import _truncate_history
 
 

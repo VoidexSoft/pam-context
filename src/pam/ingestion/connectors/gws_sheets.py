@@ -30,32 +30,41 @@ class GwsSheetsConnector(CliConnector):
         for folder_id in self.folder_ids:
             query = f'mimeType="{SHEETS_MIME}" and "{folder_id}" in parents'
             params = json.dumps({"q": query, "pageSize": 100})
-            result = await self.run_cli([
-                "drive", "files", "list",
-                "--params", params,
-                "--page-all",
-            ])
+            result = await self.run_cli(
+                [
+                    "drive",
+                    "files",
+                    "list",
+                    "--params",
+                    params,
+                    "--page-all",
+                ]
+            )
             for f in result.get("files", []):
-                modified_at = (
-                    datetime.fromisoformat(f["modifiedTime"])
-                    if f.get("modifiedTime") else None
+                modified_at = datetime.fromisoformat(f["modifiedTime"]) if f.get("modifiedTime") else None
+                docs.append(
+                    DocumentInfo(
+                        source_id=f["id"],
+                        title=f["name"],
+                        source_url=f.get("webViewLink"),
+                        modified_at=modified_at,
+                    )
                 )
-                docs.append(DocumentInfo(
-                    source_id=f["id"],
-                    title=f["name"],
-                    source_url=f.get("webViewLink"),
-                    modified_at=modified_at,
-                ))
 
         logger.info("gws_sheets_list_documents", folder_count=len(self.folder_ids), count=len(docs))
         return docs
 
     async def fetch_document(self, source_id: str) -> RawDocument:
         params = json.dumps({"spreadsheetId": source_id, "includeGridData": True})
-        data = await self.run_cli([
-            "sheets", "spreadsheets", "get",
-            "--params", params,
-        ])
+        data = await self.run_cli(
+            [
+                "sheets",
+                "spreadsheets",
+                "get",
+                "--params",
+                params,
+            ]
+        )
 
         title = data.get("properties", {}).get("title", source_id)
         tabs: dict[str, dict] = {}
@@ -65,15 +74,13 @@ class GwsSheetsConnector(CliConnector):
             rows: list[list[str]] = []
             for grid in sheet.get("data", []):
                 for row_data in grid.get("rowData", []):
-                    cells = [
-                        cell.get("formattedValue", "")
-                        for cell in row_data.get("values", [])
-                    ]
+                    cells = [cell.get("formattedValue", "") for cell in row_data.get("values", [])]
                     rows.append(cells)
 
             # Try to use detect_regions if available, otherwise just store rows
             try:
                 from pam.ingestion.connectors.sheets_region_detector import detect_regions
+
                 regions = detect_regions(rows) if rows else []
                 tabs[tab_name] = {
                     "rows": rows,

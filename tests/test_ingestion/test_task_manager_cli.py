@@ -18,8 +18,7 @@ def mock_session_factory():
     session.__aexit__ = AsyncMock(return_value=False)
     session.execute = AsyncMock()
     session.commit = AsyncMock()
-    factory = MagicMock(return_value=session)
-    return factory
+    return MagicMock(return_value=session)
 
 
 @pytest.fixture
@@ -41,17 +40,19 @@ class TestRunGithubIngestionBackground:
         task_id = uuid.uuid4()
         repo_config = {"repo": "owner/repo", "branch": "main", "paths": ["docs/"], "extensions": [".md"]}
 
-        with patch("pam.ingestion.task_manager.GitHubConnector") as MockGH, \
-             patch("pam.ingestion.task_manager.DoclingParser"), \
-             patch("pam.ingestion.task_manager.ElasticsearchStore"), \
-             patch("pam.ingestion.task_manager.IngestionPipeline") as MockPipeline:
+        with (
+            patch("pam.ingestion.task_manager.GitHubConnector") as mock_gh_cls,
+            patch("pam.ingestion.task_manager.DoclingParser"),
+            patch("pam.ingestion.task_manager.ElasticsearchStore"),
+            patch("pam.ingestion.task_manager.IngestionPipeline") as mock_pipeline_cls,
+        ):
             mock_gh_instance = AsyncMock()
             mock_gh_instance.list_documents = AsyncMock(return_value=[])
-            MockGH.return_value = mock_gh_instance
+            mock_gh_cls.return_value = mock_gh_instance
 
             mock_pipeline = AsyncMock()
             mock_pipeline.ingest_all = AsyncMock(return_value=[])
-            MockPipeline.return_value = mock_pipeline
+            mock_pipeline_cls.return_value = mock_pipeline
 
             await run_github_ingestion_background(
                 task_id=task_id,
@@ -61,29 +62,32 @@ class TestRunGithubIngestionBackground:
                 session_factory=mock_session_factory,
             )
 
-        MockGH.assert_called_once_with(
-            repo="owner/repo", branch="main", paths=["docs/"], extensions=[".md"],
+        mock_gh_cls.assert_called_once_with(
+            repo="owner/repo",
+            branch="main",
+            paths=["docs/"],
+            extensions=[".md"],
         )
 
 
 class TestRunSyncBackground:
-    async def test_iterates_github_sources(
-        self, mock_session_factory, mock_es_client, mock_embedder
-    ):
+    async def test_iterates_github_sources(self, mock_session_factory, mock_es_client, mock_embedder):
         task_id = uuid.uuid4()
         github_repos = [{"repo": "org/wiki", "branch": "main", "paths": [], "extensions": [".md"]}]
 
-        with patch("pam.ingestion.task_manager.GitHubConnector") as MockGH, \
-             patch("pam.ingestion.task_manager.DoclingParser"), \
-             patch("pam.ingestion.task_manager.ElasticsearchStore"), \
-             patch("pam.ingestion.task_manager.IngestionPipeline") as MockPipeline:
+        with (
+            patch("pam.ingestion.task_manager.GitHubConnector") as mock_gh_cls,
+            patch("pam.ingestion.task_manager.DoclingParser"),
+            patch("pam.ingestion.task_manager.ElasticsearchStore"),
+            patch("pam.ingestion.task_manager.IngestionPipeline") as mock_pipeline_cls,
+        ):
             mock_gh_instance = AsyncMock()
             mock_gh_instance.list_documents = AsyncMock(return_value=[])
-            MockGH.return_value = mock_gh_instance
+            mock_gh_cls.return_value = mock_gh_instance
 
             mock_pipeline = AsyncMock()
             mock_pipeline.ingest_all = AsyncMock(return_value=[])
-            MockPipeline.return_value = mock_pipeline
+            mock_pipeline_cls.return_value = mock_pipeline
 
             await run_sync_background(
                 task_id=task_id,
@@ -94,4 +98,4 @@ class TestRunSyncBackground:
                 session_factory=mock_session_factory,
             )
 
-        MockGH.assert_called_once()
+        mock_gh_cls.assert_called_once()

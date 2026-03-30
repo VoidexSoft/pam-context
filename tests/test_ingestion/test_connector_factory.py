@@ -3,8 +3,6 @@
 import os
 from unittest.mock import patch
 
-import pytest
-
 from pam.common.config import Settings
 from pam.ingestion.connectors.factory import (
     get_google_docs_connector,

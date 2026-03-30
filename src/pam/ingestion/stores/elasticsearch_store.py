@@ -99,9 +99,7 @@ class ElasticsearchStore:
             errors = response.get("errors", False)
             if errors:
                 failed_items = [
-                    item["index"]["error"]
-                    for item in response["items"]
-                    if "error" in item.get("index", {})
+                    item["index"]["error"] for item in response["items"] if "error" in item.get("index", {})
                 ]
                 for error in failed_items:
                     logger.error("es_bulk_error", error=error)

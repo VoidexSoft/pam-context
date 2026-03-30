@@ -173,7 +173,10 @@ class TestTruncateListByTokenBudget:
         items = [{"description": long_text}]
         # max_item_tokens=5 means truncate at 5 words
         result, _tokens_used, total = truncate_list_by_token_budget(
-            items, "description", max_tokens=1000, max_item_tokens=5,
+            items,
+            "description",
+            max_tokens=1000,
+            max_item_tokens=5,
         )
         assert len(result) == 1  # Item kept, not dropped
         assert "..." in result[0]["description"]  # Truncated
@@ -205,8 +208,11 @@ class TestTruncateListByTokenBudget:
         # Each item has 20 words (20 tokens) but max_item_tokens=3
         long_text = " ".join(f"w{i}" for i in range(20))
         items = [{"description": long_text}, {"description": long_text}]
-        result, tokens_used, total = truncate_list_by_token_budget(
-            items, "description", max_tokens=100, max_item_tokens=3,
+        result, _tokens_used, total = truncate_list_by_token_budget(
+            items,
+            "description",
+            max_tokens=100,
+            max_item_tokens=3,
         )
         assert len(result) == 2
         assert total == 2
@@ -326,8 +332,13 @@ class TestBuildContextString:
             {"name": "Auth", "description": "handles auth"},
         ]
         result = _build_context_string(
-            entities=entities, relationships=[], chunks=[],
-            graph_text="", total_entities=1, total_relationships=0, total_chunks=0,
+            entities=entities,
+            relationships=[],
+            chunks=[],
+            graph_text="",
+            total_entities=1,
+            total_relationships=0,
+            total_chunks=0,
         )
         assert "## Knowledge Graph Entities" in result
         assert "- **Auth**: handles auth" in result
@@ -339,9 +350,13 @@ class TestBuildContextString:
             {"src_entity": "A", "tgt_entity": "B", "rel_type": "USES", "description": "uses B"},
         ]
         result = _build_context_string(
-            entities=[], relationships=rels, chunks=[],
-            graph_text="Extra graph info here", total_entities=0,
-            total_relationships=1, total_chunks=0,
+            entities=[],
+            relationships=rels,
+            chunks=[],
+            graph_text="Extra graph info here",
+            total_entities=0,
+            total_relationships=1,
+            total_chunks=0,
         )
         assert "## Knowledge Graph Relationships" in result
         assert "**A** -> USES -> **B**: uses B" in result
@@ -352,8 +367,13 @@ class TestBuildContextString:
             {"content": "Some content", "source_label": "Guide > Auth"},
         ]
         result = _build_context_string(
-            entities=[], relationships=[], chunks=chunks,
-            graph_text="", total_entities=0, total_relationships=0, total_chunks=1,
+            entities=[],
+            relationships=[],
+            chunks=chunks,
+            graph_text="",
+            total_entities=0,
+            total_relationships=0,
+            total_chunks=1,
         )
         assert "## Document Chunks" in result
         assert "[Source: Guide > Auth]" in result
@@ -362,23 +382,38 @@ class TestBuildContextString:
     def test_truncation_indicator(self):
         entities = [{"name": "A", "description": "desc"}]
         result = _build_context_string(
-            entities=entities, relationships=[], chunks=[],
-            graph_text="", total_entities=5, total_relationships=0, total_chunks=0,
+            entities=entities,
+            relationships=[],
+            chunks=[],
+            graph_text="",
+            total_entities=5,
+            total_relationships=0,
+            total_chunks=0,
         )
         assert "[+4 more entities not shown]" in result
 
     def test_all_empty_returns_fallback(self):
         result = _build_context_string(
-            entities=[], relationships=[], chunks=[],
-            graph_text="", total_entities=0, total_relationships=0, total_chunks=0,
+            entities=[],
+            relationships=[],
+            chunks=[],
+            graph_text="",
+            total_entities=0,
+            total_relationships=0,
+            total_chunks=0,
         )
         assert result == "No relevant context found in knowledge base"
 
     def test_summary_header_only_mentions_nonempty(self):
         entities = [{"name": "X", "description": "desc"}]
         result = _build_context_string(
-            entities=entities, relationships=[], chunks=[],
-            graph_text="", total_entities=1, total_relationships=0, total_chunks=0,
+            entities=entities,
+            relationships=[],
+            chunks=[],
+            graph_text="",
+            total_entities=1,
+            total_relationships=0,
+            total_chunks=0,
         )
         assert "entities" in result.split("\n")[0]
         assert "relationships" not in result.split("\n")[0]
@@ -387,25 +422,39 @@ class TestBuildContextString:
     def test_relationship_dropped_indicator(self):
         rels = [{"src_entity": "A", "tgt_entity": "B", "rel_type": "REL", "description": "desc"}]
         result = _build_context_string(
-            entities=[], relationships=rels, chunks=[],
-            graph_text="", total_entities=0, total_relationships=5, total_chunks=0,
+            entities=[],
+            relationships=rels,
+            chunks=[],
+            graph_text="",
+            total_entities=0,
+            total_relationships=5,
+            total_chunks=0,
         )
         assert "[+4 more relationships not shown]" in result
 
     def test_chunk_dropped_indicator(self):
         chunks = [{"content": "Some text", "source_label": "Doc"}]
         result = _build_context_string(
-            entities=[], relationships=[], chunks=chunks,
-            graph_text="", total_entities=0, total_relationships=0, total_chunks=3,
+            entities=[],
+            relationships=[],
+            chunks=chunks,
+            graph_text="",
+            total_entities=0,
+            total_relationships=0,
+            total_chunks=3,
         )
         assert "[+2 more chunks not shown]" in result
 
     def test_graph_text_only_no_structured_rels(self):
         # Only graph_text, no structured relationship dicts
         result = _build_context_string(
-            entities=[], relationships=[], chunks=[],
+            entities=[],
+            relationships=[],
+            chunks=[],
             graph_text="Some pre-formatted graph text",
-            total_entities=0, total_relationships=0, total_chunks=0,
+            total_entities=0,
+            total_relationships=0,
+            total_chunks=0,
         )
         assert "## Knowledge Graph Relationships" in result
         assert "Some pre-formatted graph text" in result
@@ -417,8 +466,13 @@ class TestBuildContextString:
         rels = [{"src_entity": "A", "tgt_entity": "B", "rel_type": "R", "description": "rel desc"}]
         chunks = [{"content": "chunk text", "source_label": "Doc"}]
         result = _build_context_string(
-            entities=entities, relationships=rels, chunks=chunks,
-            graph_text="", total_entities=1, total_relationships=1, total_chunks=1,
+            entities=entities,
+            relationships=rels,
+            chunks=chunks,
+            graph_text="",
+            total_entities=1,
+            total_relationships=1,
+            total_chunks=1,
         )
         summary_line = result.split("\n")[0]
         assert "entities" in summary_line
@@ -433,7 +487,10 @@ class TestBuildContextString:
 
 class TestAssembleContext:
     def test_full_pipeline_with_all_categories(
-        self, sample_es_results, sample_entities, sample_relationships,
+        self,
+        sample_es_results,
+        sample_entities,
+        sample_relationships,
     ):
         result = assemble_context(
             es_results=sample_es_results,
@@ -448,7 +505,10 @@ class TestAssembleContext:
 
     def test_budget_constrains_output(self, sample_es_results, sample_entities, sample_relationships):
         small_budget = ContextBudget(
-            entity_tokens=2, relationship_tokens=2, max_total_tokens=10, max_item_tokens=2,
+            entity_tokens=2,
+            relationship_tokens=2,
+            max_total_tokens=10,
+            max_item_tokens=2,
         )
         result = assemble_context(
             es_results=sample_es_results,
@@ -467,7 +527,10 @@ class TestAssembleContext:
 
     def test_empty_inputs_returns_no_context(self):
         result = assemble_context(
-            es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
+            es_results=[],
+            graph_text="",
+            entity_vdb_results=[],
+            rel_vdb_results=[],
         )
         assert result.text == "No relevant context found in knowledge base"
 
@@ -489,7 +552,10 @@ class TestAssembleContext:
         # Large graph_text eats into relationship budget, leaving less for VDB rels
         large_graph_text = " ".join(f"word{i}" for i in range(50))  # 50 tokens
         small_budget = ContextBudget(
-            entity_tokens=100, relationship_tokens=55, max_total_tokens=500, max_item_tokens=100,
+            entity_tokens=100,
+            relationship_tokens=55,
+            max_total_tokens=500,
+            max_item_tokens=100,
         )
         result = assemble_context(
             es_results=[],
@@ -509,8 +575,10 @@ class TestAssembleContext:
             {"name": "Mid", "description": "mid score", "score": 0.5},
         ]
         result = assemble_context(
-            es_results=[], graph_text="",
-            entity_vdb_results=entities, rel_vdb_results=[],
+            es_results=[],
+            graph_text="",
+            entity_vdb_results=entities,
+            rel_vdb_results=[],
         )
         # High score entity should appear before Low in the text
         high_pos = result.text.index("**High**")
@@ -529,8 +597,10 @@ class TestAssembleContext:
             source_id="fallback-source-id",
         )
         result = assemble_context(
-            es_results=[es_result], graph_text="",
-            entity_vdb_results=[], rel_vdb_results=[],
+            es_results=[es_result],
+            graph_text="",
+            entity_vdb_results=[],
+            rel_vdb_results=[],
         )
         assert "[Source: fallback-source-id]" in result.text
 
@@ -544,19 +614,25 @@ class TestAssembleContext:
             source_id="doc-1",
         )
         result = assemble_context(
-            es_results=[es_result], graph_text="",
-            entity_vdb_results=[], rel_vdb_results=[],
+            es_results=[es_result],
+            graph_text="",
+            entity_vdb_results=[],
+            rel_vdb_results=[],
         )
         assert "[Source: My Document > Chapter 3]" in result.text
 
     def test_budget_redistribution_increases_chunks(self, sample_es_results):
         # With no entities/relationships, their full budget redistributes to chunks
         no_graph_budget = ContextBudget(
-            entity_tokens=4000, relationship_tokens=6000, max_total_tokens=12000,
+            entity_tokens=4000,
+            relationship_tokens=6000,
+            max_total_tokens=12000,
         )
         result_with_redistribution = assemble_context(
-            es_results=sample_es_results, graph_text="",
-            entity_vdb_results=[], rel_vdb_results=[],
+            es_results=sample_es_results,
+            graph_text="",
+            entity_vdb_results=[],
+            rel_vdb_results=[],
             budget=no_graph_budget,
         )
         # Chunk budget should get 12000 (all budget redistributed since no entities/rels used)

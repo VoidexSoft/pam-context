@@ -113,9 +113,7 @@ class TestGraphStatusEndpoint:
         _mock_pg_counts(mock_api_db_session, doc_count=8, synced_count=3)
 
         mock_driver = MagicMock()
-        mock_driver.session.return_value.__aenter__ = AsyncMock(
-            side_effect=ConnectionError("Neo4j unreachable")
-        )
+        mock_driver.session.return_value.__aenter__ = AsyncMock(side_effect=ConnectionError("Neo4j unreachable"))
         mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
 
         mock_graphiti_client = MagicMock()
@@ -139,9 +137,7 @@ class TestGraphStatusEndpoint:
 class TestPhase11GraphNullGuards:
     """Phase 11: graph_status unavailable path and null guards on data endpoints."""
 
-    async def test_graph_status_unavailable_returns_pg_counts(
-        self, app, client, mock_api_db_session
-    ):
+    async def test_graph_status_unavailable_returns_pg_counts(self, app, client, mock_api_db_session):
         """graph_service=None → 200 with status=unavailable and PG document counts."""
         _mock_pg_counts(mock_api_db_session, doc_count=10, synced_count=7)
         # app.state.graph_service is already None from conftest

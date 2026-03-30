@@ -19,11 +19,9 @@ from pam.agent.context_assembly import (
     _build_context_string,
     _calculate_chunk_budget,
     assemble_context,
-    count_tokens,
     deduplicate_chunks,
     truncate_list_by_token_budget,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock tiktoken encoder
@@ -73,13 +71,19 @@ def _make_entity(name: str, desc: str, score: float = 0.9) -> dict:
 
 def _make_relationship(src: str, tgt: str, desc: str, score: float = 0.85) -> dict:
     return {
-        "src_entity": src, "tgt_entity": tgt,
-        "rel_type": "RELATED_TO", "description": desc, "score": score,
+        "src_entity": src,
+        "tgt_entity": tgt,
+        "rel_type": "RELATED_TO",
+        "description": desc,
+        "score": score,
     }
 
 
 def _build_agent(
-    es_results=None, graph_text="", entity_results=None, relationship_results=None,
+    es_results=None,
+    graph_text="",
+    entity_results=None,
+    relationship_results=None,
     vdb_store=None,
 ) -> RetrievalAgent:
     mock_search = AsyncMock()
@@ -103,10 +107,12 @@ def _build_agent(
     )
 
     mock_text_block = MagicMock()
-    mock_text_block.text = json.dumps({
-        "high_level_keywords": ["test"],
-        "low_level_keywords": ["query"],
-    })
+    mock_text_block.text = json.dumps(
+        {
+            "high_level_keywords": ["test"],
+            "low_level_keywords": ["query"],
+        }
+    )
     mock_response = MagicMock()
     mock_response.content = [mock_text_block]
     agent.client = AsyncMock()
@@ -125,15 +131,21 @@ class TestBudgetRedistribution:
     def test_full_unused_redistribution(self):
         """All entity+relationship budgets unused → entire max available for chunks."""
         budget = _calculate_chunk_budget(
-            max_total=12000, entity_budget=4000, relationship_budget=6000,
-            entity_tokens_used=0, relationship_tokens_used=0,
+            max_total=12000,
+            entity_budget=4000,
+            relationship_budget=6000,
+            entity_tokens_used=0,
+            relationship_tokens_used=0,
         )
         assert budget == 12000  # base(2000) + unused_e(4000) + unused_r(6000)
 
     def test_partial_entity_unused(self):
         budget = _calculate_chunk_budget(
-            max_total=12000, entity_budget=4000, relationship_budget=6000,
-            entity_tokens_used=1000, relationship_tokens_used=6000,
+            max_total=12000,
+            entity_budget=4000,
+            relationship_budget=6000,
+            entity_tokens_used=1000,
+            relationship_tokens_used=6000,
         )
         # base=2000, unused_e=3000, unused_r=0
         assert budget == 5000
@@ -141,8 +153,11 @@ class TestBudgetRedistribution:
     def test_over_budget_entity_capped(self):
         """If entity uses more than budgeted, unused is zero (not negative)."""
         budget = _calculate_chunk_budget(
-            max_total=12000, entity_budget=4000, relationship_budget=6000,
-            entity_tokens_used=5000, relationship_tokens_used=6000,
+            max_total=12000,
+            entity_budget=4000,
+            relationship_budget=6000,
+            entity_tokens_used=5000,
+            relationship_tokens_used=6000,
         )
         # base=2000, unused_e=max(4000-5000,0)=0, unused_r=0
         assert budget == 2000
@@ -150,8 +165,11 @@ class TestBudgetRedistribution:
     def test_small_max_total(self):
         """When max_total < entity+relationship budgets, base is negative, floor at 0."""
         budget = _calculate_chunk_budget(
-            max_total=3000, entity_budget=4000, relationship_budget=6000,
-            entity_tokens_used=0, relationship_tokens_used=0,
+            max_total=3000,
+            entity_budget=4000,
+            relationship_budget=6000,
+            entity_tokens_used=0,
+            relationship_tokens_used=0,
         )
         # base=3000-4000-6000=-7000, unused=4000+6000=10000 → max(-7000+10000, 0)=3000
         assert budget == 3000
@@ -168,8 +186,11 @@ class TestTruncationEdgeCases:
     def test_single_item_exceeds_budget(self):
         """One item with 10 words, budget=3 → item truncated to fit."""
         items = [{"description": "a b c d e f g h i j"}]
-        result, tokens_used, total = truncate_list_by_token_budget(
-            items, "description", max_tokens=3, max_item_tokens=3,
+        result, _tokens_used, total = truncate_list_by_token_budget(
+            items,
+            "description",
+            max_tokens=3,
+            max_item_tokens=3,
         )
         # Item has 10 tokens, truncated to 3 tokens per item
         # After truncation: "w0 w1 w2..." = 4 tokens (3 words + "...")
@@ -182,7 +203,9 @@ class TestTruncationEdgeCases:
         # Each item: 1 word = 1 token
         items = [{"description": f"word{i}"} for i in range(5)]
         result, tokens_used, total = truncate_list_by_token_budget(
-            items, "description", max_tokens=5,
+            items,
+            "description",
+            max_tokens=5,
         )
         assert len(result) == 5
         assert tokens_used == 5
@@ -191,7 +214,9 @@ class TestTruncationEdgeCases:
     def test_budget_zero_returns_empty(self):
         items = [{"description": "something"}]
         result, tokens_used, total = truncate_list_by_token_budget(
-            items, "description", max_tokens=0,
+            items,
+            "description",
+            max_tokens=0,
         )
         assert result == []
         assert tokens_used == 0
@@ -200,8 +225,10 @@ class TestTruncationEdgeCases:
     def test_missing_text_key_treated_as_empty(self):
         """Items without the text_key have 0 tokens."""
         items = [{"name": "no-desc"}, {"description": "has desc"}]
-        result, tokens_used, total = truncate_list_by_token_budget(
-            items, "description", max_tokens=100,
+        result, _tokens_used, total = truncate_list_by_token_budget(
+            items,
+            "description",
+            max_tokens=100,
         )
         assert len(result) == 2
         assert total == 2
@@ -250,7 +277,10 @@ class TestBuildContextStringEdgeCases:
             entities=[{"name": "E", "description": "d"}],
             relationships=[{"src_entity": "A", "tgt_entity": "B", "rel_type": "R", "description": "d"}],
             chunks=[{"content": "c", "source_label": "src"}],
-            graph_text="", total_entities=1, total_relationships=1, total_chunks=1,
+            graph_text="",
+            total_entities=1,
+            total_relationships=1,
+            total_chunks=1,
         )
         assert "## Knowledge Graph Entities" in result
         assert "## Knowledge Graph Relationships" in result
@@ -260,9 +290,13 @@ class TestBuildContextStringEdgeCases:
     def test_only_graph_text_shows_relationships_section(self):
         """graph_text alone (no VDB relationships) still shows relationship section."""
         result = _build_context_string(
-            entities=[], relationships=[], chunks=[],
+            entities=[],
+            relationships=[],
+            chunks=[],
             graph_text="Graph context from Graphiti",
-            total_entities=0, total_relationships=0, total_chunks=0,
+            total_entities=0,
+            total_relationships=0,
+            total_chunks=0,
         )
         assert "## Knowledge Graph Relationships" in result
         assert "Graph context from Graphiti" in result
@@ -274,7 +308,9 @@ class TestBuildContextStringEdgeCases:
             relationships=[{"src_entity": "A", "tgt_entity": "B", "rel_type": "R", "description": "d"}],
             chunks=[{"content": "c", "source_label": "src"}],
             graph_text="",
-            total_entities=10, total_relationships=5, total_chunks=20,
+            total_entities=10,
+            total_relationships=5,
+            total_chunks=20,
         )
         assert "[+9 more entities not shown]" in result
         assert "[+4 more relationships not shown]" in result
@@ -284,8 +320,12 @@ class TestBuildContextStringEdgeCases:
         """Entity format: - **Name**: description."""
         result = _build_context_string(
             entities=[{"name": "MyService", "description": "Does things"}],
-            relationships=[], chunks=[], graph_text="",
-            total_entities=1, total_relationships=0, total_chunks=0,
+            relationships=[],
+            chunks=[],
+            graph_text="",
+            total_entities=1,
+            total_relationships=0,
+            total_chunks=0,
         )
         assert "- **MyService**: Does things" in result
 
@@ -293,12 +333,19 @@ class TestBuildContextStringEdgeCases:
         """Relationship format: **src** -> REL_TYPE -> **tgt**: description."""
         result = _build_context_string(
             entities=[],
-            relationships=[{
-                "src_entity": "ServiceA", "tgt_entity": "ServiceB",
-                "rel_type": "DEPENDS_ON", "description": "A depends on B",
-            }],
-            chunks=[], graph_text="",
-            total_entities=0, total_relationships=1, total_chunks=0,
+            relationships=[
+                {
+                    "src_entity": "ServiceA",
+                    "tgt_entity": "ServiceB",
+                    "rel_type": "DEPENDS_ON",
+                    "description": "A depends on B",
+                }
+            ],
+            chunks=[],
+            graph_text="",
+            total_entities=0,
+            total_relationships=1,
+            total_chunks=0,
         )
         assert "**ServiceA** -> DEPENDS_ON -> **ServiceB**: A depends on B" in result
 
@@ -318,8 +365,10 @@ class TestAssembleContextEndToEnd:
             _make_entity("Mid", "mid score", score=0.6),
         ]
         result = assemble_context(
-            es_results=[], graph_text="",
-            entity_vdb_results=entities, rel_vdb_results=[],
+            es_results=[],
+            graph_text="",
+            entity_vdb_results=entities,
+            rel_vdb_results=[],
         )
         # High score entity should appear first in output
         high_pos = result.text.index("**High**")
@@ -333,8 +382,10 @@ class TestAssembleContextEndToEnd:
             _make_relationship("C", "D", "high relevance", score=0.95),
         ]
         result = assemble_context(
-            es_results=[], graph_text="",
-            entity_vdb_results=[], rel_vdb_results=rels,
+            es_results=[],
+            graph_text="",
+            entity_vdb_results=[],
+            rel_vdb_results=rels,
         )
         c_pos = result.text.index("**C**")
         a_pos = result.text.index("**A**")
@@ -347,8 +398,10 @@ class TestAssembleContextEndToEnd:
             _make_es_result(segment_id="seg-2", content="Different"),
         ]
         result = assemble_context(
-            es_results=es_results, graph_text="",
-            entity_vdb_results=[], rel_vdb_results=[],
+            es_results=es_results,
+            graph_text="",
+            entity_vdb_results=[],
+            rel_vdb_results=[],
         )
         # Only 2 unique chunks should appear
         assert result.text.count("[Source:") == 2
@@ -360,8 +413,10 @@ class TestAssembleContextEndToEnd:
         # Relationship budget of 12 → effective rel budget = 12 - 10 = 2
         rels = [_make_relationship("A", "B", "a b c d e", score=0.9)]  # 5 tokens
         result = assemble_context(
-            es_results=[], graph_text=graph,
-            entity_vdb_results=[], rel_vdb_results=rels,
+            es_results=[],
+            graph_text=graph,
+            entity_vdb_results=[],
+            rel_vdb_results=rels,
             budget=ContextBudget(entity_tokens=100, relationship_tokens=12, max_total_tokens=200),
         )
         # relationship_tokens_used should include graph_text tokens
@@ -369,14 +424,18 @@ class TestAssembleContextEndToEnd:
 
     def test_empty_everything_returns_fallback(self):
         result = assemble_context(
-            es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
+            es_results=[],
+            graph_text="",
+            entity_vdb_results=[],
+            rel_vdb_results=[],
         )
         assert result.text == "No relevant context found in knowledge base"
         assert result.total_tokens == 0
 
     def test_assembled_context_dataclass_fields(self):
         result = assemble_context(
-            es_results=[_make_es_result()], graph_text="",
+            es_results=[_make_es_result()],
+            graph_text="",
             entity_vdb_results=[_make_entity("X", "desc")],
             rel_vdb_results=[],
         )
@@ -384,14 +443,18 @@ class TestAssembleContextEndToEnd:
         assert result.entity_tokens_used >= 0
         assert result.relationship_tokens_used == 0
         assert result.chunk_tokens_used >= 0
-        assert result.total_tokens == result.entity_tokens_used + result.relationship_tokens_used + result.chunk_tokens_used
+        assert result.total_tokens == (
+            result.entity_tokens_used + result.relationship_tokens_used + result.chunk_tokens_used
+        )
 
     def test_tight_budget_drops_excess_items(self):
         """With very small budget, not all items fit."""
         entities = [_make_entity(f"E{i}", f"description of entity {i}") for i in range(20)]
         result = assemble_context(
-            es_results=[], graph_text="",
-            entity_vdb_results=entities, rel_vdb_results=[],
+            es_results=[],
+            graph_text="",
+            entity_vdb_results=entities,
+            rel_vdb_results=[],
             budget=ContextBudget(entity_tokens=10, relationship_tokens=0, max_total_tokens=20),
         )
         # With budget of 10 tokens, we shouldn't get all 20 entities
@@ -400,8 +463,10 @@ class TestAssembleContextEndToEnd:
     def test_section_path_appended_to_source_label(self):
         es = [_make_es_result(document_title="Guide", section_path="Auth > OAuth")]
         result = assemble_context(
-            es_results=es, graph_text="",
-            entity_vdb_results=[], rel_vdb_results=[],
+            es_results=es,
+            graph_text="",
+            entity_vdb_results=[],
+            rel_vdb_results=[],
         )
         assert "[Source: Guide > Auth > OAuth]" in result.text
 

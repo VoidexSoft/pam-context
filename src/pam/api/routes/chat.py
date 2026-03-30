@@ -57,7 +57,7 @@ class ChatDebugResponse(BaseModel):
 @router.post("/chat/debug", response_model=ChatDebugResponse)
 @limiter.limit(settings.rate_limit_chat)
 async def chat_debug(
-    request: Request,
+    request: Request,  # noqa: ARG001
     body: ChatRequest,
     agent: RetrievalAgent = Depends(get_agent),
     _user: User | None = Depends(get_current_user),
@@ -100,7 +100,7 @@ async def chat_debug(
 @router.post("/chat", response_model=ChatResponse)
 @limiter.limit(settings.rate_limit_chat)
 async def chat(
-    request: Request,
+    request: Request,  # noqa: ARG001
     body: ChatRequest,
     agent: RetrievalAgent = Depends(get_agent),
     _user: User | None = Depends(get_current_user),
@@ -142,7 +142,7 @@ async def chat(
 @router.post("/chat/stream")
 @limiter.limit(settings.rate_limit_chat)
 async def chat_stream(
-    request: Request,
+    request: Request,  # noqa: ARG001
     body: ChatRequest,
     agent: RetrievalAgent = Depends(get_agent),
     _user: User | None = Depends(get_current_user),

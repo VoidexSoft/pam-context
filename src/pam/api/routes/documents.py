@@ -108,11 +108,7 @@ async def get_segment(
     _user: User | None = Depends(get_current_user),
 ):
     """Get segment content and metadata for the source viewer."""
-    result = await db.execute(
-        select(Segment)
-        .options(selectinload(Segment.document))
-        .where(Segment.id == segment_id)
-    )
+    result = await db.execute(select(Segment).options(selectinload(Segment.document)).where(Segment.id == segment_id))
     segment = result.scalar_one_or_none()
     if not segment:
         raise HTTPException(status_code=404, detail="Segment not found")

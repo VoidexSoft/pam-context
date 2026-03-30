@@ -9,7 +9,7 @@ import pytest
 from pam.mcp.services import PamServices
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_services() -> PamServices:
     """Create a PamServices with all dependencies mocked."""
     return PamServices(

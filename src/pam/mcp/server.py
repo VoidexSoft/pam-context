@@ -29,7 +29,7 @@ def get_services() -> PamServices:
 
 def initialize(services: PamServices) -> None:
     """Set the global services instance. Called once at startup."""
-    global _services  # noqa: PLW0603
+    global _services
     _services = services
 
 
@@ -120,22 +120,26 @@ async def _pam_smart_search(
     # Build concurrent tasks
     tasks: dict[str, Any] = {}
     tasks["documents"] = services.search_service.search(
-        query=query, query_embedding=embedding, top_k=5,
+        query=query,
+        query_embedding=embedding,
+        top_k=5,
     )
     if services.graph_service is not None:
         tasks["graph"] = services.graph_service.client.search(query=query, num_results=5)
     if services.vdb_store is not None:
         tasks["entities"] = services.vdb_store.search_entities(
-            query_embedding=embedding, top_k=5,
+            query_embedding=embedding,
+            top_k=5,
         )
         tasks["relationships"] = services.vdb_store.search_relationships(
-            query_embedding=embedding, top_k=5,
+            query_embedding=embedding,
+            top_k=5,
         )
 
     keys = list(tasks.keys())
     results_list = await asyncio.gather(*tasks.values(), return_exceptions=True)
     results_map: dict[str, Any] = {}
-    for key, result in zip(keys, results_list):
+    for key, result in zip(keys, results_list, strict=False):
         if isinstance(result, Exception):
             logger.warning("smart_search_partial_failure", source=key, error=str(result))
             results_map[key] = []
@@ -154,33 +158,36 @@ async def _pam_smart_search(
         for r in results_map.get("documents", [])
     ]
 
-    graph_results = []
-    for edge in results_map.get("graph", []):
-        graph_results.append({
+    graph_results = [
+        {
             "fact": getattr(edge, "fact", str(edge)),
             "source_name": getattr(edge, "source_node_name", None),
             "target_name": getattr(edge, "target_node_name", None),
             "relation_type": getattr(edge, "name", None),
-        })
+        }
+        for edge in results_map.get("graph", [])
+    ]
 
-    entity_results = []
-    for hit in results_map.get("entities", []):
-        entity_results.append({
+    entity_results = [
+        {
             "name": hit.get("name", ""),
             "type": hit.get("entity_type", ""),
             "description": hit.get("description", ""),
             "score": hit.get("score", 0),
-        })
+        }
+        for hit in results_map.get("entities", [])
+    ]
 
-    rel_results = []
-    for hit in results_map.get("relationships", []):
-        rel_results.append({
+    rel_results = [
+        {
             "src_entity": hit.get("src_entity", ""),
             "tgt_entity": hit.get("tgt_entity", ""),
             "rel_type": hit.get("rel_type", ""),
             "keywords": hit.get("keywords", ""),
             "score": hit.get("score", 0),
-        })
+        }
+        for hit in results_map.get("relationships", [])
+    ]
 
     return json.dumps(
         {
@@ -248,11 +255,7 @@ async def _pam_get_document(
         if doc is None:
             return json.dumps({"error": f"Document not found: {document_title or source_id}"})
 
-        seg_stmt = (
-            select(Segment)
-            .where(Segment.document_id == doc.id)
-            .order_by(Segment.position)
-        )
+        seg_stmt = select(Segment).where(Segment.document_id == doc.id).order_by(Segment.position)
         seg_result = await session.execute(seg_stmt)
         segments = seg_result.scalars().all()
 
@@ -393,12 +396,14 @@ async def _pam_graph_neighbors(entity_name: str) -> str:
         tgt = getattr(edge, "target_node_name", None)
         if src and tgt:
             neighbor_name = tgt if src.lower() == entity_name.lower() else src
-            neighbors.append({
-                "name": neighbor_name,
-                "relationship": getattr(edge, "name", None),
-                "fact": getattr(edge, "fact", str(edge)),
-                "direction": "outgoing" if src.lower() == entity_name.lower() else "incoming",
-            })
+            neighbors.append(
+                {
+                    "name": neighbor_name,
+                    "relationship": getattr(edge, "name", None),
+                    "fact": getattr(edge, "fact", str(edge)),
+                    "direction": "outgoing" if src.lower() == entity_name.lower() else "incoming",
+                }
+            )
 
     return json.dumps(
         {"entity": entity_name, "neighbors": neighbors, "count": len(neighbors)},

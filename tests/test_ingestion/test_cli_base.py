@@ -1,13 +1,14 @@
 """Tests for CLI connector base class."""
 
-import asyncio
 import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pam.ingestion.connectors.cli_base import ConnectorError
+from pam.common.config import Settings
+from pam.common.models import DocumentInfo, RawDocument
+from pam.ingestion.connectors.cli_base import CliConnector, ConnectorError
 
 
 class TestConnectorError:
@@ -26,9 +27,6 @@ class TestConnectorError:
     def test_command_defaults_to_none(self):
         err = ConnectorError("fail")
         assert err.command is None
-
-
-from pam.common.config import Settings
 
 
 class TestCliConfigFields:
@@ -74,8 +72,6 @@ class TestCliConfigFields:
 # ---------------------------------------------------------------------------
 # Task 2: CliConnector ABC tests
 # ---------------------------------------------------------------------------
-from pam.ingestion.connectors.cli_base import CliConnector
-from pam.common.models import DocumentInfo, RawDocument
 
 
 class ConcreteCliConnector(CliConnector):
@@ -105,16 +101,17 @@ class TestCheckAvailable:
     async def test_returns_true_when_cli_exists(self):
         connector = ConcreteCliConnector()
         proc = _make_process(returncode=0, stdout=b"testcli version 1.0\n")
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    return_value=proc) as mock_exec:
+        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", return_value=proc) as mock_exec:
             result = await connector.check_available()
         assert result is True
         mock_exec.assert_called_once()
 
     async def test_returns_false_when_cli_missing(self):
         connector = ConcreteCliConnector()
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    side_effect=FileNotFoundError("No such file")):
+        with patch(
+            "pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
+            side_effect=FileNotFoundError("No such file"),
+        ):
             result = await connector.check_available()
         assert result is False
 
@@ -124,41 +121,43 @@ class TestRunCli:
         connector = ConcreteCliConnector()
         payload = {"tree": [{"path": "README.md"}]}
         proc = _make_process(stdout=json.dumps(payload).encode())
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    return_value=proc):
+        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", return_value=proc):
             result = await connector.run_cli(["api", "/repos/owner/repo"])
         assert result == payload
 
     async def test_raises_on_nonzero_exit(self):
         connector = ConcreteCliConnector()
         proc = _make_process(returncode=1, stderr=b"not found")
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    return_value=proc):
-            with pytest.raises(ConnectorError, match="not found"):
-                await connector.run_cli(["api", "/bad"])
+        with (
+            patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", return_value=proc),
+            pytest.raises(ConnectorError, match="not found"),
+        ):
+            await connector.run_cli(["api", "/bad"])
 
     async def test_raises_on_auth_error(self):
         connector = ConcreteCliConnector()
         proc = _make_process(returncode=1, stderr=b"error: auth required")
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    return_value=proc):
-            with pytest.raises(ConnectorError, match="auth"):
-                await connector.run_cli(["api", "/repos"])
+        with (
+            patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", return_value=proc),
+            pytest.raises(ConnectorError, match="auth"),
+        ):
+            await connector.run_cli(["api", "/repos"])
 
     async def test_raises_on_timeout(self):
         connector = ConcreteCliConnector()
 
         async def slow_communicate():
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
         proc = AsyncMock()
         proc.communicate = slow_communicate
         proc.kill = MagicMock()
         proc.returncode = None
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    return_value=proc):
-            with pytest.raises(ConnectorError, match="timed out"):
-                await connector.run_cli(["api", "/slow"], timeout=1)
+        with (
+            patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", return_value=proc),
+            pytest.raises(ConnectorError, match="timed out"),
+        ):
+            await connector.run_cli(["api", "/slow"], timeout=1)
 
     async def test_retries_on_rate_limit(self):
         connector = ConcreteCliConnector()
@@ -174,10 +173,11 @@ class TestRunCli:
                 return rate_limit_proc
             return ok_proc
 
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    side_effect=create_proc):
-            with patch("pam.ingestion.connectors.cli_base.asyncio.sleep", new_callable=AsyncMock):
-                result = await connector.run_cli(["api", "/repos"])
+        with (
+            patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", side_effect=create_proc),
+            patch("pam.ingestion.connectors.cli_base.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await connector.run_cli(["api", "/repos"])
         assert result == {"ok": True}
         assert call_count == 2
 
@@ -187,15 +187,15 @@ class TestRunCliRaw:
         connector = ConcreteCliConnector()
         raw = b"# Hello World\n\nSome markdown content."
         proc = _make_process(stdout=raw)
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    return_value=proc):
+        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", return_value=proc):
             result = await connector.run_cli_raw(["api", "/repos/o/r/contents/f"])
         assert result == raw
 
     async def test_raises_on_nonzero_exit(self):
         connector = ConcreteCliConnector()
         proc = _make_process(returncode=1, stderr=b"404 Not Found")
-        with patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec",
-                    return_value=proc):
-            with pytest.raises(ConnectorError, match="Not Found"):
-                await connector.run_cli_raw(["api", "/bad"])
+        with (
+            patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", return_value=proc),
+            pytest.raises(ConnectorError, match="Not Found"),
+        ):
+            await connector.run_cli_raw(["api", "/bad"])

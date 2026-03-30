@@ -83,9 +83,7 @@ class GoogleDocsConnector(BaseConnector):
         loop = asyncio.get_running_loop()
 
         # Get metadata (including modifiedTime for bi-temporal timestamps)
-        meta_request = service.files().get(
-            fileId=source_id, fields="name, owners, webViewLink, modifiedTime"
-        )
+        meta_request = service.files().get(fileId=source_id, fields="name, owners, webViewLink, modifiedTime")
         file_meta = await loop.run_in_executor(None, meta_request.execute)
 
         # Export as DOCX
@@ -93,9 +91,7 @@ class GoogleDocsConnector(BaseConnector):
         content = await loop.run_in_executor(None, export_request.execute)
 
         owner = file_meta.get("owners", [{}])[0].get("emailAddress") if file_meta.get("owners") else None
-        modified_at = (
-            datetime.fromisoformat(file_meta["modifiedTime"]) if file_meta.get("modifiedTime") else None
-        )
+        modified_at = datetime.fromisoformat(file_meta["modifiedTime"]) if file_meta.get("modifiedTime") else None
         return RawDocument(
             content=content,
             content_type=DOCX_MIME,

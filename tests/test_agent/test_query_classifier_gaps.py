@@ -15,13 +15,11 @@ import pytest
 from pam.agent.query_classifier import (
     ClassificationResult,
     RetrievalMode,
-    _check_entity_mentions,
     _extract_candidate_names,
     _llm_classify,
     _rule_based_classify,
     classify_query_mode,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -34,7 +32,9 @@ def _default_settings() -> SimpleNamespace:
         mode_confidence_threshold=0.7,
         mode_temporal_keywords="when,history,changed,before,after,since,recently,timeline,evolution,over time",
         mode_factual_patterns="what is,define,how many,who is,list the,describe,what does,what are",
-        mode_conceptual_keywords="depends on,related to,connect,impact,affects,why does,relationship,architecture,pattern,interaction",
+        mode_conceptual_keywords=(
+            "depends on,related to,connect,impact,affects,why does,relationship,architecture,pattern,interaction"
+        ),
         mode_llm_fallback_enabled=True,
     )
 
@@ -238,9 +238,7 @@ class TestLlmClassifyEdgeCases:
         """LLM wraps JSON in markdown code fences -> JSON parse fails -> hybrid."""
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(
-            return_value=_mock_llm_response(
-                '```json\n{"mode": "entity", "confidence": 0.9}\n```'
-            )
+            return_value=_mock_llm_response('```json\n{"mode": "entity", "confidence": 0.9}\n```')
         )
         result = await _llm_classify("test query", mock_client)
         assert result.mode == RetrievalMode.HYBRID
@@ -250,9 +248,7 @@ class TestLlmClassifyEdgeCases:
     async def test_missing_confidence_key_uses_default(self):
         """LLM returns JSON without confidence key -> defaults to 0.5."""
         mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(
-            return_value=_mock_llm_response('{"mode": "conceptual"}')
-        )
+        mock_client.messages.create = AsyncMock(return_value=_mock_llm_response('{"mode": "conceptual"}'))
         result = await _llm_classify("test query", mock_client)
         assert result.mode == RetrievalMode.CONCEPTUAL
         assert result.confidence == 0.5
@@ -283,9 +279,7 @@ class TestClassifyQueryModeIntegration:
         mock_store.client.search = AsyncMock(return_value=_mock_es_response(1))
         mock_store.entity_index = "pam_entities"
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             result = await classify_query_mode(
                 "Tell me about Auth Service",
                 client=mock_client,
@@ -306,9 +300,7 @@ class TestClassifyQueryModeIntegration:
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock()
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             # Ambiguous query returns hybrid 0.4 from rules, which is > 0.3 threshold
             result = await classify_query_mode(
                 "Tell me something interesting",
@@ -331,9 +323,7 @@ class TestClassifyQueryModeIntegration:
             return_value=_mock_llm_response('{"mode": "entity", "confidence": 0.5}')
         )
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             result = await classify_query_mode(
                 "Tell me something interesting",
                 client=mock_client,

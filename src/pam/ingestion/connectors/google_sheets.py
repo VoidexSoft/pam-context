@@ -121,9 +121,7 @@ class GoogleSheetsConnector(BaseConnector):
         drive_svc = self._get_drive_service()
         drive_request = drive_svc.files().get(fileId=source_id, fields="modifiedTime")
         drive_meta = await loop.run_in_executor(None, drive_request.execute)
-        modified_at = (
-            datetime.fromisoformat(drive_meta["modifiedTime"]) if drive_meta.get("modifiedTime") else None
-        )
+        modified_at = datetime.fromisoformat(drive_meta["modifiedTime"]) if drive_meta.get("modifiedTime") else None
 
         title = spreadsheet["properties"]["title"]
         tabs_data = {}

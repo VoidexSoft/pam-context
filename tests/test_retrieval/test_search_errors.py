@@ -1,7 +1,8 @@
 """Tests for search error propagation."""
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from pam.retrieval.hybrid_search import HybridSearchService
 from pam.retrieval.types import SearchBackendError

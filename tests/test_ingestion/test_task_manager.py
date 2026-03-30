@@ -72,9 +72,7 @@ class TestRunIngestionBackground:
     @patch("pam.ingestion.task_manager.DoclingParser")
     @patch("pam.ingestion.task_manager.ElasticsearchStore")
     @patch("pam.ingestion.task_manager.IngestionPipeline")
-    async def test_successful_run(
-        self, mock_pipeline_cls, mock_es_cls, mock_parser_cls, mock_connector_cls
-    ):
+    async def test_successful_run(self, mock_pipeline_cls, mock_es_cls, mock_parser_cls, mock_connector_cls):
         task_id = uuid.uuid4()
 
         # Mock sessions

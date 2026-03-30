@@ -21,9 +21,11 @@ def _word_count_encoder():
     enc.decode = lambda tokens: " ".join(tokens)
     return enc
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_es_hit(source: dict, score: float = 0.9) -> dict:
     return {"_source": source, "_score": score}
@@ -37,7 +39,13 @@ def _make_entity_hit(name: str, entity_type: str, description: str, score: float
 
 
 def _make_relationship_hit(
-    src: str, tgt: str, rel_type: str, description: str, keywords: str = "", weight: float = 1.0, score: float = 0.85,
+    src: str,
+    tgt: str,
+    rel_type: str,
+    description: str,
+    keywords: str = "",
+    weight: float = 1.0,
+    score: float = 0.85,
 ) -> dict:
     return _make_es_hit(
         {
@@ -99,10 +107,12 @@ def _mock_agent(
 
     # Mock keyword extraction to skip real API call
     mock_text_block = MagicMock()
-    mock_text_block.text = json.dumps({
-        "high_level_keywords": ["infrastructure", "reliability"],
-        "low_level_keywords": ["deployment", "team"],
-    })
+    mock_text_block.text = json.dumps(
+        {
+            "high_level_keywords": ["infrastructure", "reliability"],
+            "low_level_keywords": ["deployment", "team"],
+        }
+    )
     mock_response = MagicMock()
     mock_response.content = [mock_text_block]
     agent.client = AsyncMock()
@@ -124,9 +134,7 @@ class TestVDBStoreSearchMethods:
                 _make_entity_hit("DeployTeam", "Team", "Manages deployments"),
             ]
         )
-        results = await store.search_entities(
-            query_embedding=[0.1] * 1536, top_k=5
-        )
+        results = await store.search_entities(query_embedding=[0.1] * 1536, top_k=5)
 
         assert len(results) == 2
         assert results[0]["name"] == "AuthService"
@@ -139,15 +147,15 @@ class TestVDBStoreSearchMethods:
         store = _mock_vdb_store(
             relationship_hits=[
                 _make_relationship_hit(
-                    "AuthService", "PaymentModule", "DEPENDS_ON",
+                    "AuthService",
+                    "PaymentModule",
+                    "DEPENDS_ON",
                     "Auth validates tokens for payment",
                     keywords="auth payment dependency",
                 ),
             ]
         )
-        results = await store.search_relationships(
-            query_embedding=[0.2] * 1536, top_k=5
-        )
+        results = await store.search_relationships(query_embedding=[0.2] * 1536, top_k=5)
 
         assert len(results) == 1
         assert results[0]["src_entity"] == "AuthService"
@@ -200,9 +208,7 @@ class TestVDBStoreSearchMethods:
                 _make_entity_hit("DeployTeam", "Team", "Manages deployments"),
             ]
         )
-        results = await store.search_entities(
-            query_embedding=[0.1] * 1536, top_k=5, entity_type="Team"
-        )
+        results = await store.search_entities(query_embedding=[0.1] * 1536, top_k=5, entity_type="Team")
 
         assert len(results) == 1
         # Verify the kNN body included a filter
@@ -239,7 +245,9 @@ class TestSmartSearchVDBIntegration:
         store = _mock_vdb_store(
             relationship_hits=[
                 _make_relationship_hit(
-                    "Infra", "Reliability", "SUPPORTS",
+                    "Infra",
+                    "Reliability",
+                    "SUPPORTS",
                     "Infrastructure supports reliability goals",
                 ),
             ]

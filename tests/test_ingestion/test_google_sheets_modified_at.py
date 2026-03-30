@@ -1,6 +1,5 @@
 """Phase 10: Tests for Google Sheets connector modified_at population."""
 
-import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -73,9 +72,7 @@ class TestFetchDocumentModifiedAt:
     ):
         """Phase 10: modified_at is parsed from Drive API modifiedTime field."""
         mock_sheets_service.get.return_value = _mock_execute(_spreadsheet_response())
-        mock_drive_service.get.return_value = _mock_execute(
-            {"modifiedTime": "2024-08-15T10:30:00.000Z"}
-        )
+        mock_drive_service.get.return_value = _mock_execute({"modifiedTime": "2024-08-15T10:30:00.000Z"})
         connector._sheets_service = mock_sheets_service
         connector._service = mock_drive_service
 
