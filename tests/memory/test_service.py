@@ -131,3 +131,194 @@ async def test_store_memory_with_duplicate_merges(memory_service, mock_store, mo
     assert result is not None
     mock_merge.assert_awaited_once()
     mock_store.index_memory.assert_awaited_once()
+
+
+from datetime import timedelta
+
+
+def test_compute_importance_formula():
+    """compute_importance implements the spec formula correctly."""
+    from pam.memory.service import MemoryService
+
+    now = datetime.now(tz=timezone.utc)
+
+    # Brand new memory with no accesses: recency=1.0, freq=0, weight=0.5
+    score = MemoryService.compute_importance(
+        created_at=now, access_count=0, explicit_weight=0.5,
+    )
+    # 0.5*1.0 + 0.3*0 + 0.2*0.5 = 0.6
+    assert abs(score - 0.6) < 0.01
+
+    # 45-day old memory (half of 90-day max) with 10 accesses, weight=0.8
+    score = MemoryService.compute_importance(
+        created_at=now - timedelta(days=45),
+        access_count=10,
+        explicit_weight=0.8,
+    )
+    # recency=0.5, freq=log(11)/log(101)~0.519, weight=0.8
+    assert 0.5 < score < 0.7
+
+    # Very old memory (>90 days): recency=0
+    score = MemoryService.compute_importance(
+        created_at=now - timedelta(days=100),
+        access_count=0,
+        explicit_weight=0.5,
+    )
+    # 0.5*0 + 0.3*0 + 0.2*0.5 = 0.1
+    assert abs(score - 0.1) < 0.01
+
+
+@pytest.mark.asyncio
+async def test_search_memories(memory_service, mock_store, mock_embedder):
+    """search() embeds query and returns scored memories from ES."""
+    memory_id = uuid.uuid4()
+    mock_store.search.return_value = [
+        {"memory_id": str(memory_id), "score": 0.92, "content": "Revenue is $10M", "type": "fact", "importance": 0.7},
+    ]
+
+    mock_session = AsyncMock()
+    mock_memory = MagicMock()
+    mock_memory.id = memory_id
+    mock_memory.content = "Revenue is $10M"
+    mock_memory.type = "fact"
+    mock_memory.importance = 0.7
+    mock_memory.access_count = 2
+    mock_memory.user_id = None
+    mock_memory.project_id = None
+    mock_memory.source = "manual"
+    mock_memory.metadata_ = {}
+    mock_memory.last_accessed_at = None
+    mock_memory.expires_at = None
+    mock_memory.created_at = datetime.now(tz=timezone.utc)
+    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_memory]
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    results = await memory_service.search(query="revenue target", top_k=5)
+
+    assert len(results) == 1
+    assert results[0].memory.content == "Revenue is $10M"
+    assert results[0].score == 0.92
+    mock_embedder.embed_texts.assert_awaited_once_with(["revenue target"])
+    mock_store.search.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_memory_by_id(memory_service):
+    """get() fetches a single memory by ID."""
+    memory_id = uuid.uuid4()
+    mock_session = AsyncMock()
+    mock_memory = MagicMock()
+    mock_memory.id = memory_id
+    mock_memory.content = "Test fact"
+    mock_memory.type = "fact"
+    mock_memory.importance = 0.5
+    mock_memory.access_count = 0
+    mock_memory.user_id = None
+    mock_memory.project_id = None
+    mock_memory.source = None
+    mock_memory.metadata_ = {}
+    mock_memory.last_accessed_at = None
+    mock_memory.expires_at = None
+    mock_memory.created_at = datetime.now(tz=timezone.utc)
+    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_memory
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    result = await memory_service.get(memory_id)
+    assert result is not None
+    assert result.content == "Test fact"
+
+
+@pytest.mark.asyncio
+async def test_get_memory_not_found(memory_service):
+    """get() returns None when memory doesn't exist."""
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = None
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    result = await memory_service.get(uuid.uuid4())
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_delete_memory(memory_service, mock_store):
+    """delete() removes memory from PG and ES."""
+    memory_id = uuid.uuid4()
+    mock_session = AsyncMock()
+    mock_memory = MagicMock()
+    mock_memory.id = memory_id
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_memory
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.delete = AsyncMock()
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    deleted = await memory_service.delete(memory_id)
+    assert deleted is True
+    mock_session.delete.assert_awaited_once_with(mock_memory)
+    mock_store.delete.assert_awaited_once_with(memory_id)
+
+
+@pytest.mark.asyncio
+async def test_delete_memory_not_found(memory_service, mock_store):
+    """delete() returns False when memory doesn't exist."""
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = None
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    deleted = await memory_service.delete(uuid.uuid4())
+    assert deleted is False
+    mock_store.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_memory(memory_service, mock_store, mock_embedder):
+    """update() modifies content and re-indexes in ES."""
+    memory_id = uuid.uuid4()
+    mock_session = AsyncMock()
+    mock_memory = MagicMock()
+    mock_memory.id = memory_id
+    mock_memory.content = "Old fact"
+    mock_memory.type = "fact"
+    mock_memory.importance = 0.5
+    mock_memory.access_count = 0
+    mock_memory.user_id = None
+    mock_memory.project_id = None
+    mock_memory.source = None
+    mock_memory.metadata_ = {}
+    mock_memory.last_accessed_at = None
+    mock_memory.expires_at = None
+    mock_memory.created_at = datetime.now(tz=timezone.utc)
+    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_memory
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    result = await memory_service.update(
+        memory_id=memory_id,
+        content="Updated fact",
+        importance=0.8,
+    )
+    assert result is not None
+    mock_embedder.embed_texts.assert_awaited_once_with(["Updated fact"])
+    mock_store.index_memory.assert_awaited_once()

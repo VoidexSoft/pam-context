@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from pam.common.models import Memory, MemoryResponse
+from pam.common.models import Memory, MemoryResponse, MemorySearchResult
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -179,6 +179,207 @@ class MemoryService:
 
             logger.info("memory_merged", memory_id=str(existing_id))
             return _memory_to_response(existing)
+
+    @staticmethod
+    def compute_importance(
+        created_at: datetime,
+        access_count: int,
+        explicit_weight: float,
+        max_age_days: float = 90.0,
+    ) -> float:
+        """Compute importance score per spec formula.
+
+        importance = 0.5 * recency + 0.3 * access_frequency + 0.2 * explicit_weight
+
+        recency: 1.0 for just-created, decays to 0.0 at max_age_days.
+        access_frequency: normalized log of access_count (log(1+count)/log(1+100)).
+        explicit_weight: the user-provided importance value (0-1).
+        """
+        import math
+
+        age_seconds = (datetime.now(tz=timezone.utc) - created_at).total_seconds()
+        age_days = max(age_seconds / 86400, 0)
+        recency = max(1.0 - (age_days / max_age_days), 0.0)
+
+        access_freq = math.log(1 + access_count) / math.log(1 + 100)
+        access_freq = min(access_freq, 1.0)
+
+        score = 0.5 * recency + 0.3 * access_freq + 0.2 * explicit_weight
+        return round(min(max(score, 0.0), 1.0), 4)
+
+    async def search(
+        self,
+        query: str,
+        user_id: uuid_mod.UUID | None = None,
+        project_id: uuid_mod.UUID | None = None,
+        type_filter: str | None = None,
+        top_k: int = 10,
+    ) -> list[MemorySearchResult]:
+        """Search memories by semantic similarity."""
+        embeddings = await self._embedder.embed_texts([query])
+        query_embedding = embeddings[0]
+
+        # kNN search in ES
+        hits = await self._store.search(
+            query_embedding=query_embedding,
+            user_id=user_id,
+            project_id=project_id,
+            type_filter=type_filter,
+            top_k=top_k,
+        )
+
+        if not hits:
+            return []
+
+        # Fetch full memory objects from PG
+        memory_ids = [uuid_mod.UUID(h["memory_id"]) for h in hits]
+        score_map = {h["memory_id"]: h["score"] for h in hits}
+
+        from sqlalchemy import select
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(Memory).where(Memory.id.in_(memory_ids))
+            )
+            memories = result.scalars().all()
+
+            # Update access counts and recompute importance
+            for mem in memories:
+                mem.access_count = (mem.access_count or 0) + 1
+                mem.last_accessed_at = datetime.now(tz=timezone.utc)
+                mem.importance = self.compute_importance(
+                    created_at=mem.created_at,
+                    access_count=mem.access_count,
+                    explicit_weight=mem.importance,
+                )
+            await session.flush()
+            await session.commit()
+
+        # Build scored results, ordered by ES score
+        memory_map = {str(m.id): m for m in memories}
+        results = []
+        for hit in hits:
+            mem = memory_map.get(hit["memory_id"])
+            if mem:
+                results.append(
+                    MemorySearchResult(
+                        memory=_memory_to_response(mem),
+                        score=score_map[hit["memory_id"]],
+                    )
+                )
+
+        return results
+
+    async def get(self, memory_id: uuid_mod.UUID) -> MemoryResponse | None:
+        """Fetch a single memory by ID."""
+        from sqlalchemy import select
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(Memory).where(Memory.id == memory_id)
+            )
+            memory = result.scalars().first()
+            if memory is None:
+                return None
+            return _memory_to_response(memory)
+
+    async def list_by_user(
+        self,
+        user_id: uuid_mod.UUID,
+        project_id: uuid_mod.UUID | None = None,
+        type_filter: str | None = None,
+        limit: int = 50,
+    ) -> list[MemoryResponse]:
+        """List memories for a user, optionally filtered by project/type."""
+        from sqlalchemy import select
+
+        async with self._session_factory() as session:
+            stmt = (
+                select(Memory)
+                .where(Memory.user_id == user_id)
+                .order_by(Memory.updated_at.desc())
+                .limit(limit)
+            )
+            if project_id:
+                stmt = stmt.where(Memory.project_id == project_id)
+            if type_filter:
+                stmt = stmt.where(Memory.type == type_filter)
+
+            result = await session.execute(stmt)
+            memories = result.scalars().all()
+            return [_memory_to_response(m) for m in memories]
+
+    async def update(
+        self,
+        memory_id: uuid_mod.UUID,
+        content: str | None = None,
+        metadata: dict | None = None,
+        importance: float | None = None,
+        expires_at: datetime | None = None,
+    ) -> MemoryResponse | None:
+        """Update a memory. Re-embeds and re-indexes if content changes."""
+        from sqlalchemy import select
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(Memory).where(Memory.id == memory_id)
+            )
+            memory = result.scalars().first()
+            if memory is None:
+                return None
+
+            content_changed = False
+            if content is not None and content != memory.content:
+                memory.content = content
+                content_changed = True
+            if metadata is not None:
+                memory.metadata_ = metadata
+            if importance is not None:
+                memory.importance = importance
+            if expires_at is not None:
+                memory.expires_at = expires_at
+
+            memory.updated_at = datetime.now(tz=timezone.utc)
+            await session.flush()
+            await session.commit()
+
+            # Re-embed and re-index if content changed
+            if content_changed:
+                embeddings = await self._embedder.embed_texts([memory.content])
+                await self._store.index_memory(
+                    memory_id=memory_id,
+                    content=memory.content,
+                    embedding=embeddings[0],
+                    user_id=memory.user_id,
+                    project_id=memory.project_id,
+                    memory_type=memory.type,
+                    importance=memory.importance,
+                    source=memory.source,
+                )
+            elif importance is not None:
+                await self._store.update_importance(memory_id, importance)
+
+            return _memory_to_response(memory)
+
+    async def delete(self, memory_id: uuid_mod.UUID) -> bool:
+        """Delete a memory from PG and ES. Returns True if found and deleted."""
+        from sqlalchemy import select
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(Memory).where(Memory.id == memory_id)
+            )
+            memory = result.scalars().first()
+            if memory is None:
+                return False
+
+            await session.delete(memory)
+            await session.flush()
+            await session.commit()
+
+        await self._store.delete(memory_id)
+        logger.info("memory_deleted", memory_id=str(memory_id))
+        return True
 
     async def _merge_contents(self, old_content: str, new_content: str) -> str:
         """Use LLM to merge overlapping memory contents."""
