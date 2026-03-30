@@ -26,7 +26,11 @@ PAM Context evolves from a knowledge base with a chat UI into a **universal memo
 | Context-as-a-Service | Internal only (agent context assembly) | Public API returning token-budgeted context blocks |
 | Semantic metadata layer | Raw documents only | Curated glossary with alias resolution (Finch-style) |
 | Fact extraction | None | Auto-extraction from documents + conversations |
-| Multi-agent routing | Single agent, 8 tools | Supervisor + specialist agents (Document, Graph, Data) |
+| Multi-agent routing | Single agent, 8 tools | Supervisor + pluggable specialist agent modules |
+| Data Agent toolset | Single `query_database` tool | Progressive context building: Column Finder, Value Finder, Table Rules, Execute Query (Finch-style) |
+| Query-time authorization | API-level auth only | Security Service checks per table/column/metric permissions |
+| LLM Gateway | Direct Anthropic/OpenAI calls | Abstraction layer for model flexibility + cost tracking |
+| Output/Export | None | Format results + export to Google Sheets or other outputs |
 
 ## Architecture
 
@@ -51,21 +55,30 @@ PAM Context evolves from a knowledge base with a chat UI into a **universal memo
            │                                │  └────────────────────────┘
      ┌─────▼────────────────────────────────▼───────────────────────┐
      │                                                              │
-     │  ┌───────────────────────────────────────────────────────┐   │
+     │  ┌────────────────┐  ┌───────────────────────────────────┐   │
+     │  │ LLM Gateway    │  │ Security Service                  │   │
+     │  │ model routing, │  │ query-time auth per               │   │
+     │  │ cost tracking  │  │ table/column/metric               │   │
+     │  └───────┬────────┘  └──────────────┬────────────────────┘   │
+     │          │                          │                        │
+     │  ┌───────▼──────────────────────────▼────────────────────┐   │
      │  │              Supervisor Agent                         │   │
      │  │         (intent routing & orchestration)              │   │
-     │  └────┬─────────────────┬───────────────────┬────────────┘   │
-     │       │                 │                   │                │
-     │  ┌────▼────┐       ┌────▼────┐         ┌────▼─────────┐      │
-     │  │  Doc    │       │  Graph  │         │  Data        │      │
-     │  │  Agent  │       │  Agent  │         │  Agent       │      │
-     │  │         │       │         │         │              │      │
-     │  │search   │       │graph    │         │query_db      │      │
-     │  │get_doc  │       │entities │         │query_ext_db ─┼────────── live query
-     │  │smart    │       │history  │         │query_ext_api │      │
-     │  └────┬────┘       └────┬────┘         └────┬─────────┘      │
-     │       │                 │                   │                │
-     │  ┌────▼─────────────────▼───────────────────▼──────────┐     │
+     │  └──┬─────────┬─────────┬─────────┬─────────┬───────────┘   │
+     │     │         │         │         │         │               │
+     │  ┌──▼───┐ ┌───▼──┐ ┌───▼────┐ ┌──▼─────┐ ┌▼────────┐     │
+     │  │ Doc  │ │Graph │ │ Data   │ │Insight │ │ Report  │ ... │
+     │  │Agent │ │Agent │ │ Agent  │ │ Agent  │ │ Agent   │     │
+     │  │      │ │      │ │        │ │        │ │         │     │
+     │  │search│ │graph │ │col_find│ │run_var │ │run_tpl  │     │
+     │  │getdoc│ │entits│ │val_find│ │compare │ │export   │     │
+     │  │smart │ │histor│ │tbl_rule│ │anomaly │ │summary  │     │
+     │  │      │ │      │ │exec_sql│ │        │ │         │     │
+     │  │BUILTIN │BUILTIN│ │ext_db──┼────────────── live query    │
+     │  │      │ │      │ │ext_api │ │OPTIONAL│ │OPTIONAL │     │
+     │  └──┬───┘ └──┬───┘ └──┬─────┘ └──┬─────┘ └┬────────┘     │
+     │     │        │        │          │        │               │
+     │  ┌──▼────────▼────────▼──────────▼────────▼──────────────┐     │
      │  │              Intelligence Layer                     │     │
      │  │                                                     │     │
      │  │  ┌──────────────┐  ┌─────────────────────────────┐  │     │
@@ -105,9 +118,11 @@ PAM Context evolves from a knowledge base with a chat UI into a **universal memo
 ```
 
 **Data flow:**
-- **LLM clients** enter via MCP/REST → Supervisor routes to specialist agents → results merge through Context Assembly
+- **LLM clients** enter via MCP/REST → LLM Gateway routes model calls → Security Service checks permissions → Supervisor classifies intent and routes to the appropriate agent module → results merge through Context Assembly
+- **Agent modules** are pluggable — built-in (Doc, Graph, Data) ship with PAM, optional (Insight, Report) are enabled per-project, custom agents can be registered via plugin pattern
+- **Data Agent** builds context progressively (Column Finder → Value Finder → Table Rules → Execute Query) before generating SQL — Finch-style
 - **Ingest connectors** pull from external DBs/APIs/S3 → data stored as documents in PAM
-- **Live queries** — Data Agent connects to external databases at query time via `query_ext_db`/`query_ext_api`
+- **Live queries** — Data Agent connects to external databases at query time, authorized by Security Service
 - **Webhooks** — external systems push events to PAM's REST API → ingested on arrival
 
 Both MCP and REST are thin access layers. No logic duplication.
@@ -497,38 +512,196 @@ DELETE /api/webhooks/{id}         — Remove webhook source
 GET    /api/webhooks/{id}/logs    — Recent webhook deliveries
 ```
 
-### Phase 7 — Multi-Agent Query Router
+### Phase 7 — Modular Agent Architecture
 
-Evolves PAM's single agent into a Finch-style supervisor pattern.
+Evolves PAM's single agent into a Finch-style supervisor with **pluggable agent modules**.
 
-**Agent architecture:**
+#### Agent Module Interface
+
+Each agent is a self-contained module that registers with the Supervisor:
+
+```python
+class AgentModule(ABC):
+    name:          str          # "data_agent"
+    description:   str          # Used by Supervisor for routing decisions
+    intents:       list[str]    # ["data_retrieval", "sql_assistance"]
+    tools:         list[Tool]   # Tools this agent can use
+    system_prompt: str          # Specialized prompt for this domain
+    enabled:       bool         # Can be toggled per-project
+    can_delegate:  list[str]    # Other agents it can call (e.g., Data Agent)
 ```
-┌──────────────────────┐
-│   Supervisor Agent    │
-│  (routes to specialist│
-│   based on intent)    │
-└──┬─────┬─────┬───────┘
-   │     │     │
-   ▼     ▼     ▼
-┌─────┐┌─────┐┌─────┐
-│Doc  ││Graph││Data │
-│Agent││Agent││Agent│
-└─────┘└─────┘└─────┘
+
+#### Supervisor Agent
+
+Routes queries to the right module based on intent classification:
+
+```
+User query → Supervisor
+               │
+    1. Classify intent (rules + LLM fallback)
+    2. Match intent to registered agent modules
+    3. Check Security Service for permissions
+    4. Route to specialist (or multiple in parallel)
+    5. Collect results → Context Assembly Engine
 ```
 
-| Agent | Tools | Best For |
-|-------|-------|----------|
-| **Supervisor** | Routes only, no direct retrieval | Intent classification, decomposition |
-| **Document Agent** | `search_knowledge`, `get_document_context`, `smart_search` | Factual lookups, document Q&A |
-| **Graph Agent** | `search_knowledge_graph`, `get_entity_history`, `graph_neighbors` | Relationship queries, temporal questions |
-| **Data Agent** | `query_database`, `query_external_db`, `query_external_api`, `search_entities` | Metric lookups, live data queries, structured data |
+The Supervisor discovers available agents **dynamically** from the registry — no hardcoded routing.
 
-**Key behaviors:**
-- Supervisor can invoke multiple specialists in parallel for complex queries
-- Each specialist has a focused system prompt and fewer tools → better accuracy
-- Data Agent uses schema hints + glossary for accurate SQL generation
-- Fallback: if a specialist can't answer, supervisor tries another
-- Context from all specialists merges through the Context Assembly Engine
+#### Built-in Agent Modules (ship with PAM)
+
+**Document Agent:**
+
+| Intent | Tools | Description |
+|--------|-------|-------------|
+| `knowledge_lookup` | `search_knowledge`, `smart_search` | Full-text + semantic search across documents |
+| `policy_search` | `get_document_context` | Retrieve specific document content |
+
+**Graph Agent:**
+
+| Intent | Tools | Description |
+|--------|-------|-------------|
+| `relationship_query` | `search_knowledge_graph`, `graph_neighbors` | Find entity relationships |
+| `temporal_query` | `get_entity_history` | Track entity changes over time |
+| `entity_exploration` | `graph_neighbors` | Explore entity neighborhoods |
+
+**Data Agent (Finch-style progressive context building):**
+
+Instead of a single `query_external_db` tool, the Data Agent uses 4 specialized tools to build context step-by-step before generating SQL:
+
+```
+User: "What was GBs in US&C last quarter?"
+                    │
+              Data Agent
+                    │
+    ┌───────────────┼───────────────────┐
+    ▼               ▼                   ▼
+Column Finder   Value Finder       Table Rules
+"GBs" →         "US&C" →           finance_datamart →
+gross_bookings  megaregion_name    required: accounting_date
+(2 tables)      = "US & Canada"    default: rate_type = USD
+                                   example queries...
+    └───────────────┼───────────────────┘
+                    ▼
+            Execute Query Tool
+    SELECT SUM(gross_bookings)...
+                    │
+                    ▼
+            Response with:
+            • NL explanation of question → SQL mapping
+            • Generated SQL with comments
+            • Results (+ optional export link)
+```
+
+| Intent | Tools | Description |
+|--------|-------|-------------|
+| `data_retrieval` | `column_finder` | Find columns matching a concept across registered data sources. Searches schema hints + glossary aliases. Returns: table, column, type, alias matches. |
+| | `value_finder` | Find actual values matching a filter term. Searches column value aliases from schema hints. Returns: table, column, matching values. |
+| | `table_rules` | Get business rules for a table: required columns, default values, example queries, relationships. |
+| | `execute_query` | Generate and run SQL/API query using assembled context. Validates against Security Service. Returns results + optional export. |
+| `sql_assistance` | `column_finder`, `table_rules` | Help users understand schema and write their own queries |
+
+**Data Source Selector:** Before the Data Agent's tools execute, a metadata-matching step selects the right data source and query language (SQL, MDX, REST) based on the question — not hardcoded.
+
+#### Optional Agent Modules (enable per-project)
+
+**Insight Agent:**
+
+| Intent | Tools | Description |
+|--------|-------|-------------|
+| `variance_explanation` | `run_variance_analysis` | Explain why a metric changed between periods |
+| `trend_analysis` | `detect_trend`, `compare_periods` | Identify and explain trends |
+| `metric_comparison` | `compare_metrics` | Compare metrics across dimensions |
+
+Delegates to Data Agent for data retrieval, then applies analytical reasoning.
+
+**Report Agent:**
+
+| Intent | Tools | Description |
+|--------|-------|-------------|
+| `report_generation` | `run_report_template` | Execute predefined report templates (P&L, activity, etc.) |
+| `executive_summary` | `generate_summary` | Create concise summaries from data |
+| `data_export` | `export_to_sheets` | Export results to Google Sheets or other formats |
+
+**Visualization Agent:**
+
+| Intent | Tools | Description |
+|--------|-------|-------------|
+| `chart_generation` | `create_chart` | Generate charts from query results |
+| `suggest_visual` | `suggest_visualization` | Recommend best visualization type for data |
+
+#### Agent Registration & Configuration
+
+**Via config (static):**
+```python
+# .env
+ENABLED_AGENTS=["document", "graph", "data", "insight", "report"]
+```
+
+**Via admin API (per-project, dynamic):**
+```
+POST   /api/admin/projects/{id}/agents           — Enable/disable agent for project
+GET    /api/admin/projects/{id}/agents           — List enabled agents for project
+GET    /api/agents                                — List all registered agent modules
+GET    /api/agents/{name}                         — Get agent module details (intents, tools)
+```
+
+**Custom agent plugin pattern:**
+```python
+from pam.agent.base import AgentModule
+
+class ComplianceAgent(AgentModule):
+    name = "compliance"
+    description = "Answers compliance and regulatory questions"
+    intents = ["compliance_check", "regulation_lookup"]
+    tools = [search_regulations, check_policy]
+    system_prompt = "You are a compliance specialist..."
+
+# Register in config
+CUSTOM_AGENT_MODULES=["myorg.agents.ComplianceAgent"]
+```
+
+#### Cross-cutting: LLM Gateway
+
+Abstraction layer between agents and LLM providers:
+
+```python
+class LLMGateway:
+    async def complete(prompt, model_preference, ...) -> Response
+```
+
+**Responsibilities:**
+- Model routing: different agents can use different models (e.g., Haiku for classification, Sonnet for SQL generation, Opus for complex reasoning)
+- Cost tracking: per-agent, per-project token usage
+- Rate limiting: per-model quotas
+- Fallback: if primary model is unavailable, route to backup
+- Audit logging: all LLM calls logged with agent, intent, tokens
+
+#### Cross-cutting: Security Service
+
+Query-time authorization beyond API-level auth:
+
+```python
+class SecurityService:
+    async def check_access(user, resource, action) -> bool
+```
+
+**Checks:**
+- Can this user access this data source?
+- Can this user see this table/column? (column-level security)
+- Can this user use this agent module?
+- Rate limiting per user per agent
+
+Integrates with existing RBAC (UserProjectRole) and extends to data-source-level permissions.
+
+#### Key Behaviors
+
+- **Pluggable:** New agent modules can be added without modifying core code
+- **Delegation:** Agents can delegate to each other (Insight Agent → Data Agent for data retrieval)
+- **Parallel execution:** Supervisor can invoke multiple agents in parallel for complex queries
+- **Focused prompts:** Each agent has a specialized system prompt and limited tools → better accuracy
+- **Fallback:** If a specialist can't answer, Supervisor tries another
+- **Progressive context:** Data Agent builds context step-by-step (Column Finder → Value Finder → Table Rules → Execute) before generating queries
+- **Context merge:** Results from all agents merge through the Context Assembly Engine
 
 ## Phasing Summary
 
@@ -540,14 +713,17 @@ Evolves PAM's single agent into a Finch-style supervisor pattern.
 | 4 — Semantic Metadata | Intelligence | Medium | Domain-aware retrieval (Finch-style) |
 | 5 — Fact Extraction | Intelligence | Medium-Large | Self-improving memory |
 | 6 — External Data | Integration | Medium-Large | DB connectors, live query, webhooks |
-| 7 — Multi-Agent Router | Intelligence | Large | Finch-like orchestration |
+| 7 — Modular Agents | Intelligence | Large | Pluggable agents, Finch-style Data Agent, LLM Gateway, Security Service |
 
 Context-as-a-Service ships incrementally across all phases.
 
 ## Design Principles
 
 - **Thin access layers:** MCP and REST share core services — no logic duplication
+- **Pluggable agents:** Agent modules are self-contained, registerable, and configurable per-project
+- **Progressive context building:** Data Agent discovers schema step-by-step before generating queries (Finch pattern)
+- **Security at query time:** Security Service checks permissions per data source/table/column, not just API auth
+- **Model flexibility:** LLM Gateway abstracts model routing, cost tracking, and fallback
 - **Incremental value:** Each phase is usable independently
-- **YAGNI:** No speculative features; each capability maps to a concrete user need
 - **Existing patterns:** Follows PAM's established patterns (Pydantic Settings, SQLAlchemy, FastAPI DI, structlog)
 - **Backward compatible:** All existing endpoints and behaviors remain unchanged
