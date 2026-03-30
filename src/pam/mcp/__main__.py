@@ -103,7 +103,7 @@ async def _create_services():
     except Exception:
         logger.warning("vdb_store_unavailable_in_mcp_mode")
 
-    return PamServices(
+    services = PamServices(
         search_service=search_service,
         embedder=embedder,
         session_factory=session_factory,
@@ -113,6 +113,7 @@ async def _create_services():
         duckdb_service=duckdb_service,
         cache_service=cache_service,
     )
+    return services, engine
 
 
 def main() -> None:
@@ -121,14 +122,23 @@ def main() -> None:
     configure_logging(settings.log_level)
 
     async def _run():
-        services = await _create_services()
+        services, engine = await _create_services()
 
         from pam.mcp.server import create_mcp_server, initialize
 
         initialize(services)
         server = create_mcp_server()
         logger.info("mcp_stdio_server_starting")
-        await server.run_stdio_async()
+        try:
+            await server.run_stdio_async()
+        finally:
+            if services.graph_service is not None:
+                await services.graph_service.close()
+            if services.cache_service is not None and hasattr(services.cache_service, "_redis"):
+                await services.cache_service._redis.aclose()
+            await services.es_client.close()
+            await engine.dispose()
+            logger.info("mcp_stdio_server_stopped")
 
     asyncio.run(_run())
 

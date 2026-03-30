@@ -38,15 +38,19 @@ logger = structlog.get_logger()
 # Registry of running asyncio tasks
 _running_tasks: dict[uuid.UUID, asyncio.Task] = {}
 
-_ingestion_semaphore: asyncio.Semaphore | None = None
+_semaphore_registry: dict[int, asyncio.Semaphore] = {}
 
 
 def _get_semaphore() -> asyncio.Semaphore:
-    """Lazy-init semaphore (must be created inside a running event loop)."""
-    global _ingestion_semaphore
-    if _ingestion_semaphore is None:
-        _ingestion_semaphore = asyncio.Semaphore(settings.max_concurrent_ingestions)
-    return _ingestion_semaphore
+    """Return a semaphore bound to the current event loop.
+
+    Creates a new semaphore if the loop has changed (e.g. between tests).
+    """
+    loop_id = id(asyncio.get_running_loop())
+    if loop_id not in _semaphore_registry:
+        _semaphore_registry.clear()
+        _semaphore_registry[loop_id] = asyncio.Semaphore(settings.max_concurrent_ingestions)
+    return _semaphore_registry[loop_id]
 
 
 async def create_task(folder_path: str, session: AsyncSession) -> IngestionTask:
@@ -211,6 +215,7 @@ async def _run_pipeline(
                     await err_session.commit()
             except Exception:
                 logger.exception("task_cancelled_status_update_error", task_id=str(task_id))
+            raise
 
         except Exception as e:
             logger.exception("task_failed", task_id=str(task_id))
@@ -359,6 +364,8 @@ async def run_sync_background(
     vdb_store: EntityRelationshipVDBStore | None = None,
 ) -> None:
     """Background coroutine for multi-source sync."""
+    from pam.ingestion.connectors.factory import get_google_docs_connector, get_google_sheets_connector
+
     connectors: list[tuple[str, BaseConnector]] = []
     if "github" in sources:
         for repo_config in github_repos:
@@ -369,6 +376,10 @@ async def run_sync_background(
                 extensions=repo_config.get("extensions", [".md", ".txt"]),
             )
             connectors.append(("github", connector))
+    if "google_docs" in sources:
+        connectors.append(("google_docs", get_google_docs_connector(settings)))
+    if "google_sheets" in sources:
+        connectors.append(("google_sheets", get_google_sheets_connector(settings)))
     await _run_pipeline(
         task_id, connectors, es_client, embedder, session_factory,
         cache_service, graph_service, skip_graph, vdb_store,

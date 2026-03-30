@@ -21,7 +21,7 @@ def _init_services(mock_services: PamServices):
 @pytest.mark.asyncio
 async def test_pam_query_data_executes_sql(mock_services: PamServices):
     """pam_query_data runs a SQL query via DuckDB."""
-    mock_services.duckdb_service.query.return_value = {
+    mock_services.duckdb_service.execute_query.return_value = {
         "columns": ["name", "revenue"],
         "rows": [["Product A", 1000], ["Product B", 2000]],
         "row_count": 2,
@@ -34,7 +34,7 @@ async def test_pam_query_data_executes_sql(mock_services: PamServices):
 
     assert parsed["row_count"] == 2
     assert parsed["columns"] == ["name", "revenue"]
-    mock_services.duckdb_service.query.assert_called_once()
+    mock_services.duckdb_service.execute_query.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -66,7 +66,11 @@ MAX_HISTORY_CHARS = 400_000  # ~100K tokens — leaves room for system prompt + 
 
 def _content_len(m: dict) -> int:
     c = m.get("content", "")
-    return len(c) if isinstance(c, str) else 0
+    if isinstance(c, str):
+        return len(c)
+    if isinstance(c, list):
+        return sum(len(str(block)) for block in c)
+    return 0
 
 
 def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) -> list[dict]:
@@ -85,8 +89,8 @@ def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) 
     trimmed = list(messages)
     while len(trimmed) > 1 and total > max_chars:
         total -= _content_len(trimmed.pop(0))
-        # Drop a second message if available to keep pairs aligned
-        if len(trimmed) > 1 and total > max_chars:
+        # Always drop the paired message to maintain user/assistant alternation
+        if len(trimmed) > 1:
             total -= _content_len(trimmed.pop(0))
 
     return trimmed

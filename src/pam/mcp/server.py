@@ -19,7 +19,7 @@ _services: PamServices | None = None
 def get_services() -> PamServices:
     """Return the initialized PamServices instance.
 
-    Raises AssertionError if called before initialize().
+    Raises RuntimeError if called before initialize().
     """
     if _services is None:
         msg = "MCP services not initialized — call initialize() first"
@@ -84,7 +84,7 @@ async def _pam_search(
 ) -> str:
     """Implementation of pam_search, extracted for direct testing."""
     services = get_services()
-    embedding = await services.embedder.embed(query)
+    embedding = (await services.embedder.embed_texts([query]))[0]
     results = await services.search_service.search(
         query=query,
         query_embedding=embedding,
@@ -115,7 +115,7 @@ async def _pam_smart_search(
     import asyncio
 
     services = get_services()
-    embedding = await services.embedder.embed(query)
+    embedding = (await services.embedder.embed_texts([query]))[0]
 
     # Build concurrent tasks
     tasks: dict[str, Any] = {}
@@ -475,7 +475,7 @@ async def _pam_query_data(sql: str | None = None, list_tables: bool = False) -> 
     if not sql:
         return json.dumps({"error": "Provide a SQL query or set list_tables=true"})
 
-    result = services.duckdb_service.query(sql)
+    result = services.duckdb_service.execute_query(sql)
     return json.dumps(result, indent=2)
 
 
@@ -566,6 +566,7 @@ async def _get_stats() -> str:
         es_count = await services.es_client.count(index=settings.elasticsearch_index)
         stats["segment_count"] = es_count.get("count", 0)
     except Exception:
+        logger.warning("es_segment_count_failed", exc_info=True)
         stats["segment_count"] = "unavailable"
 
     stats["graph_available"] = services.graph_service is not None
@@ -598,7 +599,7 @@ async def _get_entities(entity_type: str | None = None) -> str:
         entities = [
             {
                 "name": hit["_source"].get("name", ""),
-                "type": hit["_source"].get("type", ""),
+                "type": hit["_source"].get("entity_type", ""),
                 "description": hit["_source"].get("description", ""),
             }
             for hit in result["hits"]["hits"]
