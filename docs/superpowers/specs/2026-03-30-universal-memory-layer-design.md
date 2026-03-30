@@ -31,72 +31,84 @@ PAM Context evolves from a knowledge base with a chat UI into a **universal memo
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        LLM Clients                            │
-│   Claude Code, Cursor, ChatGPT, Custom Agents, Apps          │
-└──────────┬───────────────────────────────┬────────────────────┘
-           │                               │
-     ┌─────▼─────┐                   ┌─────▼─────┐
-     │ MCP Server │                   │ REST API  │
-     │ (stdio/SSE)│                   │ (FastAPI) │
-     └─────┬─────┘                   └─────┬─────┘
-           │                               │
-     ┌─────▼───────────────────────────────▼────────────────────┐
-     │                                                           │
-     │  ┌───────────────────────────────────────────────────┐    │
-     │  │              Supervisor Agent                      │    │
-     │  │         (intent routing & orchestration)           │    │
-     │  └────┬─────────────────┬───────────────────┬────────┘    │
-     │       │                 │                   │             │
-     │  ┌────▼────┐      ┌────▼────┐         ┌────▼────┐       │
-     │  │  Doc    │      │  Graph  │         │  Data   │       │
-     │  │  Agent  │      │  Agent  │         │  Agent  │       │
-     │  │         │      │         │         │         │       │
-     │  │search   │      │graph    │         │query_db │       │
-     │  │get_doc  │      │entities │         │search   │       │
-     │  │smart    │      │history  │         │entities │       │
-     │  └────┬────┘      └────┬────┘         └────┬────┘       │
-     │       │                │                   │             │
-     │  ┌────▼────────────────▼───────────────────▼──────────┐  │
-     │  │              Intelligence Layer                     │  │
-     │  │                                                     │  │
-     │  │  ┌──────────────┐  ┌─────────────────────────────┐ │  │
-     │  │  │  Semantic    │  │  Terminology Resolution     │ │  │
-     │  │  │  Metadata    │  │  & Query Expansion          │ │  │
-     │  │  │  • Glossary  │  └─────────────────────────────┘ │  │
-     │  │  │  • Aliases   │  ┌─────────────────────────────┐ │  │
-     │  │  │  • Fuzzy     │  │  Fact Extraction Engine     │ │  │
-     │  │  │    matching  │  │  • Facts → Memory           │ │  │
-     │  │  └──────────────┘  │  • Terms → Glossary         │ │  │
-     │  │                    │  • Relations → Graph         │ │  │
-     │  │                    │  • Prefs → Memory            │ │  │
-     │  │                    └─────────────────────────────┘ │  │
-     │  └────────────────────────────────────────────────────┘  │
-     │                              │                           │
-     │  ┌───────────────────────────▼────────────────────────┐  │
-     │  │               Core Services                         │  │
-     │  │                                                     │  │
-     │  │  ┌──────────┐  ┌────────────┐  ┌──────────────┐   │  │
-     │  │  │ Memory   │  │ Knowledge  │  │ Conversation │   │  │
-     │  │  │ Service  │  │ Service    │  │ Service      │   │  │
-     │  │  └──────────┘  └────────────┘  └──────────────┘   │  │
-     │  │                                                     │  │
-     │  │  ┌──────────────────────────────────────────────┐  │  │
-     │  │  │       Context Assembly Engine                 │  │  │
-     │  │  │       (exposed as a service)                  │  │  │
-     │  │  └──────────────────────────────────────────────┘  │  │
-     │  └────────────────────────────────────────────────────┘  │
-     │                              │                           │
-     │  ┌───────────────────────────▼────────────────────────┐  │
-     │  │                 Storage Layer                       │  │
-     │  │  ┌────┐  ┌────┐  ┌───────┐  ┌───────┐  ┌──────┐  │  │
-     │  │  │ PG │  │ ES │  │ Neo4j │  │ Redis │  │DuckDB│  │  │
-     │  │  └────┘  └────┘  └───────┘  └───────┘  └──────┘  │  │
-     │  └────────────────────────────────────────────────────┘  │
-     └──────────────────────────────────────────────────────────┘
+                                                    ┌──────────────────────────┐
+                                                    │   External Data Sources   │
+                                                    │  DBs, APIs, S3, Webhooks │
+                                                    └─────┬──────┬──────┬──────┘
+                                                          │      │      │
+                                                       ingest  live   push
+                                                          │    query    │
+┌─────────────────────────────────────────────────────────│──────│──────│───┐
+│                        LLM Clients                      │      │      │   │
+│   Claude Code, Cursor, ChatGPT, Custom Agents, Apps    │      │      │   │
+└──────────┬───────────────────────────────┬──────────────│──────│──────│───┘
+           │                               │              │      │      │
+     ┌─────▼─────┐                   ┌─────▼─────┐       │      │      │
+     │ MCP Server │                   │ REST API  │       │      │      │
+     │ (stdio/SSE)│                   │ (FastAPI) ◄───────┘      │      │
+     └─────┬─────┘                   └─────┬──┬──┘              │      │
+           │                               │  │  webhook push───┘      │
+           │                               │  └────────────────────────┘
+     ┌─────▼───────────────────────────────▼────────────────────────┐
+     │                                                               │
+     │  ┌───────────────────────────────────────────────────────┐   │
+     │  │              Supervisor Agent                          │   │
+     │  │         (intent routing & orchestration)               │   │
+     │  └────┬─────────────────┬───────────────────┬────────────┘   │
+     │       │                 │                   │                │
+     │  ┌────▼────┐      ┌────▼────┐         ┌────▼─────────┐     │
+     │  │  Doc    │      │  Graph  │         │  Data        │     │
+     │  │  Agent  │      │  Agent  │         │  Agent       │     │
+     │  │         │      │         │         │              │     │
+     │  │search   │      │graph    │         │query_db      │     │
+     │  │get_doc  │      │entities │         │query_ext_db ─┼──── live query
+     │  │smart    │      │history  │         │query_ext_api │     │
+     │  └────┬────┘      └────┬────┘         └────┬─────────┘     │
+     │       │                │                   │                │
+     │  ┌────▼────────────────▼───────────────────▼──────────┐    │
+     │  │              Intelligence Layer                     │    │
+     │  │                                                     │    │
+     │  │  ┌──────────────┐  ┌─────────────────────────────┐ │    │
+     │  │  │  Semantic    │  │  Terminology Resolution     │ │    │
+     │  │  │  Metadata    │  │  & Query Expansion          │ │    │
+     │  │  │  • Glossary  │  └─────────────────────────────┘ │    │
+     │  │  │  • Aliases   │  ┌─────────────────────────────┐ │    │
+     │  │  │  • Schema    │  │  Fact Extraction Engine     │ │    │
+     │  │  │    hints     │  │  • Facts → Memory           │ │    │
+     │  │  │  • Fuzzy     │  │  • Terms → Glossary         │ │    │
+     │  │  │    matching  │  │  • Relations → Graph         │ │    │
+     │  │  └──────────────┘  │  • Prefs → Memory            │ │    │
+     │  │                    └─────────────────────────────┘ │    │
+     │  └────────────────────────────────────────────────────┘    │
+     │                              │                             │
+     │  ┌───────────────────────────▼────────────────────────┐    │
+     │  │               Core Services                         │    │
+     │  │                                                     │    │
+     │  │  ┌──────────┐  ┌────────────┐  ┌──────────────┐   │    │
+     │  │  │ Memory   │  │ Knowledge  │  │ Conversation │   │    │
+     │  │  │ Service  │  │ Service    │  │ Service      │   │    │
+     │  │  └──────────┘  └────────────┘  └──────────────┘   │    │
+     │  │                                                     │    │
+     │  │  ┌──────────────────────────────────────────────┐  │    │
+     │  │  │       Context Assembly Engine                 │  │    │
+     │  │  │       (exposed as a service)                  │  │    │
+     │  │  └──────────────────────────────────────────────┘  │    │
+     │  └────────────────────────────────────────────────────┘    │
+     │                              │                             │
+     │  ┌───────────────────────────▼────────────────────────┐    │
+     │  │                 Storage Layer                       │    │
+     │  │  ┌────┐  ┌────┐  ┌───────┐  ┌───────┐  ┌──────┐  │    │
+     │  │  │ PG │  │ ES │  │ Neo4j │  │ Redis │  │DuckDB│  │    │
+     │  │  └────┘  └────┘  └───────┘  └───────┘  └──────┘  │    │
+     │  └────────────────────────────────────────────────────┘    │
+     └────────────────────────────────────────────────────────────┘
 ```
 
-**Data flow:** Request enters via MCP/REST → Supervisor classifies intent and routes to specialist agents → Specialists use Intelligence Layer (terminology resolution, query expansion) and Core Services (memory, knowledge, conversations) to retrieve → Context Assembly Engine merges results into a token-budgeted response → Response returns to client.
+**Data flow:**
+- **LLM clients** enter via MCP/REST → Supervisor routes to specialist agents → results merge through Context Assembly
+- **Ingest connectors** pull from external DBs/APIs/S3 → data stored as documents in PAM
+- **Live queries** — Data Agent connects to external databases at query time via `query_ext_db`/`query_ext_api`
+- **Webhooks** — external systems push events to PAM's REST API → ingested on arrival
 
 Both MCP and REST are thin access layers. No logic duplication.
 
@@ -123,11 +135,15 @@ Expose PAM's existing + new capabilities as MCP tools. SSE (remote) + stdio (loc
 | `pam_get_context` | Context-as-a-Service | Get assembled, token-budgeted context block |
 | `pam_ingest` | Ingestion trigger | Trigger document ingestion |
 | `pam_list_documents` | Document listing | Browse available documents |
+| `pam_query_external_db` | **NEW** Live Query (Phase 6) | Run SQL against registered external databases |
+| `pam_query_external_api` | **NEW** Live Query (Phase 6) | Call registered external REST APIs |
+| `pam_list_data_sources` | **NEW** Data Source Registry (Phase 6) | List available external data sources |
 
 **MCP Resources:**
 - `pam://stats` — System stats (doc count, entity count)
 - `pam://entities/{type}` — Entity listing by type
 - `pam://glossary` — Domain terminology (Phase 4)
+- `pam://data-sources` — Available external data sources (Phase 6)
 
 ### Phase 2 — Memory CRUD API
 
@@ -302,7 +318,186 @@ Input (text) → LLM Extractor (Haiku) → Dedup/Merge → Store
 
 Runs asynchronously after ingestion or conversation turns. Configurable per-project.
 
-### Phase 6 — Multi-Agent Query Router
+### Phase 6 — External Data Integration
+
+Three patterns for connecting PAM to external data sources.
+
+**Architecture:**
+```
+┌──────────────────────────────────────────────────────┐
+│                 External Data Sources                  │
+│  Internal DBs, Snowflake, APIs, S3, Salesforce, etc  │
+└───┬──────────────────┬───────────────────┬───────────┘
+    │                  │                   │
+    ▼                  ▼                   ▼
+┌────────┐      ┌────────────┐      ┌──────────┐
+│ Ingest │      │ Live Query │      │ Webhook  │
+│ (pull) │      │ (at query  │      │ (push)   │
+│        │      │  time)     │      │          │
+└───┬────┘      └─────┬──────┘      └────┬─────┘
+    │                 │                  │
+    ▼                 ▼                  ▼
+┌───────────────────────────────────────────────┐
+│              PAM Core Services                 │
+│  stored as     queried by       ingested on   │
+│  documents     Data Agent       arrival        │
+└───────────────────────────────────────────────┘
+```
+
+#### Pattern 1: Ingest (pull data in)
+
+Best for slow-changing reference data. Extends PAM's existing connector pattern.
+
+**New connectors:**
+
+| Connector | Source | Use Case |
+|-----------|--------|----------|
+| `DatabaseConnector` | PostgreSQL, MySQL | Product catalogs, org charts, config tables |
+| `APIConnector` | REST/GraphQL endpoints | Internal services, CRM records |
+| `S3Connector` | AWS S3 / GCS / Azure Blob | CSV, Parquet, JSON from data lakes |
+| `AnalyticsConnector` | BI tool exports | Metric definitions, dashboard configs |
+
+All follow the existing `BaseConnector` interface:
+```python
+class BaseConnector(ABC):
+    async def list_documents() -> list[DocumentInfo]
+    async def fetch_document(source_id: str) -> RawDocument
+    async def get_content_hash(source_id: str) -> str
+```
+
+**DatabaseConnector specifics:**
+- Config defines tables/queries to ingest, not raw DB access
+- Each row or query result becomes a document segment
+- Content hash on query result for change detection on re-sync
+- Scheduled re-sync via existing `/ingest/sync` endpoint
+
+```python
+# Config example
+DATABASE_SOURCES=[
+  {
+    "name": "product_catalog",
+    "dsn": "postgresql://...",
+    "query": "SELECT id, name, description, category FROM products",
+    "schedule": "daily"
+  }
+]
+```
+
+#### Pattern 2: Live Query (query at request time)
+
+Best for real-time data and large datasets. Finch-style — Data Agent runs SQL at query time.
+
+**New agent tools for the Data Agent:**
+
+| Tool | Target | Example |
+|------|--------|---------|
+| `query_external_db` | SQL databases (PG, MySQL, Snowflake, BigQuery) | "What's Q1 revenue?" → generates + runs SQL |
+| `query_external_api` | REST endpoints | "How many active users?" → calls internal API |
+
+**Data Source Registry:**
+```
+DataSource {
+  id:              UUID
+  project_id:      UUID
+  name:            text          — "analytics_warehouse"
+  type:            enum          — [postgres, mysql, snowflake, bigquery, rest_api]
+  connection:      JSONB (encrypted) — DSN or endpoint URL + auth
+  schema_hint:     text          — table/column descriptions for the LLM
+  allowed_tables:  text[]        — whitelist (security)
+  read_only:       bool          — always true for live query
+  created_at:      timestamp
+}
+```
+
+**Safety controls:**
+- Read-only connections enforced at driver level
+- Table/schema whitelist — agent can only query allowed tables
+- Query validation: block DDL, DML, multi-statement
+- Timeout per query (configurable, default 30s)
+- Row limit per result (configurable, default 1000)
+- Credentials encrypted at rest, never exposed to LLM
+
+**Schema hints** (Finch-style semantic layer):
+```json
+{
+  "tables": {
+    "orders": {
+      "description": "Customer orders",
+      "columns": {
+        "gmv": { "alias": ["GBs", "gross bookings"], "description": "Gross merchandise value in USD" },
+        "region": { "alias": ["market"], "values": { "US&C": "US and Canada", "EMEA": "Europe" } }
+      }
+    }
+  }
+}
+```
+
+These schema hints integrate with the Semantic Metadata Layer (Phase 5) — column aliases become terms in the glossary.
+
+**REST Endpoints (`/api/data-sources`):**
+
+```
+POST   /api/data-sources              — Register a data source
+GET    /api/data-sources              — List data sources
+GET    /api/data-sources/{id}         — Get data source (connection redacted)
+PUT    /api/data-sources/{id}         — Update data source
+DELETE /api/data-sources/{id}         — Remove data source
+POST   /api/data-sources/{id}/test    — Test connectivity
+GET    /api/data-sources/{id}/schema  — Discover tables/columns
+```
+
+#### Pattern 3: Webhook (push data in)
+
+Best for event-driven updates from systems that support webhooks.
+
+**Webhook endpoint:**
+```
+POST /api/ingest/webhook/{source_name}
+```
+
+**Request:**
+```json
+{
+  "event": "deal_closed",
+  "data": {
+    "account": "Acme Corp",
+    "amount": 50000,
+    "owner": "alice@company.com"
+  },
+  "timestamp": "2026-03-30T10:00:00Z"
+}
+```
+
+**Behaviors:**
+- Each webhook source has a registered schema + project mapping
+- Incoming data is converted to a document segment and ingested
+- Optionally triggers fact extraction (feeds Memory Service + Graph)
+- HMAC signature verification for security
+- Idempotency key to prevent duplicate processing
+
+**Webhook Registry:**
+```
+WebhookSource {
+  id:           UUID
+  project_id:   UUID
+  name:         text          — "salesforce_deals"
+  secret:       text          — HMAC signing key
+  transform:    JSONB         — mapping rules (event fields → document fields)
+  auto_extract: bool          — trigger fact extraction on arrival
+  created_at:   timestamp
+}
+```
+
+**REST Endpoints (`/api/webhooks`):**
+
+```
+POST   /api/webhooks              — Register a webhook source
+GET    /api/webhooks              — List webhook sources
+DELETE /api/webhooks/{id}         — Remove webhook source
+GET    /api/webhooks/{id}/logs    — Recent webhook deliveries
+```
+
+### Phase 7 — Multi-Agent Query Router
 
 Evolves PAM's single agent into a Finch-style supervisor pattern.
 
@@ -326,11 +521,12 @@ Evolves PAM's single agent into a Finch-style supervisor pattern.
 | **Supervisor** | Routes only, no direct retrieval | Intent classification, decomposition |
 | **Document Agent** | `search_knowledge`, `get_document_context`, `smart_search` | Factual lookups, document Q&A |
 | **Graph Agent** | `search_knowledge_graph`, `get_entity_history`, `graph_neighbors` | Relationship queries, temporal questions |
-| **Data Agent** | `query_database`, `search_entities` | Metric lookups, structured data queries |
+| **Data Agent** | `query_database`, `query_external_db`, `query_external_api`, `search_entities` | Metric lookups, live data queries, structured data |
 
 **Key behaviors:**
 - Supervisor can invoke multiple specialists in parallel for complex queries
 - Each specialist has a focused system prompt and fewer tools → better accuracy
+- Data Agent uses schema hints + glossary for accurate SQL generation
 - Fallback: if a specialist can't answer, supervisor tries another
 - Context from all specialists merges through the Context Assembly Engine
 
@@ -343,7 +539,8 @@ Evolves PAM's single agent into a Finch-style supervisor pattern.
 | 3 — Conversational Memory | Intelligence | Medium | Stateful cross-session context |
 | 4 — Semantic Metadata | Intelligence | Medium | Domain-aware retrieval (Finch-style) |
 | 5 — Fact Extraction | Intelligence | Medium-Large | Self-improving memory |
-| 6 — Multi-Agent Router | Intelligence | Large | Finch-like orchestration |
+| 6 — External Data | Integration | Medium-Large | DB connectors, live query, webhooks |
+| 7 — Multi-Agent Router | Intelligence | Large | Finch-like orchestration |
 
 Context-as-a-Service ships incrementally across all phases.
 
