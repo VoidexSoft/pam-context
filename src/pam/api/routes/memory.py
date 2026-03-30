@@ -79,7 +79,7 @@ async def get_memory(
     return result
 
 
-@router.put("/{memory_id}", response_model=MemoryResponse)
+@router.patch("/{memory_id}", response_model=MemoryResponse)
 async def update_memory(
     memory_id: uuid.UUID,
     body: MemoryUpdate,

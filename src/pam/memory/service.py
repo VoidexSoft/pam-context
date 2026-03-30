@@ -250,15 +250,11 @@ class MemoryService:
             )
             memories = result.scalars().all()
 
-            # Update access counts and recompute importance
+            # Update access counts (importance stays as user-set value;
+            # compute_importance() is available for on-read scoring)
             for mem in memories:
                 mem.access_count = (mem.access_count or 0) + 1
                 mem.last_accessed_at = datetime.now(tz=timezone.utc)
-                mem.importance = self.compute_importance(
-                    created_at=mem.created_at,
-                    access_count=mem.access_count,
-                    explicit_weight=mem.importance,
-                )
             await session.flush()
             await session.commit()
 
