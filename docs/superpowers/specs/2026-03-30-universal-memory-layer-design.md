@@ -153,6 +153,8 @@ Expose PAM's existing + new capabilities as MCP tools. SSE (remote) + stdio (loc
 | `pam_query_external_db` | **NEW** Live Query (Phase 6) | Run SQL against registered external databases |
 | `pam_query_external_api` | **NEW** Live Query (Phase 6) | Call registered external REST APIs |
 | `pam_list_data_sources` | **NEW** Data Source Registry (Phase 6) | List available external data sources |
+| `pam_export_sheets` | **NEW** Export Service (Phase 7) | Export query results to Google Sheets |
+| `pam_export_download` | **NEW** Export Service (Phase 7) | Export as CSV/JSON, returns download link |
 
 **MCP Resources:**
 - `pam://stats` — System stats (doc count, entity count)
@@ -600,7 +602,34 @@ gross_bookings  megaregion_name    required: accounting_date
 | | `execute_query` | Generate and run SQL/API query using assembled context. Validates against Security Service. Returns results + optional export. |
 | `sql_assistance` | `column_finder`, `table_rules` | Help users understand schema and write their own queries |
 
-**Data Source Selector:** Before the Data Agent's tools execute, a metadata-matching step selects the right data source and query language (SQL, MDX, REST) based on the question — not hardcoded.
+**Data Source Selector:**
+
+Before the Data Agent's tools run, a metadata-matching component selects the right data source and query language — not hardcoded routing.
+
+```
+User: "What was GBs in US&C last quarter?"
+                    │
+          Data Source Selector
+                    │
+    1. Extract key terms: "GBs", "US&C", "last quarter"
+    2. Search schema hints across all registered data sources
+    3. Score each source by metadata match:
+       ┌─────────────────────┬───────┬──────────────┐
+       │ Data Source          │ Score │ Query Lang   │
+       ├─────────────────────┼───────┼──────────────┤
+       │ finance_datamart     │ 0.95  │ SQL (Presto) │
+       │ tax_datamart         │ 0.60  │ SQL (PG)     │
+       │ planning_cube        │ 0.30  │ MDX          │
+       └─────────────────────┴───────┴──────────────┘
+    4. Select top source → pass to Data Agent tools
+```
+
+The selector uses:
+- **Schema hint embeddings** — semantic similarity between query and column/table descriptions
+- **Alias matching** — fuzzy match against glossary terms and column aliases
+- **Source type routing** — selects the right query language (SQL, MDX, REST) for the chosen source
+
+This runs as the first step in the Data Agent's tool loop, feeding the `column_finder` and `value_finder` with the right data source context.
 
 #### Optional Agent Modules (enable per-project)
 
@@ -702,6 +731,84 @@ Integrates with existing RBAC (UserProjectRole) and extends to data-source-level
 - **Fallback:** If a specialist can't answer, Supervisor tries another
 - **Progressive context:** Data Agent builds context step-by-step (Column Finder → Value Finder → Table Rules → Execute) before generating queries
 - **Context merge:** Results from all agents merge through the Context Assembly Engine
+
+#### Cross-cutting: Output & Export
+
+Any agent can produce structured output beyond plain text. Inspired by Finch, which returns NL explanation + SQL + Google Sheets link in every data response.
+
+**Output formats:**
+
+| Format | Use Case | Produced By |
+|--------|----------|-------------|
+| **Structured response** | NL explanation + source citations + raw data | All agents (default) |
+| **SQL with comments** | Show generated query alongside results | Data Agent |
+| **Google Sheets export** | Full result sets too large for chat | Data Agent, Report Agent |
+| **CSV/JSON download** | Machine-readable export | Data Agent, Report Agent |
+| **Chart/visualization** | Visual representation of data | Visualization Agent |
+| **Report document** | Formatted report (Markdown/PDF) | Report Agent |
+
+**Structured response model (every agent response includes this):**
+```
+AgentResponse {
+  answer:         text          — Natural language answer
+  explanation:    text          — How the answer was derived (optional)
+  sources:        list[Source]  — Citations to documents, segments, data sources
+  generated_query: text         — SQL/MDX if applicable (optional)
+  data:           list[dict]    — Raw result rows if applicable (optional)
+  export_links:   list[Export]  — Links to exported files (optional)
+  visualization:  Visualization — Chart spec if applicable (optional)
+}
+```
+
+**Export Service:**
+
+Handles exporting results to external destinations:
+
+```python
+class ExportService:
+    async def export_to_sheets(data, title, user) -> str  # Returns sheet URL
+    async def export_to_csv(data) -> bytes
+    async def export_to_json(data) -> bytes
+```
+
+**REST Endpoints (`/api/export`):**
+
+```
+POST   /api/export/sheets          — Export data to a new Google Sheet
+POST   /api/export/download        — Download as CSV or JSON
+GET    /api/export/{export_id}     — Get export status/link
+```
+
+**MCP Tools:**
+
+| MCP Tool | Description |
+|----------|-------------|
+| `pam_export_sheets` | Export query results to Google Sheets, returns URL |
+| `pam_export_download` | Export as CSV/JSON, returns download link |
+
+**Integration with Data Agent flow:**
+
+```
+Execute Query Tool
+        │
+        ▼
+    Results (50 rows)
+        │
+    ┌───┴─────────────────┐
+    │  If rows > threshold │
+    │  auto-export to     │
+    │  Google Sheets      │
+    └───┬─────────────────┘
+        │
+        ▼
+    Response:
+    • NL explanation of question → SQL mapping
+    • Generated SQL with comments
+    • First 10 rows inline
+    • Google Sheets link for full results
+```
+
+Auto-export threshold is configurable per-project (default: 20 rows). Below threshold, all rows are returned inline.
 
 ## Phasing Summary
 
