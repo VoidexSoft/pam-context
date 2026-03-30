@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     # MCP Server
     mcp_enabled: bool = True  # Enable MCP SSE transport on /mcp
 
+    # Memory Service
+    memory_index: str = "pam_memories"  # ES index for memory embeddings
+    memory_dedup_threshold: float = 0.9  # Cosine similarity threshold for dedup
+    memory_merge_model: str = "claude-haiku-4-5-20251001"  # LLM for content merge
+
     # CLI connectors
     github_repos: list[dict] = []  # [{"repo":"owner/repo","branch":"main","paths":[],"extensions":[]}]
     use_cli_connectors: bool = False  # Use gws CLI instead of Google API connectors
