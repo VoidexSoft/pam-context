@@ -21,4 +21,5 @@ def mock_services() -> PamServices:
         vdb_store=AsyncMock(),
         duckdb_service=MagicMock(),
         cache_service=AsyncMock(),
+        memory_service=AsyncMock(),
     )
