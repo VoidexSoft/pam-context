@@ -176,6 +176,39 @@ class IngestionTask(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Memory(Base):
+    __tablename__ = "memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str | None] = mapped_column(String(100))
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    importance: Mapped[float] = mapped_column(default=0.5)
+    access_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('fact', 'preference', 'observation', 'conversation_summary')",
+            name="ck_memories_type",
+        ),
+        CheckConstraint("importance >= 0 AND importance <= 1", name="ck_memories_importance"),
+        {"comment": "Discrete memories (facts, preferences, observations) with importance scoring"},
+    )
+
+
 # ── Pydantic Schemas ────────────────────────────────────────────────────
 
 
@@ -342,3 +375,55 @@ class MessageResponse(BaseModel):
     """Generic message response for actions like deactivation."""
 
     message: str
+
+
+# ── Memory Schemas ─────────────────────────────────────────────────────
+
+
+class MemoryCreate(BaseModel):
+    content: str
+    type: Literal["fact", "preference", "observation", "conversation_summary"] = "fact"
+    source: str | None = None
+    metadata: dict = Field(default_factory=dict)
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    user_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    expires_at: datetime | None = None
+
+
+class MemoryResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    type: str
+    content: str
+    source: str | None = None
+    metadata: dict = Field(default_factory=dict)
+    importance: float
+    access_count: int = 0
+    last_accessed_at: datetime | None = None
+    expires_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MemoryUpdate(BaseModel):
+    content: str | None = None
+    metadata: dict | None = None
+    importance: float | None = Field(default=None, ge=0.0, le=1.0)
+    expires_at: datetime | None = None
+
+
+class MemorySearchQuery(BaseModel):
+    query: str
+    user_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    type: str | None = None
+    top_k: int = Field(default=10, ge=1, le=50)
+
+
+class MemorySearchResult(BaseModel):
+    memory: MemoryResponse
+    score: float
