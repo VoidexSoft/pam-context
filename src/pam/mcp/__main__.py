@@ -108,6 +108,29 @@ async def _create_services():
     except Exception:
         logger.warning("vdb_store_unavailable_in_mcp_mode")
 
+    # Memory Service (optional)
+    memory_service = None
+    try:
+        from pam.memory.service import MemoryService
+        from pam.memory.store import MemoryStore
+
+        memory_store = MemoryStore(
+            client=es_client,
+            index_name=settings.memory_index,
+            embedding_dims=settings.embedding_dims,
+        )
+        await memory_store.ensure_index()
+        memory_service = MemoryService(
+            session_factory=session_factory,
+            store=memory_store,
+            embedder=embedder,
+            anthropic_api_key=settings.anthropic_api_key,
+            dedup_threshold=settings.memory_dedup_threshold,
+            merge_model=settings.memory_merge_model,
+        )
+    except Exception:
+        logger.warning("memory_service_unavailable_in_mcp_mode")
+
     services = PamServices(
         search_service=search_service,
         embedder=embedder,
@@ -117,6 +140,7 @@ async def _create_services():
         vdb_store=vdb_store,
         duckdb_service=duckdb_service,
         cache_service=cache_service,
+        memory_service=memory_service,
     )
     return services, engine
 

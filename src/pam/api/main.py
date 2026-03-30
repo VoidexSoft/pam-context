@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
 from pam.api.rate_limit import limiter, rate_limit_exceeded_handler
-from pam.api.routes import admin, auth, chat, documents, graph, ingest, search
+from pam.api.routes import admin, auth, chat, documents, graph, ingest, memory, search
 from pam.common.cache import CacheService
 from pam.common.config import settings
 from pam.common.logging import configure_logging
@@ -137,6 +137,31 @@ async def lifespan(app: FastAPI):
         duckdb_service.register_files()
     app.state.duckdb_service = duckdb_service
 
+    # --- Memory Service ---
+    try:
+        from pam.memory.service import MemoryService
+        from pam.memory.store import MemoryStore
+
+        memory_store = MemoryStore(
+            client=app.state.es_client,
+            index_name=settings.memory_index,
+            embedding_dims=settings.embedding_dims,
+        )
+        await memory_store.ensure_index()
+        memory_service = MemoryService(
+            session_factory=session_factory,
+            store=memory_store,
+            embedder=app.state.embedder,
+            anthropic_api_key=settings.anthropic_api_key,
+            dedup_threshold=settings.memory_dedup_threshold,
+            merge_model=settings.memory_merge_model,
+        )
+        app.state.memory_service = memory_service
+        logger.info("memory_service_initialized")
+    except Exception:
+        app.state.memory_service = None
+        logger.warning("memory_service_init_failed", exc_info=True)
+
     # --- Graphiti / Neo4j ---
     graph_service = None
     try:
@@ -234,6 +259,15 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api", tags=["auth"])
     app.include_router(admin.router, prefix="/api", tags=["admin"])
     app.include_router(graph.router, prefix="/api", tags=["graph"])
+    app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
+
+    # Override the memory service dependency
+    from pam.api.routes.memory import get_memory_service as _get_memory_svc
+
+    def _memory_svc_override():
+        return getattr(app.state, "memory_service", None)
+
+    app.dependency_overrides[_get_memory_svc] = _memory_svc_override
 
     @app.get("/api/health")
     async def health(
