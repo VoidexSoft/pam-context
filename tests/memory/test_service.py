@@ -322,3 +322,20 @@ async def test_update_memory(memory_service, mock_store, mock_embedder):
     assert result is not None
     mock_embedder.embed_texts.assert_awaited_once_with(["Updated fact"])
     mock_store.index_memory.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_store_rejects_empty_content(memory_service):
+    """store() raises ValueError for empty content."""
+    with pytest.raises(ValueError, match="empty"):
+        await memory_service.store(content="", memory_type="fact")
+
+    with pytest.raises(ValueError, match="empty"):
+        await memory_service.store(content="   ", memory_type="fact")
+
+
+@pytest.mark.asyncio
+async def test_store_rejects_oversized_content(memory_service):
+    """store() raises ValueError for content exceeding 10k chars."""
+    with pytest.raises(ValueError, match="10,000"):
+        await memory_service.store(content="x" * 10_001, memory_type="fact")

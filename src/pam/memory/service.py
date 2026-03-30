@@ -73,6 +73,13 @@ class MemoryService:
         If a memory with cosine similarity > threshold exists for the same user,
         merges the content instead of creating a duplicate.
         """
+        # Input validation
+        if not content or not content.strip():
+            raise ValueError("Memory content cannot be empty")
+        if len(content) > 10_000:
+            raise ValueError("Memory content exceeds 10,000 character limit")
+        content = content.strip()
+
         # Embed the content
         embeddings = await self._embedder.embed_texts([content])
         embedding = embeddings[0]
