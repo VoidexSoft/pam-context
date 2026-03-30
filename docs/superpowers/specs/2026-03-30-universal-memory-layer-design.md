@@ -31,44 +31,67 @@ PAM Context evolves from a knowledge base with a chat UI into a **universal memo
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   LLM Clients                        │
-│  Claude Code, Cursor, ChatGPT, Custom Agents, Apps  │
-└──────────┬──────────────────────┬────────────────────┘
-           │                      │
-     ┌─────▼─────┐         ┌─────▼─────┐
-     │ MCP Server │         │ REST API  │
-     │  (stdio/   │         │ (FastAPI) │
-     │   SSE)     │         │           │
-     └─────┬─────┘         └─────┬─────┘
-           │                      │
-     ┌─────▼──────────────────────▼─────┐
-     │        PAM Core Services          │
-     │                                   │
-     │  ┌───────────┐  ┌──────────────┐ │
-     │  │ Memory    │  │ Knowledge    │ │
-     │  │ Service   │  │ Service      │ │
-     │  │ (NEW)     │  │ (existing)   │ │
-     │  └─────┬─────┘  └──────┬───────┘ │
-     │        │               │          │
-     │  ┌─────▼───────────────▼───────┐  │
-     │  │   Context Assembly Engine   │  │
-     │  │   (exposed as a service)    │  │
-     │  └─────────────┬───────────────┘  │
-     │                │                  │
-     │  ┌─────────────▼───────────────┐  │
-     │  │      Intelligence Layer      │  │
-     │  │  • Semantic Metadata         │  │
-     │  │  • Fact Extraction           │  │
-     │  │  • Query Router              │  │
-     │  │  • Terminology Resolution    │  │
-     │  └─────────────────────────────┘  │
-     │                                   │
-     │  ┌─────────────────────────────┐  │
-     │  │      Storage Layer           │  │
-     │  │  PG │ ES │ Neo4j │ Redis    │  │
-     │  └─────────────────────────────┘  │
-     └───────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        LLM Clients                            │
+│   Claude Code, Cursor, ChatGPT, Custom Agents, Apps          │
+└──────────┬───────────────────────────────┬────────────────────┘
+           │                               │
+     ┌─────▼─────┐                   ┌─────▼─────┐
+     │ MCP Server │                   │ REST API  │
+     │ (stdio/SSE)│                   │ (FastAPI) │
+     └─────┬─────┘                   └─────┬─────┘
+           │                               │
+     ┌─────▼───────────────────────────────▼────────────────┐
+     │                  PAM Core Services                    │
+     │                                                       │
+     │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
+     │  │ Memory      │  │ Knowledge   │  │ Conversation │  │
+     │  │ Service     │  │ Service     │  │ Service      │  │
+     │  └──────┬──────┘  └──────┬──────┘  └──────┬───────┘  │
+     │         │                │                 │          │
+     │  ┌──────▼────────────────▼─────────────────▼───────┐  │
+     │  │         Context Assembly Engine                  │  │
+     │  │         (exposed as a service)                   │  │
+     │  └──────────────────────┬───────────────────────────┘  │
+     │                         │                              │
+     │  ┌──────────────────────▼───────────────────────────┐  │
+     │  │              Supervisor Agent                     │  │
+     │  │         (intent routing & orchestration)          │  │
+     │  └────┬─────────────────┬───────────────────┬───────┘  │
+     │       │                 │                   │          │
+     │  ┌────▼────┐      ┌────▼────┐         ┌────▼────┐    │
+     │  │  Doc    │      │  Graph  │         │  Data   │    │
+     │  │  Agent  │      │  Agent  │         │  Agent  │    │
+     │  │         │      │         │         │         │    │
+     │  │search   │      │graph    │         │query_db │    │
+     │  │get_doc  │      │entities │         │search   │    │
+     │  │smart    │      │history  │         │entities │    │
+     │  └────┬────┘      └────┬────┘         └────┬────┘    │
+     │       │                │                   │          │
+     │  ┌────▼────────────────▼───────────────────▼───────┐  │
+     │  │              Intelligence Layer                  │  │
+     │  │                                                  │  │
+     │  │  ┌──────────────┐  ┌──────────────────────────┐ │  │
+     │  │  │  Semantic    │  │   Fact Extraction        │ │  │
+     │  │  │  Metadata    │  │   Engine                 │ │  │
+     │  │  │  • Glossary  │  │   • Facts → Memory       │ │  │
+     │  │  │  • Aliases   │  │   • Terms → Glossary     │ │  │
+     │  │  │  • Fuzzy     │  │   • Relations → Graph    │ │  │
+     │  │  │    matching  │  │   • Prefs → Memory       │ │  │
+     │  │  └──────────────┘  └──────────────────────────┘ │  │
+     │  │                                                  │  │
+     │  │  ┌──────────────────────────────────────────────┐│  │
+     │  │  │  Terminology Resolution & Query Expansion    ││  │
+     │  │  └──────────────────────────────────────────────┘│  │
+     │  └──────────────────────────────────────────────────┘  │
+     │                                                       │
+     │  ┌───────────────────────────────────────────────────┐ │
+     │  │                 Storage Layer                      │ │
+     │  │  ┌────┐  ┌────┐  ┌───────┐  ┌───────┐  ┌──────┐ │ │
+     │  │  │ PG │  │ ES │  │ Neo4j │  │ Redis │  │DuckDB│ │ │
+     │  │  └────┘  └────┘  └───────┘  └───────┘  └──────┘ │ │
+     │  └───────────────────────────────────────────────────┘ │
+     └───────────────────────────────────────────────────────┘
 ```
 
 Both MCP and REST are thin access layers over the same core services. No logic duplication.
