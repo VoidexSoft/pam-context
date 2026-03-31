@@ -145,4 +145,5 @@ async def test_delete_memory(memory_store, mock_es_client):
         index="test_memories",
         id=str(memory_id),
         refresh="wait_for",
+        ignore=[404],
     )

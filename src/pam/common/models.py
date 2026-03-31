@@ -381,7 +381,7 @@ class MessageResponse(BaseModel):
 
 
 class MemoryCreate(BaseModel):
-    content: str
+    content: str = Field(min_length=1, max_length=10_000)
     type: Literal["fact", "preference", "observation", "conversation_summary"] = "fact"
     source: str | None = None
     metadata: dict = Field(default_factory=dict)

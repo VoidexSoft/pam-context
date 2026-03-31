@@ -182,11 +182,12 @@ class MemoryStore:
         ]
 
     async def delete(self, memory_id: UUID) -> None:
-        """Remove a memory from the ES index."""
+        """Remove a memory from the ES index. Tolerates missing docs."""
         await self._client.delete(
             index=self._index_name,
             id=str(memory_id),
             refresh="wait_for",
+            ignore=[404],
         )
 
     async def update_importance(self, memory_id: UUID, importance: float) -> None:

@@ -57,6 +57,32 @@ class MemoryService:
         self._dedup_threshold = dedup_threshold
         self._merge_model = merge_model
 
+    @classmethod
+    async def create_from_settings(
+        cls,
+        session_factory: async_sessionmaker[AsyncSession],
+        es_client: object,
+        embedder: BaseEmbedder,
+        settings: object,
+    ) -> MemoryService:
+        """Factory to create MemoryService + MemoryStore from app settings."""
+        from pam.memory.store import MemoryStore
+
+        store = MemoryStore(
+            client=es_client,  # type: ignore[arg-type]
+            index_name=settings.memory_index,  # type: ignore[attr-defined]
+            embedding_dims=settings.embedding_dims,  # type: ignore[attr-defined]
+        )
+        await store.ensure_index()
+        return cls(
+            session_factory=session_factory,
+            store=store,
+            embedder=embedder,
+            anthropic_api_key=settings.anthropic_api_key,  # type: ignore[attr-defined]
+            dedup_threshold=settings.memory_dedup_threshold,  # type: ignore[attr-defined]
+            merge_model=settings.memory_merge_model,  # type: ignore[attr-defined]
+        )
+
     async def store(
         self,
         content: str,
@@ -159,8 +185,7 @@ class MemoryService:
     ) -> MemoryResponse:
         """Merge new content into an existing memory via LLM.
 
-        Also forwards importance, source, metadata, and expires_at from
-        the incoming store() call so they are not silently discarded.
+        Uses max(existing, new) for importance to avoid accidental downgrades.
         """
         from sqlalchemy import select
 
@@ -182,7 +207,7 @@ class MemoryService:
             existing.content = merged_content
             existing.updated_at = datetime.now(tz=timezone.utc)
             if new_importance is not None:
-                existing.importance = new_importance
+                existing.importance = max(existing.importance, new_importance)
             if new_source is not None:
                 existing.source = new_source
             if new_metadata is not None:
@@ -276,14 +301,6 @@ class MemoryService:
             )
             memories = result.scalars().all()
 
-            # Update access counts (importance stays as user-set value;
-            # compute_importance() is available for on-read scoring)
-            for mem in memories:
-                mem.access_count = (mem.access_count or 0) + 1
-                mem.last_accessed_at = datetime.now(tz=timezone.utc)
-            await session.flush()
-            await session.commit()
-
         # Build scored results, ordered by ES score
         memory_map = {str(m.id): m for m in memories}
         results = []
@@ -300,7 +317,7 @@ class MemoryService:
         return results
 
     async def get(self, memory_id: uuid_mod.UUID) -> MemoryResponse | None:
-        """Fetch a single memory by ID."""
+        """Fetch a single memory by ID and bump access count."""
         from sqlalchemy import select
 
         async with self._session_factory() as session:
@@ -310,6 +327,10 @@ class MemoryService:
             memory = result.scalars().first()
             if memory is None:
                 return None
+            memory.access_count = (memory.access_count or 0) + 1
+            memory.last_accessed_at = datetime.now(tz=timezone.utc)
+            await session.flush()
+            await session.commit()
             return _memory_to_response(memory)
 
     async def list_by_user(
@@ -345,8 +366,12 @@ class MemoryService:
         metadata: dict | None = None,
         importance: float | None = None,
         expires_at: datetime | None = None,
+        clear_expires_at: bool = False,
     ) -> MemoryResponse | None:
-        """Update a memory. Re-embeds and re-indexes if content changes."""
+        """Update a memory. Re-embeds and re-indexes if content changes.
+
+        Set clear_expires_at=True to explicitly remove a TTL (set expires_at to NULL).
+        """
         from sqlalchemy import select
 
         async with self._session_factory() as session:
@@ -367,6 +392,8 @@ class MemoryService:
                 memory.importance = importance
             if expires_at is not None:
                 memory.expires_at = expires_at
+            elif clear_expires_at:
+                memory.expires_at = None
 
             memory.updated_at = datetime.now(tz=timezone.utc)
             await session.flush()

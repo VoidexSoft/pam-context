@@ -112,21 +112,12 @@ async def _create_services():
     memory_service = None
     try:
         from pam.memory.service import MemoryService
-        from pam.memory.store import MemoryStore
 
-        memory_store = MemoryStore(
-            client=es_client,
-            index_name=settings.memory_index,
-            embedding_dims=settings.embedding_dims,
-        )
-        await memory_store.ensure_index()
-        memory_service = MemoryService(
+        memory_service = await MemoryService.create_from_settings(
             session_factory=session_factory,
-            store=memory_store,
+            es_client=es_client,
             embedder=embedder,
-            anthropic_api_key=settings.anthropic_api_key,
-            dedup_threshold=settings.memory_dedup_threshold,
-            merge_model=settings.memory_merge_model,
+            settings=settings,
         )
     except Exception:
         logger.warning("memory_service_unavailable_in_mcp_mode", exc_info=True)

@@ -35,7 +35,6 @@ def test_memory_create_schema_defaults():
 
 def test_memory_create_schema_validation():
     """MemoryCreate rejects invalid importance values."""
-    import pytest
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
@@ -43,6 +42,22 @@ def test_memory_create_schema_validation():
 
     with pytest.raises(ValidationError):
         MemoryCreate(content="test", importance=-0.1)
+
+
+def test_memory_create_rejects_empty_content():
+    """MemoryCreate rejects empty content at schema level."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        MemoryCreate(content="")
+
+
+def test_memory_create_rejects_oversized_content():
+    """MemoryCreate rejects content exceeding 10k chars at schema level."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        MemoryCreate(content="x" * 10_001)
 
 
 def test_memory_response_from_attributes():
@@ -133,6 +148,51 @@ async def test_store_memory_with_duplicate_merges(memory_service, mock_store, mo
     mock_store.index_memory.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_merge_uses_max_importance(memory_service, mock_store, mock_embedder):
+    """_merge_and_update uses max(existing, new) for importance."""
+    dup_id = "550e8400-e29b-41d4-a716-446655440000"
+    mock_store.find_duplicates.return_value = [
+        {"memory_id": dup_id, "score": 0.95, "content": "Important fact"},
+    ]
+
+    mock_session = AsyncMock()
+    mock_existing = MagicMock()
+    mock_existing.id = uuid.UUID(dup_id)
+    mock_existing.content = "Important fact"
+    mock_existing.type = "fact"
+    mock_existing.source = "manual"
+    mock_existing.metadata_ = {}
+    mock_existing.importance = 0.9  # Existing has high importance
+    mock_existing.access_count = 0
+    mock_existing.last_accessed_at = None
+    mock_existing.expires_at = None
+    mock_existing.user_id = None
+    mock_existing.project_id = None
+    mock_existing.created_at = datetime.now(tz=timezone.utc)
+    mock_existing.updated_at = datetime.now(tz=timezone.utc)
+
+    mock_get_result = MagicMock()
+    mock_get_result.scalars.return_value.first.return_value = mock_existing
+    mock_session.execute = AsyncMock(return_value=mock_get_result)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    with patch.object(memory_service, "_merge_contents", new_callable=AsyncMock) as mock_merge:
+        mock_merge.return_value = "Merged important fact"
+
+        await memory_service.store(
+            content="Less important version",
+            memory_type="fact",
+            importance=0.3,  # Lower importance should not downgrade
+            user_id=None,
+        )
+
+    # Should keep 0.9 (max of 0.9, 0.3), not downgrade to 0.3
+    assert mock_existing.importance == 0.9
+
+
 from datetime import timedelta
 
 
@@ -170,7 +230,7 @@ def test_compute_importance_formula():
 
 @pytest.mark.asyncio
 async def test_search_memories(memory_service, mock_store, mock_embedder):
-    """search() embeds query and returns scored memories from ES."""
+    """search() embeds query and returns scored memories from ES (no access_count bump)."""
     memory_id = uuid.uuid4()
     mock_store.search.return_value = [
         {"memory_id": str(memory_id), "score": 0.92, "content": "Revenue is $10M", "type": "fact", "importance": 0.7},
@@ -195,8 +255,6 @@ async def test_search_memories(memory_service, mock_store, mock_embedder):
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = [mock_memory]
     mock_session.execute = AsyncMock(return_value=mock_result)
-    mock_session.flush = AsyncMock()
-    mock_session.commit = AsyncMock()
     memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
 
     results = await memory_service.search(query="revenue target", top_k=5)
@@ -206,11 +264,13 @@ async def test_search_memories(memory_service, mock_store, mock_embedder):
     assert results[0].score == 0.92
     mock_embedder.embed_texts.assert_awaited_once_with(["revenue target"])
     mock_store.search.assert_awaited_once()
+    # search() should NOT bump access_count
+    mock_session.flush.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_get_memory_by_id(memory_service):
-    """get() fetches a single memory by ID."""
+    """get() fetches a single memory by ID and bumps access count."""
     memory_id = uuid.uuid4()
     mock_session = AsyncMock()
     mock_memory = MagicMock()
@@ -231,11 +291,16 @@ async def test_get_memory_by_id(memory_service):
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_memory
     mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
     memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
 
     result = await memory_service.get(memory_id)
     assert result is not None
     assert result.content == "Test fact"
+    # get() should bump access_count
+    assert mock_memory.access_count == 1
+    mock_session.flush.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -325,6 +390,70 @@ async def test_update_memory(memory_service, mock_store, mock_embedder):
 
 
 @pytest.mark.asyncio
+async def test_update_importance_only(memory_service, mock_store, mock_embedder):
+    """update() with importance-only change calls update_importance on ES."""
+    memory_id = uuid.uuid4()
+    mock_session = AsyncMock()
+    mock_memory = MagicMock()
+    mock_memory.id = memory_id
+    mock_memory.content = "Some fact"
+    mock_memory.type = "fact"
+    mock_memory.importance = 0.5
+    mock_memory.access_count = 0
+    mock_memory.user_id = None
+    mock_memory.project_id = None
+    mock_memory.source = None
+    mock_memory.metadata_ = {}
+    mock_memory.last_accessed_at = None
+    mock_memory.expires_at = None
+    mock_memory.created_at = datetime.now(tz=timezone.utc)
+    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_memory
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    result = await memory_service.update(memory_id=memory_id, importance=0.9)
+    assert result is not None
+    mock_store.update_importance.assert_awaited_once_with(memory_id, 0.9)
+    mock_store.index_memory.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_clear_expires_at(memory_service, mock_store):
+    """update() with clear_expires_at=True sets expires_at to None."""
+    memory_id = uuid.uuid4()
+    mock_session = AsyncMock()
+    mock_memory = MagicMock()
+    mock_memory.id = memory_id
+    mock_memory.content = "Expiring fact"
+    mock_memory.type = "fact"
+    mock_memory.importance = 0.5
+    mock_memory.access_count = 0
+    mock_memory.user_id = None
+    mock_memory.project_id = None
+    mock_memory.source = None
+    mock_memory.metadata_ = {}
+    mock_memory.last_accessed_at = None
+    mock_memory.expires_at = datetime.now(tz=timezone.utc)
+    mock_memory.created_at = datetime.now(tz=timezone.utc)
+    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_memory
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    memory_service._session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    await memory_service.update(memory_id=memory_id, clear_expires_at=True)
+    assert mock_memory.expires_at is None
+
+
+@pytest.mark.asyncio
 async def test_store_rejects_empty_content(memory_service):
     """store() raises ValueError for empty content."""
     with pytest.raises(ValueError, match="empty"):
@@ -339,3 +468,15 @@ async def test_store_rejects_oversized_content(memory_service):
     """store() raises ValueError for content exceeding 10k chars."""
     with pytest.raises(ValueError, match="10,000"):
         await memory_service.store(content="x" * 10_001, memory_type="fact")
+
+
+@pytest.mark.asyncio
+async def test_merge_contents_fallback(memory_service):
+    """_merge_contents falls back to new content when LLM call fails."""
+    with patch("anthropic.AsyncAnthropic") as mock_cls:
+        mock_cls.return_value.messages.create = AsyncMock(
+            side_effect=RuntimeError("API unavailable")
+        )
+
+        result = await memory_service._merge_contents("old fact", "new fact")
+        assert result == "new fact"
