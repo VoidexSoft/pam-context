@@ -199,3 +199,25 @@ class TestRunCliRaw:
             pytest.raises(ConnectorError, match="Not Found"),
         ):
             await connector.run_cli_raw(["api", "/bad"])
+
+    async def test_retries_on_rate_limit(self):
+        connector = ConcreteCliConnector()
+        rate_limit_proc = _make_process(returncode=1, stderr=b"rate limit exceeded")
+        ok_proc = _make_process(stdout=b"raw content")
+
+        call_count = 0
+
+        async def create_proc(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return rate_limit_proc
+            return ok_proc
+
+        with (
+            patch("pam.ingestion.connectors.cli_base.asyncio.create_subprocess_exec", side_effect=create_proc),
+            patch("pam.ingestion.connectors.cli_base.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            result = await connector.run_cli_raw(["api", "/repos/o/r/contents/f"])
+        assert result == b"raw content"
+        assert call_count == 2

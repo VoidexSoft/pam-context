@@ -128,33 +128,55 @@ class CliConnector(BaseConnector, ABC):
         *,
         timeout: int | None = None,
     ) -> bytes:
-        """Run CLI command, return raw stdout bytes (for file content)."""
+        """Run CLI command, return raw stdout bytes (for file content).
+
+        Retries up to 3 times on rate limit errors with exponential backoff.
+        """
         timeout = timeout or settings.cli_timeout
         full_cmd = [self.cli_binary, *args]
 
-        proc = await asyncio.create_subprocess_exec(
-            *full_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            async with asyncio.timeout(timeout):
-                stdout, stderr = await proc.communicate()
-        except TimeoutError:
-            proc.kill()
-            raise ConnectorError(
-                f"Command timed out after {timeout}s: {' '.join(full_cmd)}",
-                command=full_cmd,
-            ) from None
+        for attempt in range(_MAX_RETRIES):
+            proc = await asyncio.create_subprocess_exec(
+                *full_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                async with asyncio.timeout(timeout):
+                    stdout, stderr = await proc.communicate()
+            except TimeoutError:
+                proc.kill()
+                raise ConnectorError(
+                    f"Command timed out after {timeout}s: {' '.join(full_cmd)}",
+                    command=full_cmd,
+                ) from None
 
-        if proc.returncode != 0:
+            if proc.returncode == 0:
+                logger.info(
+                    "cli_run_raw",
+                    binary=self.cli_binary,
+                    args=args,
+                    bytes_received=len(stdout),
+                )
+                return stdout
+
             stderr_text = stderr.decode(errors="replace").strip()
+            stderr_lower = stderr_text.lower()
+
+            if any(kw in stderr_lower for kw in _RATE_LIMIT_KEYWORDS) and attempt < _MAX_RETRIES - 1:
+                delay = _BACKOFF_BASE * (3**attempt)
+                logger.warning(
+                    "cli_raw_rate_limited",
+                    binary=self.cli_binary,
+                    attempt=attempt + 1,
+                    retry_in=delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+
             raise ConnectorError(stderr_text or f"CLI exited with code {proc.returncode}", command=full_cmd)
 
-        logger.info(
-            "cli_run_raw",
-            binary=self.cli_binary,
-            args=args,
-            bytes_received=len(stdout),
+        raise ConnectorError(
+            f"Rate limited after {_MAX_RETRIES} retries: {' '.join(full_cmd)}",
+            command=full_cmd,
         )
-        return stdout

@@ -41,3 +41,15 @@ def test_single_message_kept():
     result = _truncate_history(messages, max_chars=10_000)
     assert len(result) == 1
     assert result[0]["content"] == "X" * 50_000
+
+
+def test_first_message_is_always_user_role():
+    """After truncation, the first message must have role 'user' for the Anthropic API."""
+    messages = [
+        {"role": "assistant", "content": "A" * 5000},
+        {"role": "user", "content": "B" * 5000},
+        {"role": "assistant", "content": "C" * 5000},
+        {"role": "user", "content": "latest"},
+    ]
+    result = _truncate_history(messages, max_chars=6_000)
+    assert result[0]["role"] == "user"

@@ -104,7 +104,9 @@ class TestGetContentHash:
         assert result == "sha_readme"
 
     async def test_raises_when_no_cache(self, connector):
-        with pytest.raises(KeyError):
+        from pam.ingestion.connectors.cli_base import ConnectorError
+
+        with pytest.raises(ConnectorError, match="list_documents"):
             await connector.get_content_hash("owner/repo:unknown.md")
 
 

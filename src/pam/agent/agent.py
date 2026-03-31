@@ -77,7 +77,9 @@ def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) 
     """Drop oldest message pairs if total character count exceeds budget.
 
     Always keeps the last message (the user's current question).
-    Drops from the front two at a time to maintain user/assistant alternation.
+    Drops from the front two at a time to maintain user/assistant alternation,
+    then ensures the first remaining message has role "user" (required by the
+    Anthropic API).
     """
     if not messages:
         return messages
@@ -92,6 +94,10 @@ def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) 
         # Always drop the paired message to maintain user/assistant alternation
         if len(trimmed) > 1:
             total -= _content_len(trimmed.pop(0))
+
+    # Ensure the first message is a "user" message (Anthropic API requirement)
+    while len(trimmed) > 1 and trimmed[0].get("role") != "user":
+        trimmed.pop(0)
 
     return trimmed
 

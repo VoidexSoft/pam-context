@@ -7,7 +7,7 @@ from pathlib import PurePosixPath
 import structlog
 
 from pam.common.models import DocumentInfo, RawDocument
-from pam.ingestion.connectors.cli_base import CliConnector
+from pam.ingestion.connectors.cli_base import CliConnector, ConnectorError
 
 logger = structlog.get_logger()
 
@@ -84,4 +84,9 @@ class GitHubConnector(CliConnector):
         )
 
     async def get_content_hash(self, source_id: str) -> str:
-        return self._tree_cache[source_id]
+        try:
+            return self._tree_cache[source_id]
+        except KeyError:
+            raise ConnectorError(
+                f"No cached SHA for {source_id!r} — call list_documents() first",
+            ) from None
