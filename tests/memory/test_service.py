@@ -193,41 +193,6 @@ async def test_merge_uses_max_importance(memory_service, mock_store, mock_embedd
     assert mock_existing.importance == 0.9
 
 
-from datetime import timedelta
-
-
-def test_compute_importance_formula():
-    """compute_importance implements the spec formula correctly."""
-    from pam.memory.service import MemoryService
-
-    now = datetime.now(tz=timezone.utc)
-
-    # Brand new memory with no accesses: recency=1.0, freq=0, weight=0.5
-    score = MemoryService.compute_importance(
-        created_at=now, access_count=0, explicit_weight=0.5,
-    )
-    # 0.5*1.0 + 0.3*0 + 0.2*0.5 = 0.6
-    assert abs(score - 0.6) < 0.01
-
-    # 45-day old memory (half of 90-day max) with 10 accesses, weight=0.8
-    score = MemoryService.compute_importance(
-        created_at=now - timedelta(days=45),
-        access_count=10,
-        explicit_weight=0.8,
-    )
-    # recency=0.5, freq=log(11)/log(101)~0.519, weight=0.8
-    assert 0.5 < score < 0.7
-
-    # Very old memory (>90 days): recency=0
-    score = MemoryService.compute_importance(
-        created_at=now - timedelta(days=100),
-        access_count=0,
-        explicit_weight=0.5,
-    )
-    # 0.5*0 + 0.3*0 + 0.2*0.5 = 0.1
-    assert abs(score - 0.1) < 0.01
-
-
 @pytest.mark.asyncio
 async def test_search_memories(memory_service, mock_store, mock_embedder):
     """search() embeds query and returns scored memories from ES (no access_count bump)."""

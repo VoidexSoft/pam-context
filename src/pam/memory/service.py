@@ -155,17 +155,28 @@ class MemoryService:
             await session.flush()
             await session.commit()
 
-        # Index in ES
-        await self._store.index_memory(
-            memory_id=memory_id,
-            content=content,
-            embedding=embedding,
-            user_id=user_id,
-            project_id=project_id,
-            memory_type=memory_type,
-            importance=importance,
-            source=source,
-        )
+        # Index in ES — rollback PG if this fails to avoid orphaned records
+        try:
+            await self._store.index_memory(
+                memory_id=memory_id,
+                content=content,
+                embedding=embedding,
+                user_id=user_id,
+                project_id=project_id,
+                memory_type=memory_type,
+                importance=importance,
+                source=source,
+            )
+        except Exception:
+            from sqlalchemy import delete as sa_delete
+
+            async with self._session_factory() as rollback_session:
+                await rollback_session.execute(
+                    sa_delete(Memory).where(Memory.id == memory_id)
+                )
+                await rollback_session.commit()
+            logger.error("memory_es_index_failed", memory_id=str(memory_id), exc_info=True)
+            raise
 
         logger.info("memory_stored", memory_id=str(memory_id), type=memory_type, dedup="new")
         return _memory_to_response(memory)
@@ -224,46 +235,23 @@ class MemoryService:
             mem_source = existing.source
 
         # Re-index in ES (outside session to avoid holding DB connection)
-        await self._store.index_memory(
-            memory_id=existing_id,
-            content=merged_content,
-            embedding=merged_embedding,
-            user_id=user_id,
-            project_id=project_id,
-            memory_type=mem_type,
-            importance=mem_importance,
-            source=mem_source,
-        )
+        try:
+            await self._store.index_memory(
+                memory_id=existing_id,
+                content=merged_content,
+                embedding=merged_embedding,
+                user_id=user_id,
+                project_id=project_id,
+                memory_type=mem_type,
+                importance=mem_importance,
+                source=mem_source,
+            )
+        except Exception:
+            logger.error("memory_es_reindex_failed", memory_id=str(existing_id), exc_info=True)
+            raise
 
         logger.info("memory_merged", memory_id=str(existing_id))
         return response
-
-    @staticmethod
-    def compute_importance(
-        created_at: datetime,
-        access_count: int,
-        explicit_weight: float,
-        max_age_days: float = 90.0,
-    ) -> float:
-        """Compute importance score per spec formula.
-
-        importance = 0.5 * recency + 0.3 * access_frequency + 0.2 * explicit_weight
-
-        recency: 1.0 for just-created, decays to 0.0 at max_age_days.
-        access_frequency: normalized log of access_count (log(1+count)/log(1+100)).
-        explicit_weight: the user-provided importance value (0-1).
-        """
-        import math
-
-        age_seconds = (datetime.now(tz=timezone.utc) - created_at).total_seconds()
-        age_days = max(age_seconds / 86400, 0)
-        recency = max(1.0 - (age_days / max_age_days), 0.0)
-
-        access_freq = math.log(1 + access_count) / math.log(1 + 100)
-        access_freq = min(access_freq, 1.0)
-
-        score = 0.5 * recency + 0.3 * access_freq + 0.2 * explicit_weight
-        return round(min(max(score, 0.0), 1.0), 4)
 
     async def search(
         self,
@@ -331,6 +319,19 @@ class MemoryService:
             memory.last_accessed_at = datetime.now(tz=timezone.utc)
             await session.flush()
             await session.commit()
+            return _memory_to_response(memory)
+
+    async def get_for_ownership_check(self, memory_id: uuid_mod.UUID) -> MemoryResponse | None:
+        """Fetch a memory by ID without bumping access count. For auth checks."""
+        from sqlalchemy import select
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(Memory).where(Memory.id == memory_id)
+            )
+            memory = result.scalars().first()
+            if memory is None:
+                return None
             return _memory_to_response(memory)
 
     async def list_by_user(

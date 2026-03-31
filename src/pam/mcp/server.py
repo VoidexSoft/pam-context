@@ -591,8 +591,7 @@ def _register_memory_tools(mcp: FastMCP) -> None:
         """Recall relevant memories from PAM's memory store.
 
         Searches by semantic similarity to the query. Returns memories
-        ranked by relevance score. Also updates access frequency for
-        importance scoring.
+        ranked by relevance score.
         """
         return await _pam_recall(
             query=query,
@@ -811,4 +810,5 @@ async def _get_entities(entity_type: str | None = None) -> str:
             indent=2,
         )
     except Exception as e:
+        logger.warning("entity_resource_failed", exc_info=True)
         return json.dumps({"entities": [], "error": str(e)})

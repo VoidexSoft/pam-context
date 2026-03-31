@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from pam.api.auth import get_current_user
+from pam.api.rate_limit import limiter
+from pam.common.config import settings
 from pam.common.models import (
     MemoryCreate,
     MemoryResponse,
@@ -31,7 +33,9 @@ def _require_user(user: User | None) -> User:
 
 
 @router.post("", response_model=MemoryResponse)
+@limiter.limit(settings.rate_limit_memory)
 async def store_memory(
+    request: Request,  # noqa: ARG001
     body: MemoryCreate,
     memory_service=Depends(get_memory_service),
     user: User | None = Depends(get_current_user),
@@ -55,7 +59,9 @@ async def store_memory(
 
 
 @router.get("/search", response_model=list[MemorySearchResult])
+@limiter.limit(settings.rate_limit_memory)
 async def search_memories(
+    request: Request,  # noqa: ARG001
     query: str,
     project_id: uuid.UUID | None = None,
     type: str | None = None,
@@ -75,7 +81,9 @@ async def search_memories(
 
 
 @router.get("/{memory_id}", response_model=MemoryResponse)
+@limiter.limit(settings.rate_limit_memory)
 async def get_memory(
+    request: Request,  # noqa: ARG001
     memory_id: uuid.UUID,
     memory_service=Depends(get_memory_service),
     user: User | None = Depends(get_current_user),
@@ -89,7 +97,9 @@ async def get_memory(
 
 
 @router.patch("/{memory_id}", response_model=MemoryResponse)
+@limiter.limit(settings.rate_limit_memory)
 async def update_memory(
+    request: Request,  # noqa: ARG001
     memory_id: uuid.UUID,
     body: MemoryUpdate,
     memory_service=Depends(get_memory_service),
@@ -97,8 +107,8 @@ async def update_memory(
 ):
     """Update a memory's content, metadata, or importance."""
     owner = _require_user(user)
-    # Verify ownership before updating
-    existing = await memory_service.get(memory_id)
+    # Verify ownership before updating (without inflating access_count)
+    existing = await memory_service.get_for_ownership_check(memory_id)
     if existing is None or existing.user_id != owner.id:
         raise HTTPException(status_code=404, detail="Memory not found")
     result = await memory_service.update(
@@ -115,15 +125,17 @@ async def update_memory(
 
 
 @router.delete("/{memory_id}")
+@limiter.limit(settings.rate_limit_memory)
 async def delete_memory(
+    request: Request,  # noqa: ARG001
     memory_id: uuid.UUID,
     memory_service=Depends(get_memory_service),
     user: User | None = Depends(get_current_user),
 ):
     """Delete a memory (must belong to authenticated user)."""
     owner = _require_user(user)
-    # Verify ownership before deleting
-    existing = await memory_service.get(memory_id)
+    # Verify ownership before deleting (without inflating access_count)
+    existing = await memory_service.get_for_ownership_check(memory_id)
     if existing is None or existing.user_id != owner.id:
         raise HTTPException(status_code=404, detail="Memory not found")
     await memory_service.delete(memory_id)
@@ -131,7 +143,9 @@ async def delete_memory(
 
 
 @router.get("/user/{user_id}", response_model=list[MemoryResponse])
+@limiter.limit(settings.rate_limit_memory)
 async def list_user_memories(
+    request: Request,  # noqa: ARG001
     user_id: uuid.UUID,
     project_id: uuid.UUID | None = None,
     type: str | None = None,

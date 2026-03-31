@@ -141,9 +141,9 @@ async def test_delete_memory(memory_store, mock_es_client):
 
     await memory_store.delete(memory_id)
 
-    mock_es_client.delete.assert_awaited_once_with(
+    mock_es_client.options.assert_called_once_with(ignore_status=404)
+    mock_es_client.options.return_value.delete.assert_awaited_once_with(
         index="test_memories",
         id=str(memory_id),
         refresh="wait_for",
-        ignore=[404],
     )

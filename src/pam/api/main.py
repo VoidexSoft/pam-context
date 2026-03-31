@@ -256,7 +256,10 @@ def create_app() -> FastAPI:
     from pam.api.routes.memory import get_memory_service as _get_memory_svc
 
     def _memory_svc_override():
-        return getattr(app.state, "memory_service", None)
+        svc = getattr(app.state, "memory_service", None)
+        if svc is None:
+            raise RuntimeError("MemoryService not initialized")
+        return svc
 
     app.dependency_overrides[_get_memory_svc] = _memory_svc_override
 

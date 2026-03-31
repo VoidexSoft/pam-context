@@ -17,6 +17,8 @@ def mock_es_client() -> AsyncMock:
     client.indices = AsyncMock()
     client.indices.exists = AsyncMock(return_value=False)
     client.indices.create = AsyncMock()
+    # options() is sync and returns a client-like object with async methods
+    client.options = MagicMock(return_value=AsyncMock())
     return client
 
 
