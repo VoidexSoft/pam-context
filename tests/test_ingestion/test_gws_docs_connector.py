@@ -61,21 +61,36 @@ class TestListDocuments:
 class TestFetchDocument:
     async def test_exports_as_docx(self, connector):
         docx_bytes = b"fake docx content"
-        with patch.object(connector, "run_cli_raw", new_callable=AsyncMock, return_value=docx_bytes):
+        with (
+            patch.object(connector, "run_cli", new_callable=AsyncMock, return_value={"name": "Design Doc"}),
+            patch.object(connector, "run_cli_raw", new_callable=AsyncMock, return_value=docx_bytes),
+        ):
             doc = await connector.fetch_document("doc1")
 
         assert isinstance(doc, RawDocument)
         assert doc.content == docx_bytes
         assert doc.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         assert doc.source_id == "doc1"
+        assert doc.title == "Design Doc"
 
     async def test_calls_export_api(self, connector):
         mock_raw = AsyncMock(return_value=b"bytes")
-        with patch.object(connector, "run_cli_raw", mock_raw):
+        with (
+            patch.object(connector, "run_cli", new_callable=AsyncMock, return_value={"name": "Doc"}),
+            patch.object(connector, "run_cli_raw", mock_raw),
+        ):
             await connector.fetch_document("doc123")
         args = mock_raw.call_args[0][0]
         assert "export" in " ".join(args)
         assert "doc123" in " ".join(args)
+
+    async def test_falls_back_to_source_id_when_name_missing(self, connector):
+        with (
+            patch.object(connector, "run_cli", new_callable=AsyncMock, return_value={}),
+            patch.object(connector, "run_cli_raw", new_callable=AsyncMock, return_value=b"bytes"),
+        ):
+            doc = await connector.fetch_document("doc1")
+        assert doc.title == "doc1"
 
 
 class TestGetContentHash:

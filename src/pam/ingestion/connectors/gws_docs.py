@@ -56,6 +56,13 @@ class GwsDocsConnector(CliConnector):
         return docs
 
     async def fetch_document(self, source_id: str) -> RawDocument:
+        # Fetch file metadata to get the human-readable name
+        meta_params = json.dumps({"fileId": source_id, "fields": "name"})
+        meta = await self.run_cli(
+            ["drive", "files", "get", "--params", meta_params]
+        )
+        title = meta.get("name", source_id)
+
         params = json.dumps(
             {
                 "fileId": source_id,
@@ -75,7 +82,7 @@ class GwsDocsConnector(CliConnector):
             content=content,
             content_type=DOCX_MIME,
             source_id=source_id,
-            title=source_id,
+            title=title,
         )
 
     async def get_content_hash(self, source_id: str) -> str:

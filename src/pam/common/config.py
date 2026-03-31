@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     use_cli_connectors: bool = False  # Use gws CLI instead of Google API connectors
     cli_timeout: int = 30  # Seconds per CLI subprocess call
 
+    # Google connectors
+    google_folder_ids: list[str] = []  # Google Drive folder IDs to ingest from
+    google_credentials_path: str = ""  # Path to Google service account credentials JSON
+
     # Rate limiting
     rate_limit_default: str = "100/minute"
     rate_limit_chat: str = "10/minute"

@@ -413,6 +413,8 @@ async def _pam_graph_neighbors(entity_name: str) -> str:
 
 async def _pam_entity_history(entity_name: str, since: str | None = None) -> str:
     """Implementation of pam_entity_history."""
+    from datetime import datetime as _dt
+
     services = get_services()
     if services.graph_service is None:
         return json.dumps({"error": "Knowledge graph service is unavailable"})
@@ -420,14 +422,18 @@ async def _pam_entity_history(entity_name: str, since: str | None = None) -> str
     query = f"history of {entity_name}"
     edges = await services.graph_service.client.search(query=query, num_results=20)
 
-    history = [
-        {
-            "fact": getattr(edge, "fact", str(edge)),
-            "relation_type": getattr(edge, "name", None),
-            "created_at": getattr(edge, "created_at", None),
-        }
-        for edge in edges
-    ]
+    history = []
+    for edge in edges:
+        created_at = getattr(edge, "created_at", None)
+        if isinstance(created_at, _dt):
+            created_at = created_at.isoformat()
+        history.append(
+            {
+                "fact": getattr(edge, "fact", str(edge)),
+                "relation_type": getattr(edge, "name", None),
+                "created_at": created_at,
+            }
+        )
 
     if since:
         history = [h for h in history if h.get("created_at") and h["created_at"] >= since]
@@ -456,15 +462,13 @@ def _register_utility_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     async def pam_ingest(
         folder_path: str,
-        source_type: str = "markdown",
     ) -> str:
         """Trigger document ingestion from a local folder.
 
-        Parses documents, chunks them, embeds, and stores in the knowledge base.
-        source_type: markdown, google_doc, google_sheets, github.
+        Parses markdown documents, chunks them, embeds, and stores in the knowledge base.
         Returns a task ID for monitoring progress.
         """
-        return await _pam_ingest(folder_path=folder_path, source_type=source_type)
+        return await _pam_ingest(folder_path=folder_path)
 
 
 async def _pam_query_data(sql: str | None = None, list_tables: bool = False) -> str:
@@ -484,7 +488,7 @@ async def _pam_query_data(sql: str | None = None, list_tables: bool = False) -> 
     return json.dumps(result, indent=2)
 
 
-async def _pam_ingest(folder_path: str, source_type: str = "markdown") -> str:
+async def _pam_ingest(folder_path: str) -> str:
     """Implementation of pam_ingest — triggers folder ingestion."""
     from pathlib import Path
 
@@ -525,7 +529,6 @@ async def _pam_ingest(folder_path: str, source_type: str = "markdown") -> str:
             "task_id": str(task.id),
             "status": "started",
             "folder_path": folder_path,
-            "source_type": source_type,
             "message": "Ingestion task started. Poll /api/ingest/tasks/{task_id} for progress.",
         },
         indent=2,

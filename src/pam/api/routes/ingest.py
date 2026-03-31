@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pam.api.auth import get_current_user, require_admin
 from pam.api.deps import get_db, get_embedder, get_es_client, get_graph_service
 from pam.api.pagination import DEFAULT_PAGE_SIZE, PaginatedResponse, decode_cursor, encode_cursor
+from pam.api.rate_limit import limiter
 from pam.common.config import settings
 from pam.common.models import (
     IngestionTask,
@@ -58,6 +59,7 @@ class IngestSyncRequest(BaseModel):
 
 
 @router.post("/ingest/folder", response_model=TaskCreatedResponse, status_code=202)
+@limiter.limit(settings.rate_limit_ingest)
 async def ingest_folder(
     request: Request,
     body: IngestFolderRequest,
@@ -162,6 +164,7 @@ async def list_task_statuses(
 
 
 @router.post("/ingest/github", response_model=TaskCreatedResponse, status_code=202)
+@limiter.limit(settings.rate_limit_ingest)
 async def ingest_github(
     request: Request,
     body: IngestGithubRequest,
@@ -196,6 +199,7 @@ async def ingest_github(
 
 
 @router.post("/ingest/sync", response_model=TaskCreatedResponse, status_code=202)
+@limiter.limit(settings.rate_limit_ingest)
 async def ingest_sync(
     request: Request,
     body: IngestSyncRequest,

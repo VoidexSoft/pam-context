@@ -234,9 +234,10 @@ class IngestionPipeline:
             logger.exception("pipeline_error", source_id=source_id)
             return IngestionResult(source_id=source_id, title=source_id, segments_created=0, error=str(e))
 
-    async def ingest_all(self) -> list[IngestionResult]:
-        """List all documents from connector and ingest each."""
-        docs = await self.connector.list_documents()
+    async def ingest_all(self, docs: list | None = None) -> list[IngestionResult]:
+        """Ingest documents. Uses pre-fetched *docs* if provided, else lists from connector."""
+        if docs is None:
+            docs = await self.connector.list_documents()
         logger.info("pipeline_ingest_all", total_documents=len(docs))
 
         results = []

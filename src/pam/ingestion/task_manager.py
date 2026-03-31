@@ -103,10 +103,12 @@ async def _run_pipeline(
                 )
                 await status_session.commit()
 
-                # Count documents across all connectors
+                # Count documents across all connectors (cache for reuse in pipeline)
                 total = 0
+                prefetched_docs: list[list] = []
                 for _source_type, connector in connectors:
                     docs = await connector.list_documents()
+                    prefetched_docs.append(docs)
                     total += len(docs)
 
                 await status_session.execute(
@@ -159,7 +161,7 @@ async def _run_pipeline(
                     await status_session.commit()
 
                 # Run the pipeline for each connector with a separate DB session
-                for source_type, connector in connectors:
+                for (source_type, connector), docs in zip(connectors, prefetched_docs):
                     async with session_factory() as pipeline_session:
                         parser = DoclingParser()
                         es_store = ElasticsearchStore(
@@ -179,7 +181,7 @@ async def _run_pipeline(
                             vdb_store=vdb_store,
                             skip_graph=skip_graph,
                         )
-                        await pipeline.ingest_all()
+                        await pipeline.ingest_all(docs=docs)
 
                 # Mark completed
                 await status_session.execute(

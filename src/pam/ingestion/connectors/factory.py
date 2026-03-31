@@ -15,13 +15,13 @@ def get_google_docs_connector(config: Settings) -> BaseConnector:
     if config.use_cli_connectors:
         from pam.ingestion.connectors.gws_docs import GwsDocsConnector
 
-        return GwsDocsConnector(folder_ids=getattr(config, "google_folder_ids", []))
+        return GwsDocsConnector(folder_ids=config.google_folder_ids)
 
     from pam.ingestion.connectors.google_docs import GoogleDocsConnector
 
     return GoogleDocsConnector(
-        credentials_path=getattr(config, "google_credentials_path", None),
-        folder_ids=getattr(config, "google_folder_ids", []),
+        credentials_path=config.google_credentials_path or None,
+        folder_ids=config.google_folder_ids,
     )
 
 
@@ -33,13 +33,12 @@ def get_google_sheets_connector(config: Settings) -> BaseConnector:
     if config.use_cli_connectors:
         from pam.ingestion.connectors.gws_sheets import GwsSheetsConnector
 
-        return GwsSheetsConnector(folder_ids=getattr(config, "google_folder_ids", []))
+        return GwsSheetsConnector(folder_ids=config.google_folder_ids)
 
     from pam.ingestion.connectors.google_sheets import GoogleSheetsConnector
 
-    folder_ids: list[str] = getattr(config, "google_folder_ids", [])
     return GoogleSheetsConnector(
-        credentials_path=getattr(config, "google_credentials_path", None),
+        credentials_path=config.google_credentials_path or None,
         # GoogleSheetsConnector takes a single folder_id; pass the first one if present
-        folder_id=folder_ids[0] if folder_ids else None,
+        folder_id=config.google_folder_ids[0] if config.google_folder_ids else None,
     )
