@@ -1,9 +1,7 @@
 """Tests for EntityRelationshipVDBStore — index creation, upsert, skip-unchanged, bulk errors."""
 
 import hashlib
-from unittest.mock import AsyncMock, MagicMock, call
-
-import pytest
+from unittest.mock import AsyncMock
 
 from pam.ingestion.stores.entity_relationship_store import (
     EntityRelationshipVDBStore,
@@ -14,10 +12,10 @@ from pam.ingestion.stores.entity_relationship_store import (
     make_relationship_doc_id,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_store(
     exists_side_effect: list[bool] | None = None,
@@ -25,13 +23,9 @@ def _make_store(
 ) -> tuple[EntityRelationshipVDBStore, AsyncMock]:
     """Build a store with a mock ES client."""
     client = AsyncMock()
-    client.indices.exists = AsyncMock(
-        side_effect=exists_side_effect or [False, False]
-    )
+    client.indices.exists = AsyncMock(side_effect=exists_side_effect or [False, False])
     client.indices.create = AsyncMock()
-    client.mget = AsyncMock(
-        return_value=mget_response or {"docs": []}
-    )
+    client.mget = AsyncMock(return_value=mget_response or {"docs": []})
     client.bulk = AsyncMock(return_value={"errors": False, "items": []})
 
     store = EntityRelationshipVDBStore(
@@ -172,7 +166,7 @@ class TestUpsertEntities:
                 {"found": False},
             ]
         }
-        store, client = _make_store(mget_response=mget_resp)
+        store, _client = _make_store(mget_response=mget_resp)
         embedder = _mock_embedder()
 
         entities = [
@@ -224,7 +218,7 @@ class TestUpsertEntities:
 
         bulk_ops = client.bulk.call_args.kwargs["operations"]
         stored_hash = bulk_ops[1]["content_hash"]
-        expected_hash = hashlib.sha256("Svc\ndesc".encode()).hexdigest()
+        expected_hash = hashlib.sha256(b"Svc\ndesc").hexdigest()
         assert stored_hash == expected_hash
 
 
@@ -242,8 +236,12 @@ class TestUpsertRelationships:
 
         rels = [
             RelationshipVDBRecord(
-                src_entity="A", tgt_entity="B", rel_type="USES",
-                keywords="integration", description="A uses B", source_id="s1",
+                src_entity="A",
+                tgt_entity="B",
+                rel_type="USES",
+                keywords="integration",
+                description="A uses B",
+                source_id="s1",
             ),
         ]
         count = await store.upsert_relationships(rels, embedder, source_id="src-1")
@@ -258,13 +256,17 @@ class TestUpsertRelationships:
         existing_hash = hashlib.sha256(text.encode()).hexdigest()
 
         mget_resp = {"docs": [{"found": True, "_source": {"content_hash": existing_hash}}]}
-        store, client = _make_store(mget_response=mget_resp)
+        store, _client = _make_store(mget_response=mget_resp)
         embedder = _mock_embedder()
 
         rels = [
             RelationshipVDBRecord(
-                src_entity="Src", tgt_entity="Tgt", rel_type="REL",
-                keywords="kw", description="desc", source_id="s1",
+                src_entity="Src",
+                tgt_entity="Tgt",
+                rel_type="REL",
+                keywords="kw",
+                description="desc",
+                source_id="s1",
             ),
         ]
         count = await store.upsert_relationships(rels, embedder, source_id="src-1")
@@ -280,8 +282,12 @@ class TestUpsertRelationships:
 
         rels = [
             RelationshipVDBRecord(
-                src_entity="Alpha", tgt_entity="Beta", rel_type="DEPENDS",
-                keywords="dependency", description="Alpha depends on Beta", source_id="s1",
+                src_entity="Alpha",
+                tgt_entity="Beta",
+                rel_type="DEPENDS",
+                keywords="dependency",
+                description="Alpha depends on Beta",
+                source_id="s1",
             ),
         ]
         await store.upsert_relationships(rels, embedder, source_id="src-1")
@@ -297,8 +303,12 @@ class TestUpsertRelationships:
 
         rels = [
             RelationshipVDBRecord(
-                src_entity="Zebra", tgt_entity="Apple", rel_type="USES",
-                keywords="k", description="d", source_id="s1",
+                src_entity="Zebra",
+                tgt_entity="Apple",
+                rel_type="USES",
+                keywords="k",
+                description="d",
+                source_id="s1",
             ),
         ]
         await store.upsert_relationships(rels, embedder, source_id="src-1")
@@ -311,18 +321,22 @@ class TestUpsertRelationships:
         """Bulk returns errors → logged but not raised."""
         mget_resp = {"docs": [{"found": False}]}
         store, client = _make_store(mget_response=mget_resp)
-        client.bulk = AsyncMock(return_value={
-            "errors": True,
-            "items": [
-                {"index": {"error": {"type": "mapper_parsing_exception", "reason": "bad field"}}}
-            ],
-        })
+        client.bulk = AsyncMock(
+            return_value={
+                "errors": True,
+                "items": [{"index": {"error": {"type": "mapper_parsing_exception", "reason": "bad field"}}}],
+            }
+        )
         embedder = _mock_embedder()
 
         rels = [
             RelationshipVDBRecord(
-                src_entity="X", tgt_entity="Y", rel_type="R",
-                keywords="k", description="d", source_id="s1",
+                src_entity="X",
+                tgt_entity="Y",
+                rel_type="R",
+                keywords="k",
+                description="d",
+                source_id="s1",
             ),
         ]
         # Should not raise
@@ -372,8 +386,11 @@ class TestUpsertEntitiesGaps:
 
         entities = [
             EntityVDBRecord(
-                name="Svc", entity_type="T", description="d",
-                source_id="s1", file_path="/docs/readme.md",
+                name="Svc",
+                entity_type="T",
+                description="d",
+                source_id="s1",
+                file_path="/docs/readme.md",
             ),
         ]
         await store.upsert_entities(entities, embedder, source_id="src-1")
@@ -416,12 +433,12 @@ class TestUpsertEntitiesGaps:
         """Bulk returns errors on entity upsert → logged but not raised."""
         mget_resp = {"docs": [{"found": False}]}
         store, client = _make_store(mget_response=mget_resp)
-        client.bulk = AsyncMock(return_value={
-            "errors": True,
-            "items": [
-                {"index": {"error": {"type": "mapper_parsing_exception", "reason": "bad"}}}
-            ],
-        })
+        client.bulk = AsyncMock(
+            return_value={
+                "errors": True,
+                "items": [{"index": {"error": {"type": "mapper_parsing_exception", "reason": "bad"}}}],
+            }
+        )
         embedder = _mock_embedder()
 
         entities = [
@@ -446,15 +463,19 @@ class TestUpsertRelationshipsGaps:
 
         rels = [
             RelationshipVDBRecord(
-                src_entity="A", tgt_entity="B", rel_type="USES",
-                keywords="kw", description="A uses B", source_id="s1",
+                src_entity="A",
+                tgt_entity="B",
+                rel_type="USES",
+                keywords="kw",
+                description="A uses B",
+                source_id="s1",
             ),
         ]
         await store.upsert_relationships(rels, embedder, source_id="src-1")
 
         bulk_ops = client.bulk.call_args.kwargs["operations"]
         stored_hash = bulk_ops[1]["content_hash"]
-        expected_hash = hashlib.sha256("kw\tA\nB\nA uses B".encode()).hexdigest()
+        expected_hash = hashlib.sha256(b"kw\tA\nB\nA uses B").hexdigest()
         assert stored_hash == expected_hash
 
     async def test_relationship_weight_in_bulk_doc(self):
@@ -465,8 +486,13 @@ class TestUpsertRelationshipsGaps:
 
         rels = [
             RelationshipVDBRecord(
-                src_entity="A", tgt_entity="B", rel_type="R",
-                keywords="k", description="d", source_id="s1", weight=3.5,
+                src_entity="A",
+                tgt_entity="B",
+                rel_type="R",
+                keywords="k",
+                description="d",
+                source_id="s1",
+                weight=3.5,
             ),
         ]
         await store.upsert_relationships(rels, embedder, source_id="src-1")
@@ -483,8 +509,12 @@ class TestUpsertRelationshipsGaps:
 
         rels = [
             RelationshipVDBRecord(
-                src_entity="X", tgt_entity="Y", rel_type="R",
-                keywords="k", description="d", source_id="s1",
+                src_entity="X",
+                tgt_entity="Y",
+                rel_type="R",
+                keywords="k",
+                description="d",
+                source_id="s1",
             ),
         ]
         await store.upsert_relationships(rels, embedder, source_id="doc-99")
@@ -505,8 +535,6 @@ class TestFilterUnchangedEdgeCases:
         mget_resp = {"docs": [{"found": True, "_source": {}}]}
         store, _ = _make_store(mget_response=mget_resp)
 
-        _, changed_indices = await store._filter_unchanged(
-            "pam_entities", ["entity-1"], ["abc123"]
-        )
+        _, changed_indices = await store._filter_unchanged("pam_entities", ["entity-1"], ["abc123"])
 
         assert changed_indices == [0]

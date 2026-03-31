@@ -44,7 +44,7 @@ class TestCorrelationIdMiddlewareASGI:
 
     async def test_asgi_call_interface(self):
         """Middleware uses __call__(scope, receive, send) -- pure ASGI."""
-        assert hasattr(CorrelationIdMiddleware, "__call__")
+        assert callable(CorrelationIdMiddleware)
         assert not hasattr(CorrelationIdMiddleware, "dispatch")
 
 
@@ -85,7 +85,6 @@ class TestRequestLoggingMiddlewareASGI:
 
     async def test_captures_status_code_and_latency(self):
         """Middleware captures status code from response.start and computes latency."""
-        captured_status = None
 
         async def inner_app(scope, receive, send):
             await send({"type": "http.response.start", "status": 201, "headers": []})
@@ -108,5 +107,5 @@ class TestRequestLoggingMiddlewareASGI:
 
     async def test_asgi_call_interface(self):
         """Middleware uses __call__(scope, receive, send) -- pure ASGI."""
-        assert hasattr(RequestLoggingMiddleware, "__call__")
+        assert callable(RequestLoggingMiddleware)
         assert not hasattr(RequestLoggingMiddleware, "dispatch")

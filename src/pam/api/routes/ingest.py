@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pam.api.auth import get_current_user, require_admin
 from pam.api.deps import get_db, get_embedder, get_es_client, get_graph_service
 from pam.api.pagination import DEFAULT_PAGE_SIZE, PaginatedResponse, decode_cursor, encode_cursor
+from pam.api.rate_limit import limiter
 from pam.common.config import settings
 from pam.common.models import (
     IngestionTask,
@@ -28,7 +29,13 @@ from pam.graph.extraction import extract_graph_for_document, rollback_graph_for_
 from pam.graph.service import GraphitiService
 from pam.ingestion.embedders.openai_embedder import OpenAIEmbedder
 from pam.ingestion.stores.postgres_store import PostgresStore
-from pam.ingestion.task_manager import create_task, get_task, spawn_ingestion_task
+from pam.ingestion.task_manager import (
+    create_task,
+    get_task,
+    spawn_github_ingestion_task,
+    spawn_ingestion_task,
+    spawn_sync_task,
+)
 
 logger = structlog.get_logger()
 
@@ -39,7 +46,20 @@ class IngestFolderRequest(BaseModel):
     path: str
 
 
+class IngestGithubRequest(BaseModel):
+    repo: str
+    branch: str = "main"
+    paths: list[str] = []
+    extensions: list[str] = [".md", ".txt"]
+
+
+class IngestSyncRequest(BaseModel):
+    sources: list[str] = ["github", "google_docs", "google_sheets"]
+    skip_graph: bool = False
+
+
 @router.post("/ingest/folder", response_model=TaskCreatedResponse, status_code=202)
+@limiter.limit(settings.rate_limit_ingest)
 async def ingest_folder(
     request: Request,
     body: IngestFolderRequest,
@@ -143,6 +163,70 @@ async def list_task_statuses(
     return PaginatedResponse(items=items, total=total, cursor=next_cursor)
 
 
+@router.post("/ingest/github", response_model=TaskCreatedResponse, status_code=202)
+@limiter.limit(settings.rate_limit_ingest)
+async def ingest_github(
+    request: Request,
+    body: IngestGithubRequest,
+    skip_graph: bool = Query(default=False, description="Skip graph extraction"),
+    db: AsyncSession = Depends(get_db),
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    embedder: OpenAIEmbedder = Depends(get_embedder),
+    _admin: User | None = Depends(require_admin),
+):
+    """Start background ingestion of files from a GitHub repo via gh CLI."""
+    repo_config = {
+        "repo": body.repo,
+        "branch": body.branch,
+        "paths": body.paths,
+        "extensions": body.extensions,
+    }
+    task = await create_task(body.repo, db)
+    graph_service = getattr(request.app.state, "graph_service", None)
+    vdb_store = getattr(request.app.state, "vdb_store", None)
+    spawn_github_ingestion_task(
+        task.id,
+        repo_config,
+        es_client,
+        embedder,
+        session_factory=request.app.state.session_factory,
+        cache_service=request.app.state.cache_service,
+        graph_service=graph_service,
+        skip_graph=skip_graph,
+        vdb_store=vdb_store,
+    )
+    return TaskCreatedResponse(task_id=task.id)
+
+
+@router.post("/ingest/sync", response_model=TaskCreatedResponse, status_code=202)
+@limiter.limit(settings.rate_limit_ingest)
+async def ingest_sync(
+    request: Request,
+    body: IngestSyncRequest,
+    db: AsyncSession = Depends(get_db),
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    embedder: OpenAIEmbedder = Depends(get_embedder),
+    _admin: User | None = Depends(require_admin),
+):
+    """Sync all configured sources (GitHub repos, Google folders)."""
+    task = await create_task("sync", db)
+    graph_service = getattr(request.app.state, "graph_service", None)
+    vdb_store = getattr(request.app.state, "vdb_store", None)
+    spawn_sync_task(
+        task.id,
+        sources=body.sources,
+        github_repos=settings.github_repos,
+        es_client=es_client,
+        embedder=embedder,
+        session_factory=request.app.state.session_factory,
+        cache_service=request.app.state.cache_service,
+        graph_service=graph_service,
+        skip_graph=body.skip_graph,
+        vdb_store=vdb_store,
+    )
+    return TaskCreatedResponse(task_id=task.id)
+
+
 MAX_GRAPH_SYNC_RETRIES = 3
 
 
@@ -177,9 +261,7 @@ async def sync_graph(
         raise HTTPException(status_code=503, detail="Graph service not available")
 
     pg_store = PostgresStore(db)
-    unsynced = await pg_store.get_unsynced_documents(
-        max_retries=MAX_GRAPH_SYNC_RETRIES, limit=limit
-    )
+    unsynced = await pg_store.get_unsynced_documents(max_retries=MAX_GRAPH_SYNC_RETRIES, limit=limit)
 
     synced: list[dict] = []
     failed: list[dict] = []
@@ -208,11 +290,13 @@ async def sync_graph(
             )
             await db.commit()
 
-            synced.append({
-                "doc_id": str(doc.id),
-                "status": "synced",
-                "entities_added": len(result.entities_extracted),
-            })
+            synced.append(
+                {
+                    "doc_id": str(doc.id),
+                    "status": "synced",
+                    "entities_added": len(result.entities_extracted),
+                }
+            )
 
             logger.info(
                 "sync_graph_document_success",
@@ -237,15 +321,15 @@ async def sync_graph(
             except Exception:
                 logger.error("sync_graph_rollback_failed", doc_id=str(doc.id))
 
-            failed.append({
-                "doc_id": str(doc.id),
-                "error": str(e),
-            })
+            failed.append(
+                {
+                    "doc_id": str(doc.id),
+                    "error": str(e),
+                }
+            )
 
     # Count remaining unsynced documents
-    remaining_docs = await pg_store.get_unsynced_documents(
-        max_retries=MAX_GRAPH_SYNC_RETRIES
-    )
+    remaining_docs = await pg_store.get_unsynced_documents(max_retries=MAX_GRAPH_SYNC_RETRIES)
     remaining = len(remaining_docs)
 
     return {

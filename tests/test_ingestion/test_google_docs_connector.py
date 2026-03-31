@@ -270,9 +270,7 @@ class TestFetchDocument:
 
         await connector.fetch_document("doc1")
 
-        mock_service.get.assert_called_once_with(
-            fileId="doc1", fields="name, owners, webViewLink, modifiedTime"
-        )
+        mock_service.get.assert_called_once_with(fileId="doc1", fields="name, owners, webViewLink, modifiedTime")
 
     async def test_fetch_populates_modified_at_from_api(self, connector, mock_service, patch_loop):
         """Phase 10: modified_at is parsed from Drive API modifiedTime field."""

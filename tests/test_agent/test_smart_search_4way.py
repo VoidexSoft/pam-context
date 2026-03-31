@@ -11,7 +11,6 @@ from pam.ingestion.stores.entity_relationship_store import (
     EntityRelationshipVDBStore,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -37,13 +36,22 @@ def _make_entity_hit(name: str, entity_type: str, description: str, score: float
 
 
 def _make_relationship_hit(
-    src: str, tgt: str, rel_type: str, description: str,
-    keywords: str = "", weight: float = 1.0, score: float = 0.85,
+    src: str,
+    tgt: str,
+    rel_type: str,
+    description: str,
+    keywords: str = "",
+    weight: float = 1.0,
+    score: float = 0.85,
 ) -> dict:
     return _make_es_hit(
         {
-            "src_entity": src, "tgt_entity": tgt, "rel_type": rel_type,
-            "description": description, "keywords": keywords, "weight": weight,
+            "src_entity": src,
+            "tgt_entity": tgt,
+            "rel_type": rel_type,
+            "description": description,
+            "keywords": keywords,
+            "weight": weight,
         },
         score=score,
     )
@@ -97,10 +105,12 @@ def _mock_agent(
 
     # Mock keyword extraction to skip real API call
     mock_text_block = MagicMock()
-    mock_text_block.text = json.dumps({
-        "high_level_keywords": ["infrastructure", "reliability"],
-        "low_level_keywords": ["deployment", "team"],
-    })
+    mock_text_block.text = json.dumps(
+        {
+            "high_level_keywords": ["infrastructure", "reliability"],
+            "low_level_keywords": ["deployment", "team"],
+        }
+    )
     mock_response = MagicMock()
     mock_response.content = [mock_text_block]
     agent.client = AsyncMock()
@@ -181,9 +191,20 @@ class TestSmartSearch4WayConcurrency:
         """ES + entity_vdb fail, graph + rel_vdb succeed."""
         mock_vdb = AsyncMock(spec=EntityRelationshipVDBStore)
         mock_vdb.search_entities = AsyncMock(side_effect=RuntimeError("Entity VDB down"))
-        mock_vdb.search_relationships = AsyncMock(return_value=[
-            {"src_entity": "X", "tgt_entity": "Y", "rel_type": "R", "description": "d", "keywords": "", "weight": 1.0, "score": 0.9, "source": "relationship_vdb"},
-        ])
+        mock_vdb.search_relationships = AsyncMock(
+            return_value=[
+                {
+                    "src_entity": "X",
+                    "tgt_entity": "Y",
+                    "rel_type": "R",
+                    "description": "d",
+                    "keywords": "",
+                    "weight": 1.0,
+                    "score": 0.9,
+                    "source": "relationship_vdb",
+                },
+            ]
+        )
 
         agent = _mock_agent(vdb_store=mock_vdb)
         agent.search.search = AsyncMock(side_effect=RuntimeError("ES down"))

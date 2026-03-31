@@ -22,7 +22,8 @@ import httpx
 
 # Allow running from project root
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from judges import score_answer
+from judges import score_answer, score_faithfulness
+from metrics import compute_percentiles
 
 
 # ---------------------------------------------------------------------------
@@ -113,15 +114,11 @@ async def evaluate_agent(
     api_url: str,
     question: str,
 ) -> dict:
-    """
-    Call POST /api/chat and capture the agent's answer.
-
-    Returns a dict with answer text and latency_ms.
-    """
+    """Call POST /api/chat/debug and capture the agent's answer + context."""
     start = time.perf_counter()
     try:
         resp = await client.post(
-            f"{api_url}/api/chat",
+            f"{api_url}/api/chat/debug",
             json={"message": question},
             timeout=60.0,
         )
@@ -130,24 +127,28 @@ async def evaluate_agent(
         if resp.status_code != 200:
             return {
                 "answer": "",
+                "retrieved_context": [],
                 "latency_ms": latency_ms,
                 "error": f"HTTP {resp.status_code}: {resp.text[:200]}",
             }
 
         data = resp.json()
-        # Backend returns { response: str, citations: [...] } or
-        # potentially { message: { role, content, citations } }.
-        # Handle both structures safely.
         answer = data.get("answer", data.get("response", ""))
         if not answer:
             message = data.get("message", {})
             answer = message.get("content", "") if isinstance(message, dict) else str(message)
-        return {"answer": answer, "latency_ms": latency_ms}
+
+        return {
+            "answer": answer,
+            "retrieved_context": data.get("retrieved_context", []),
+            "latency_ms": latency_ms,
+        }
 
     except httpx.RequestError as exc:
         latency_ms = round((time.perf_counter() - start) * 1000, 1)
         return {
             "answer": "",
+            "retrieved_context": [],
             "latency_ms": latency_ms,
             "error": str(exc),
         }
@@ -227,13 +228,27 @@ async def run_evaluation(api_url: str, questions_file: str) -> dict:
                     print(f"     Judge error: {exc}")
                     judge_scores["reasoning"] = f"Judge error: {exc}"
 
+            # Step 4: Faithfulness scoring
+            faithfulness_score = {"faithfulness": 0.0, "reasoning": "No answer or context"}
+            retrieved_ctx = agent_result.get("retrieved_context", [])
+            if answer and retrieved_ctx:
+                print("  -> Scoring faithfulness...")
+                try:
+                    faithfulness_score = await score_faithfulness(question, answer, retrieved_ctx)
+                    print(f"     Faithfulness: {faithfulness_score['faithfulness']:.2f}")
+                except Exception as exc:
+                    print(f"     Faithfulness error: {exc}")
+
             results.append({
                 "id": qid,
                 "question": question,
                 "difficulty": difficulty,
                 "retrieval": retrieval,
-                "agent_answer": answer[:500],  # truncate for report
+                "agent_answer": answer[:500],
+                "agent_latency_ms": agent_result.get("latency_ms", 0.0),
+                "retrieved_context_count": len(agent_result.get("retrieved_context", [])),
                 "scores": judge_scores,
+                "faithfulness": faithfulness_score,
             })
 
     return {"questions": results}
@@ -261,17 +276,25 @@ def print_summary(eval_results: dict) -> None:
         1 for q in questions if q["retrieval"]["has_relevant_result"]
     )
     retrieval_errors = sum(1 for q in questions if "error" in q["retrieval"])
-    avg_retrieval_latency = (
-        sum(q["retrieval"]["latency_ms"] for q in questions) / total
-        if total
-        else 0
-    )
+
+    retrieval_latencies = [q["retrieval"]["latency_ms"] for q in questions]
+    agent_latencies = [
+        q.get("agent_latency_ms", 0.0) for q in questions if q.get("agent_latency_ms", 0.0) > 0
+    ]
+
+    retrieval_pcts = compute_percentiles(retrieval_latencies)
 
     print(f"\n--- Retrieval Recall ---")
     pct = f"({relevant_count/total*100:.0f}%)" if total else "(N/A)"
     print(f"  Relevant results found: {relevant_count}/{total} {pct}")
     print(f"  Retrieval errors:       {retrieval_errors}/{total}")
-    print(f"  Avg retrieval latency:  {avg_retrieval_latency:.0f}ms")
+    print(f"  Retrieval latency:      p50={retrieval_pcts['p50']:.0f}ms  "
+          f"p90={retrieval_pcts['p90']:.0f}ms  p99={retrieval_pcts['p99']:.0f}ms")
+
+    if agent_latencies:
+        agent_pcts = compute_percentiles(agent_latencies)
+        print(f"  Agent latency:          p50={agent_pcts['p50']:.0f}ms  "
+              f"p90={agent_pcts['p90']:.0f}ms  p99={agent_pcts['p99']:.0f}ms")
 
     # Answer quality scores
     scored = [q for q in questions if q["scores"]["average_score"] > 0]
@@ -289,6 +312,17 @@ def print_summary(eval_results: dict) -> None:
     print(f"  Citation presence:  {avg_citation:.2f}")
     print(f"  Completeness:       {avg_completeness:.2f}")
     print(f"  Overall average:    {avg_overall:.2f}")
+
+    # Faithfulness
+    faithful = [q for q in questions if q.get("faithfulness", {}).get("faithfulness", 0) > 0]
+    if faithful:
+        avg_faith = sum(q["faithfulness"]["faithfulness"] for q in faithful) / len(faithful)
+    else:
+        avg_faith = 0.0
+
+    print(f"\n--- Faithfulness (Groundedness) ---")
+    print(f"  Scored answers:     {len(faithful)}/{total}")
+    print(f"  Avg faithfulness:   {avg_faith:.2f}")
 
     # By difficulty
     print(f"\n--- By Difficulty ---")
@@ -337,6 +371,12 @@ def main():
         default=None,
         help="Path to save the full results JSON (optional)",
     )
+    parser.add_argument(
+        "--fail-under",
+        type=float,
+        default=None,
+        help="Fail with exit code 1 if average score is below this threshold (0.0-1.0)",
+    )
     args = parser.parse_args()
 
     results = asyncio.run(run_evaluation(args.api_url, args.questions_file))
@@ -348,6 +388,21 @@ def main():
         with open(output_path, "w") as f:
             json.dump(results, f, indent=2)
         print(f"\nFull results saved to {output_path}")
+
+    # Quality gate
+    if args.fail_under is not None:
+        questions = results["questions"]
+        scored = [q for q in questions if q["scores"]["average_score"] > 0]
+        if scored:
+            avg = sum(q["scores"]["average_score"] for q in scored) / len(scored)
+        else:
+            avg = 0.0
+
+        if avg < args.fail_under:
+            print(f"\nFAILED: Average score {avg:.2f} is below threshold {args.fail_under}")
+            sys.exit(1)
+        else:
+            print(f"\nPASSED: Average score {avg:.2f} meets threshold {args.fail_under}")
 
 
 if __name__ == "__main__":

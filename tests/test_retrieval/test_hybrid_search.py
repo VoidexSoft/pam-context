@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from pam.retrieval.hybrid_search import HybridSearchService
-from pam.retrieval.types import SearchQuery
+from pam.retrieval.types import SearchBackendError, SearchQuery
 
 SEGMENT_ID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
@@ -165,23 +165,21 @@ class TestHybridSearchSegmentIdFallback:
 
 
 class TestHybridSearchEsError:
-    """Issue #30.3: No error handling around ES client calls."""
+    """Issue #30.3: ES client errors are raised as SearchBackendError."""
 
-    async def test_es_connection_error_returns_empty(self, mock_es_client):
+    async def test_es_connection_error_raises_backend_error(self, mock_es_client):
         mock_es_client.search = AsyncMock(side_effect=ConnectionError("ES unavailable"))
         service = HybridSearchService(mock_es_client, index_name="test_idx")
 
-        results = await service.search("test", [0.1] * 1536)
+        with pytest.raises(SearchBackendError, match="ES unavailable"):
+            await service.search("test", [0.1] * 1536)
 
-        assert results == []
-
-    async def test_es_generic_exception_returns_empty(self, mock_es_client):
+    async def test_es_generic_exception_raises_backend_error(self, mock_es_client):
         mock_es_client.search = AsyncMock(side_effect=RuntimeError("unexpected"))
         service = HybridSearchService(mock_es_client, index_name="test_idx")
 
-        results = await service.search("test", [0.1] * 1536)
-
-        assert results == []
+        with pytest.raises(SearchBackendError, match="unexpected"):
+            await service.search("test", [0.1] * 1536)
 
 
 class TestHybridSearchDateRangeFilter:

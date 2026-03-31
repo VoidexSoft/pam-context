@@ -24,12 +24,12 @@ class TestSettings:
         assert s.database_url == "postgresql+psycopg://pam:pam@localhost:5432/pam_context"
         assert s.elasticsearch_url == "http://localhost:9200"
         assert s.elasticsearch_index == "pam_segments"
-        assert s.embedding_model == "text-embedding-3-large"
-        assert s.embedding_dims == 1536
-        assert s.agent_model == "claude-sonnet-4-5-20250514"
-        assert s.chunk_size_tokens == 512
-        assert s.log_level == "INFO"
-        assert s.cors_origins == ["http://localhost:5173"]
+        assert s.embedding_model == Settings.model_fields["embedding_model"].default
+        assert s.embedding_dims == Settings.model_fields["embedding_dims"].default
+        assert s.agent_model == Settings.model_fields["agent_model"].default
+        assert s.chunk_size_tokens == Settings.model_fields["chunk_size_tokens"].default
+        assert s.log_level == Settings.model_fields["log_level"].default
+        assert s.cors_origins == Settings.model_fields["cors_origins"].default
 
     def test_env_override(self):
         """Settings should be overridable via environment variables."""
@@ -65,6 +65,12 @@ class TestSettings:
             assert "http://localhost:3000" in s.cors_origins
 
 
+_VALID_API_KEYS = {
+    "anthropic_api_key": "sk-ant-test-key",
+    "openai_api_key": "sk-proj-test-key",
+}
+
+
 class TestJwtSecretValidation:
     def test_insecure_secret_with_auth_required_raises(self):
         """Should raise at construction if auth_required=True and JWT secret is insecure."""
@@ -73,6 +79,7 @@ class TestJwtSecretValidation:
                 _env_file=None,
                 auth_required=True,
                 jwt_secret="dev-secret-change-in-production-32b",
+                **_VALID_API_KEYS,
             )
 
     def test_insecure_secret_without_auth_is_ok(self):
@@ -81,6 +88,7 @@ class TestJwtSecretValidation:
             _env_file=None,
             auth_required=False,
             jwt_secret="dev-secret-change-in-production-32b",
+            **_VALID_API_KEYS,
         )
         assert s.jwt_secret == "dev-secret-change-in-production-32b"  # noqa: S105
 
@@ -90,6 +98,7 @@ class TestJwtSecretValidation:
             _env_file=None,
             auth_required=True,
             jwt_secret="a-very-strong-and-unique-secret-key-1234567890",
+            **_VALID_API_KEYS,
         )
         assert s.auth_required is True
 
@@ -100,13 +109,14 @@ class TestJwtSecretValidation:
                 _env_file=None,
                 auth_required=True,
                 jwt_secret="too-short-secret",
+                **_VALID_API_KEYS,
             )
 
     def test_other_insecure_defaults_also_blocked(self):
         """Other known-insecure secrets should also be rejected at construction."""
         for secret in ("secret", "changeme", "password"):
             with pytest.raises(ValidationError, match="Insecure JWT secret"):
-                Settings(_env_file=None, auth_required=True, jwt_secret=secret)
+                Settings(_env_file=None, auth_required=True, jwt_secret=secret, **_VALID_API_KEYS)
 
 
 class TestGetSettings:

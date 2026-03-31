@@ -17,7 +17,7 @@ from haystack_integrations.document_stores.elasticsearch import ElasticsearchDoc
 
 from pam.common.cache import CacheService
 from pam.common.haystack_adapter import haystack_doc_to_search_result
-from pam.retrieval.types import SearchQuery, SearchResult
+from pam.retrieval.types import SearchBackendError, SearchQuery, SearchResult
 
 logger = structlog.get_logger()
 
@@ -143,14 +143,14 @@ class HaystackSearchService:
 
         try:
             result = self.pipeline.run(data=run_data)
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "haystack_search_pipeline_error",
                 query_length=len(query),
                 top_k=top_k,
                 has_filters=filters is not None,
             )
-            return []
+            raise SearchBackendError(f"Haystack search failed: {exc}") from exc
 
         # Get documents from the last component
         output_key = "ranker" if self._rerank_enabled else "joiner"

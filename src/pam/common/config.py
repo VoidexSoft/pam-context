@@ -84,12 +84,33 @@ class Settings(BaseSettings):
     mode_confidence_threshold: float = 0.7  # Below this, fall back to hybrid
     mode_temporal_keywords: str = "when,history,changed,before,after,since,recently,timeline,evolution,over time"
     mode_factual_patterns: str = "what is,define,how many,who is,list the,describe,what does,what are"
-    mode_conceptual_keywords: str = "depends on,related to,connect,impact,affects,why does,relationship,architecture,pattern,interaction"
+    mode_conceptual_keywords: str = (
+        "depends on,related to,connect,impact,affects,why does,relationship,architecture,pattern,interaction"
+    )
     mode_llm_fallback_enabled: bool = True  # Set False to use rules-only (no LLM call)
 
     # Ingestion
     chunk_size_tokens: int = 512
     ingest_root: str = ""  # Required base directory for folder ingestion; empty = reject all
+    max_concurrent_ingestions: int = 3  # Max background ingestion tasks
+
+    # MCP Server
+    mcp_enabled: bool = True  # Enable MCP SSE transport on /mcp
+
+    # CLI connectors
+    github_repos: list[dict] = []  # [{"repo":"owner/repo","branch":"main","paths":[],"extensions":[]}]
+    use_cli_connectors: bool = False  # Use gws CLI instead of Google API connectors
+    cli_timeout: int = 30  # Seconds per CLI subprocess call
+
+    # Google connectors
+    google_folder_ids: list[str] = []  # Google Drive folder IDs to ingest from
+    google_credentials_path: str = ""  # Path to Google service account credentials JSON
+
+    # Rate limiting
+    rate_limit_default: str = "100/minute"
+    rate_limit_chat: str = "10/minute"
+    rate_limit_ingest: str = "5/minute"
+    rate_limit_search: str = "30/minute"
 
     # App
     log_level: str = "INFO"
@@ -107,6 +128,28 @@ class Settings(BaseSettings):
             )
         if self.auth_required and len(self.jwt_secret) < 32:
             raise ValueError("JWT_SECRET must be at least 32 characters when AUTH_REQUIRED=true.")
+        return self
+
+    @model_validator(mode="after")
+    def _check_api_keys(self) -> "Settings":
+        """Reject empty API keys — app will fail at runtime without them."""
+        if not self.anthropic_api_key:
+            raise ValueError("anthropic_api_key is required. Set ANTHROPIC_API_KEY in your environment.")
+        if not self.openai_api_key:
+            raise ValueError("openai_api_key is required. Set OPENAI_API_KEY in your environment.")
+        return self
+
+    @model_validator(mode="after")
+    def _check_constraints(self) -> "Settings":
+        """Validate numeric constraints between settings."""
+        if not 0.0 <= self.mode_confidence_threshold <= 1.0:
+            raise ValueError(f"mode_confidence_threshold must be 0.0-1.0, got {self.mode_confidence_threshold}")
+        if self.context_entity_budget + self.context_relationship_budget > self.context_max_tokens:
+            raise ValueError(
+                f"context budget overflow: entity ({self.context_entity_budget}) + "
+                f"relationship ({self.context_relationship_budget}) > "
+                f"max ({self.context_max_tokens})"
+            )
         return self
 
 

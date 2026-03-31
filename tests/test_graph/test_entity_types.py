@@ -6,16 +6,18 @@ from pam.graph.entity_types import ENTITY_TYPES
 
 # Fields that Graphiti reserves on node objects -- entity type models must not
 # declare any of these as their own attributes.
-GRAPHITI_PROTECTED_FIELDS = frozenset({
-    "uuid",
-    "name",
-    "group_id",
-    "labels",
-    "created_at",
-    "summary",
-    "attributes",
-    "name_embedding",
-})
+GRAPHITI_PROTECTED_FIELDS = frozenset(
+    {
+        "uuid",
+        "name",
+        "group_id",
+        "labels",
+        "created_at",
+        "summary",
+        "attributes",
+        "name_embedding",
+    }
+)
 
 EXPECTED_TYPES = {"Person", "Team", "Project", "Technology", "Process", "Concept", "Asset"}
 
@@ -55,6 +57,4 @@ class TestEntityTypeRegistry:
                     field_values[field_name] = f"test-{field_name}"
             instance = model_cls(**field_values)
             for field_name, value in field_values.items():
-                assert getattr(instance, field_name) == value, (
-                    f"{name}.{field_name} did not round-trip"
-                )
+                assert getattr(instance, field_name) == value, f"{name}.{field_name} did not round-trip"

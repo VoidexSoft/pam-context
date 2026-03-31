@@ -33,7 +33,7 @@ class TestCursorEncoding:
 
     def test_decode_invalid_cursor_raises(self):
         """Decoding an invalid cursor should raise an error."""
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, Exception)):
             decode_cursor("not-valid-base64!!!")
 
 

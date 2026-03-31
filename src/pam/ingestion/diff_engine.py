@@ -81,19 +81,13 @@ def build_diff_summary(
         episodes_added, episodes_removed.
     """
     # Entities present only in new set
-    added = [
-        {"name": name, **attrs}
-        for name, attrs in new_entities.items()
-        if name not in old_entities
-    ]
+    added = [{"name": name, **attrs} for name, attrs in new_entities.items() if name not in old_entities]
 
     # Entities present only in old set (removed from this document,
     # not necessarily deleted from graph -- Graphiti preserves entities
     # referenced by other episodes)
     removed_from_document = [
-        {"name": name, **attrs}
-        for name, attrs in old_entities.items()
-        if name not in new_entities
+        {"name": name, **attrs} for name, attrs in old_entities.items() if name not in new_entities
     ]
 
     # Entities present in both but with changed attributes -- field-level detail
@@ -109,12 +103,14 @@ def build_diff_summary(
             old_val = old_attrs.get(attr_key)
             new_val = new_attrs.get(attr_key)
             if old_val != new_val:
-                modified.append({
-                    "name": name,
-                    "field": attr_key,
-                    "old": old_val,
-                    "new": new_val,
-                })
+                modified.append(
+                    {
+                        "name": name,
+                        "field": attr_key,
+                        "old": old_val,
+                        "new": new_val,
+                    }
+                )
 
     return {
         "added": added,

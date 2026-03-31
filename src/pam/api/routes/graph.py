@@ -124,9 +124,7 @@ async def graph_status(
     try:
         async with graph_service.client.driver.session() as session:
             # Entity counts by label
-            result = await session.run(
-                "MATCH (n:Entity) RETURN labels(n) AS labels, count(n) AS count"
-            )
+            result = await session.run("MATCH (n:Entity) RETURN labels(n) AS labels, count(n) AS count")
             records = await result.data()
             entity_counts: dict[str, int] = {}
             total_entities = 0
@@ -138,9 +136,7 @@ async def graph_status(
                         entity_counts[label] = entity_counts.get(label, 0) + count
 
             # Last sync time
-            result = await session.run(
-                "MATCH (e:Episodic) RETURN max(e.created_at) AS last_sync"
-            )
+            result = await session.run("MATCH (e:Episodic) RETURN max(e.created_at) AS last_sync")
             sync_record = await result.single()
             last_sync_time = None
             if sync_record and sync_record["last_sync"]:
@@ -246,9 +242,7 @@ async def graph_neighborhood(
                         relationship_type=record["e_name"] or "",
                         fact=record["e_fact"] or "",
                         valid_at=str(record["e_valid"]) if record["e_valid"] else None,
-                        invalid_at=(
-                            str(record["e_invalid"]) if record["e_invalid"] else None
-                        ),
+                        invalid_at=(str(record["e_invalid"]) if record["e_invalid"] else None),
                     )
                 )
 
@@ -312,10 +306,7 @@ async def graph_entities(
     if entity_type and entity_type not in ENTITY_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Unknown entity type: {entity_type}. "
-                f"Valid types: {', '.join(sorted(ENTITY_TYPES.keys()))}"
-            ),
+            detail=(f"Unknown entity type: {entity_type}. Valid types: {', '.join(sorted(ENTITY_TYPES.keys()))}"),
         )
 
     effective_limit = min(limit, _MAX_ENTITIES_PER_PAGE)
@@ -457,9 +448,7 @@ async def entity_history(
                         relationship_type=record["e_name"] or "",
                         fact=record["e_fact"] or "",
                         valid_at=str(record["e_valid"]) if record["e_valid"] else None,
-                        invalid_at=(
-                            str(record["e_invalid"]) if record["e_invalid"] else None
-                        ),
+                        invalid_at=(str(record["e_invalid"]) if record["e_invalid"] else None),
                     )
                 )
 

@@ -137,9 +137,7 @@ class PostgresStore:
             for doc, count in rows
         ]
 
-    async def set_graph_synced(
-        self, document_id: uuid.UUID, synced: bool, increment_retries: bool = False
-    ) -> None:
+    async def set_graph_synced(self, document_id: uuid.UUID, synced: bool, increment_retries: bool = False) -> None:
         """Update graph_synced flag for a document.
 
         If synced=True, resets graph_sync_retries to 0.
@@ -155,9 +153,7 @@ class PostgresStore:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def get_unsynced_documents(
-        self, max_retries: int = 3, limit: int | None = None
-    ) -> list[Document]:
+    async def get_unsynced_documents(self, max_retries: int = 3, limit: int | None = None) -> list[Document]:
         """Get documents that need graph sync (not synced and under retry limit)."""
         stmt = select(Document).where(
             Document.graph_synced == False,  # noqa: E712
@@ -171,10 +167,6 @@ class PostgresStore:
 
     async def get_segments_for_document(self, document_id: uuid.UUID) -> list[Segment]:
         """Get all segments for a document, ordered by position."""
-        stmt = (
-            select(Segment)
-            .where(Segment.document_id == document_id)
-            .order_by(Segment.position)
-        )
+        stmt = select(Segment).where(Segment.document_id == document_id).order_by(Segment.position)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

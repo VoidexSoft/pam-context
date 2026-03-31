@@ -4,7 +4,6 @@ Verifies that the query classifier is wired into _smart_search and that
 classified modes control which retrieval paths actually execute.
 """
 
-import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -64,7 +63,7 @@ def _build_agent(
         vdb_store.search_entities = AsyncMock(return_value=[])
         vdb_store.search_relationships = AsyncMock(return_value=[])
 
-    agent = RetrievalAgent(
+    return RetrievalAgent(
         search_service=mock_search,
         embedder=mock_embedder,
         api_key="test-key",
@@ -72,8 +71,6 @@ def _build_agent(
         graph_service=graph_service,
         vdb_store=vdb_store,
     )
-
-    return agent
 
 
 # ---------------------------------------------------------------------------
@@ -111,9 +108,7 @@ class TestModeRouting:
         mock_graph = AsyncMock()
         agent = _build_agent(graph_service=mock_graph, vdb_store=mock_vdb)
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.FACTUAL, confidence=0.85, method="rules"
-        )
+        classification = ClassificationResult(mode=RetrievalMode.FACTUAL, confidence=0.85, method="rules")
         with patch(
             "pam.agent.agent.classify_query_mode",
             return_value=classification,
@@ -135,9 +130,7 @@ class TestModeRouting:
         mock_graph = AsyncMock()
         agent = _build_agent(graph_service=mock_graph, vdb_store=mock_vdb)
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.ENTITY, confidence=0.85, method="rules"
-        )
+        classification = ClassificationResult(mode=RetrievalMode.ENTITY, confidence=0.85, method="rules")
         with patch(
             "pam.agent.agent.classify_query_mode",
             return_value=classification,
@@ -157,17 +150,18 @@ class TestModeRouting:
         mock_graph = AsyncMock()
         agent = _build_agent(graph_service=mock_graph, vdb_store=mock_vdb)
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.CONCEPTUAL, confidence=0.85, method="rules"
-        )
-        with patch(
-            "pam.agent.agent.classify_query_mode",
-            return_value=classification,
-        ), patch(
-            "pam.graph.query.search_graph_relationships",
-            new_callable=AsyncMock,
-            return_value="graph results",
-        ) as mock_graph_search:
+        classification = ClassificationResult(mode=RetrievalMode.CONCEPTUAL, confidence=0.85, method="rules")
+        with (
+            patch(
+                "pam.agent.agent.classify_query_mode",
+                return_value=classification,
+            ),
+            patch(
+                "pam.graph.query.search_graph_relationships",
+                new_callable=AsyncMock,
+                return_value="graph results",
+            ) as mock_graph_search,
+        ):
             await agent._smart_search({"query": "how do services depend on each other"})
 
         assert agent.search.search.called
@@ -184,17 +178,18 @@ class TestModeRouting:
         mock_graph = AsyncMock()
         agent = _build_agent(graph_service=mock_graph, vdb_store=mock_vdb)
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.HYBRID, confidence=0.5, method="default"
-        )
-        with patch(
-            "pam.agent.agent.classify_query_mode",
-            return_value=classification,
-        ), patch(
-            "pam.graph.query.search_graph_relationships",
-            new_callable=AsyncMock,
-            return_value="graph results",
-        ) as mock_graph_search:
+        classification = ClassificationResult(mode=RetrievalMode.HYBRID, confidence=0.5, method="default")
+        with (
+            patch(
+                "pam.agent.agent.classify_query_mode",
+                return_value=classification,
+            ),
+            patch(
+                "pam.graph.query.search_graph_relationships",
+                new_callable=AsyncMock,
+                return_value="graph results",
+            ) as mock_graph_search,
+        ):
             await agent._smart_search({"query": "tell me everything about the system"})
 
         assert agent.search.search.called
@@ -211,17 +206,18 @@ class TestModeRouting:
         mock_graph = AsyncMock()
         agent = _build_agent(graph_service=mock_graph, vdb_store=mock_vdb)
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.TEMPORAL, confidence=0.9, method="rules"
-        )
-        with patch(
-            "pam.agent.agent.classify_query_mode",
-            return_value=classification,
-        ), patch(
-            "pam.graph.query.search_graph_relationships",
-            new_callable=AsyncMock,
-            return_value="graph results",
-        ) as mock_graph_search:
+        classification = ClassificationResult(mode=RetrievalMode.TEMPORAL, confidence=0.9, method="rules")
+        with (
+            patch(
+                "pam.agent.agent.classify_query_mode",
+                return_value=classification,
+            ),
+            patch(
+                "pam.graph.query.search_graph_relationships",
+                new_callable=AsyncMock,
+                return_value="graph results",
+            ) as mock_graph_search,
+        ):
             await agent._smart_search({"query": "how has AuthService changed since January"})
 
         assert agent.search.search.called
@@ -239,9 +235,7 @@ class TestModeRouting:
 
         with patch(
             "pam.agent.agent.classify_query_mode",
-            return_value=ClassificationResult(
-                mode=RetrievalMode.HYBRID, confidence=0.5, method="default"
-            ),
+            return_value=ClassificationResult(mode=RetrievalMode.HYBRID, confidence=0.5, method="default"),
         ) as mock_classify:
             await agent._smart_search({"query": "test query", "mode": "factual"})
 
@@ -263,9 +257,7 @@ class TestModeRouting:
 
         with patch(
             "pam.agent.agent.classify_query_mode",
-            return_value=ClassificationResult(
-                mode=RetrievalMode.HYBRID, confidence=0.5, method="default"
-            ),
+            return_value=ClassificationResult(mode=RetrievalMode.HYBRID, confidence=0.5, method="default"),
         ) as mock_classify:
             await agent._smart_search({"query": "test query", "mode": "invalid_mode"})
 
@@ -301,9 +293,7 @@ class TestModeMetadataPropagation:
         """AgentResponse carries retrieval_mode and mode_confidence from classification."""
         agent = _build_agent()
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.FACTUAL, confidence=0.85, method="rules"
-        )
+        classification = ClassificationResult(mode=RetrievalMode.FACTUAL, confidence=0.85, method="rules")
 
         # First LLM call: tool_use with smart_search
         mock_response = MagicMock()
@@ -323,9 +313,7 @@ class TestModeMetadataPropagation:
         mock_final_response.content = [mock_final_text]
 
         agent.client = AsyncMock()
-        agent.client.messages.create = AsyncMock(
-            side_effect=[mock_response, mock_final_response]
-        )
+        agent.client.messages.create = AsyncMock(side_effect=[mock_response, mock_final_response])
 
         with patch(
             "pam.agent.agent.classify_query_mode",
@@ -371,9 +359,7 @@ class TestModeMetadataPropagation:
         """SSE done event includes retrieval_mode and mode_confidence in metadata."""
         agent = _build_agent()
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.ENTITY, confidence=0.9, method="rules"
-        )
+        classification = ClassificationResult(mode=RetrievalMode.ENTITY, confidence=0.9, method="rules")
 
         # Mock LLM to do tool_use -> smart_search -> end_turn
         mock_tool_response = MagicMock()
@@ -392,17 +378,13 @@ class TestModeMetadataPropagation:
         mock_final_response.content = [mock_final_text]
 
         agent.client = AsyncMock()
-        agent.client.messages.create = AsyncMock(
-            side_effect=[mock_tool_response, mock_final_response]
-        )
+        agent.client.messages.create = AsyncMock(side_effect=[mock_tool_response, mock_final_response])
 
         with patch(
             "pam.agent.agent.classify_query_mode",
             return_value=classification,
         ):
-            events = []
-            async for event in agent.answer_streaming("what is AuthService"):
-                events.append(event)
+            events = [event async for event in agent.answer_streaming("what is AuthService")]
 
         # Find the done event
         done_events = [e for e in events if e.get("type") == "done"]
@@ -441,34 +423,35 @@ class TestModeLogging:
         """smart_search_mode_selected event is logged with mode, confidence, method."""
         agent = _build_agent()
 
-        classification = ClassificationResult(
-            mode=RetrievalMode.FACTUAL, confidence=0.8, method="rules"
-        )
+        classification = ClassificationResult(mode=RetrievalMode.FACTUAL, confidence=0.8, method="rules")
 
-        log_events = []
+        log_events: list[dict] = []
 
-        def capture_log(logger, method_name, event_dict):
+        def capture_log(_logger, method_name, event_dict):
             log_events.append(event_dict.copy())
             raise structlog.DropEvent
 
-        with patch(
-            "pam.agent.agent.classify_query_mode",
-            return_value=classification,
-        ):
-            structlog.configure(
-                processors=[capture_log],
-                wrapper_class=structlog.make_filtering_bound_logger(0),
-                cache_logger_on_first_use=False,
-            )
-            try:
-                await agent._smart_search({"query": "what is the definition of revenue"})
-            finally:
-                # Reset structlog to defaults
-                structlog.reset_defaults()
+        # Haystack (and other libs) call structlog.configure() on import,
+        # replacing the processor list and enabling logger caching. This
+        # means capture_logs() and module-level loggers operate on
+        # different list objects. Instead, we patch the logger directly
+        # with a freshly-bound one using our capture processor.
+        test_logger = structlog.wrap_logger(
+            None,
+            processors=[capture_log],
+            wrapper_class=structlog.make_filtering_bound_logger(0),
+        )
 
-        mode_events = [
-            e for e in log_events if e.get("event") == "smart_search_mode_selected"
-        ]
+        with (
+            patch(
+                "pam.agent.agent.classify_query_mode",
+                return_value=classification,
+            ),
+            patch("pam.agent.agent.logger", test_logger),
+        ):
+            await agent._smart_search({"query": "what is the definition of revenue"})
+
+        mode_events = [e for e in log_events if e.get("event") == "smart_search_mode_selected"]
         assert len(mode_events) >= 1, f"Expected mode log event, got: {log_events}"
         evt = mode_events[0]
         assert evt["mode"] == "factual"

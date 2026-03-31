@@ -72,9 +72,7 @@ class TestRunIngestionBackground:
     @patch("pam.ingestion.task_manager.DoclingParser")
     @patch("pam.ingestion.task_manager.ElasticsearchStore")
     @patch("pam.ingestion.task_manager.IngestionPipeline")
-    async def test_successful_run(
-        self, mock_pipeline_cls, mock_es_cls, mock_parser_cls, mock_connector_cls
-    ):
+    async def test_successful_run(self, mock_pipeline_cls, mock_es_cls, mock_parser_cls, mock_connector_cls):
         task_id = uuid.uuid4()
 
         # Mock sessions
@@ -137,8 +135,14 @@ class TestRunIngestionBackground:
         mock_pipeline_cls.assert_called_once()
         mock_pipeline.ingest_all.assert_called_once()
 
-    async def test_error_marks_task_failed(self):
+    @patch("pam.ingestion.task_manager.MarkdownConnector")
+    async def test_error_marks_task_failed(self, mock_connector_cls):
         task_id = uuid.uuid4()
+
+        # Mock connector so it doesn't validate directory
+        mock_connector = AsyncMock()
+        mock_connector.list_documents = AsyncMock(return_value=[])
+        mock_connector_cls.return_value = mock_connector
 
         # First session (status) raises an error during setup
         status_session = AsyncMock()

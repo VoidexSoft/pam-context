@@ -13,7 +13,6 @@ import pytest
 from pam.agent.agent import RetrievalAgent
 from pam.common.config import Settings
 
-
 # ---------------------------------------------------------------------------
 # Mock tiktoken encoder (word-count based, no network dependency)
 # ---------------------------------------------------------------------------
@@ -62,7 +61,11 @@ def _make_mock_entity(name: str, entity_type: str, description: str, score: floa
 
 
 def _make_mock_relationship(
-    src: str, tgt: str, rel_type: str, description: str, score: float = 0.85,
+    src: str,
+    tgt: str,
+    rel_type: str,
+    description: str,
+    score: float = 0.85,
 ) -> dict:
     return {
         "src_entity": src,
@@ -117,10 +120,12 @@ def _build_agent(
 
     # Mock keyword extraction
     mock_text_block = MagicMock()
-    mock_text_block.text = json.dumps({
-        "high_level_keywords": ["strategy", "trends"],
-        "low_level_keywords": ["revenue", "metrics"],
-    })
+    mock_text_block.text = json.dumps(
+        {
+            "high_level_keywords": ["strategy", "trends"],
+            "low_level_keywords": ["revenue", "metrics"],
+        }
+    )
     mock_response = MagicMock()
     mock_response.content = [mock_text_block]
     agent.client = AsyncMock()
@@ -129,7 +134,7 @@ def _build_agent(
     return agent
 
 
-@pytest.fixture()
+@pytest.fixture
 def es_results():
     return [
         _make_mock_es_result(
@@ -149,7 +154,7 @@ def es_results():
     ]
 
 
-@pytest.fixture()
+@pytest.fixture
 def entity_results():
     return [
         _make_mock_entity("RevenueService", "Technology", "Handles revenue calculations"),
@@ -157,11 +162,13 @@ def entity_results():
     ]
 
 
-@pytest.fixture()
+@pytest.fixture
 def relationship_results():
     return [
         _make_mock_relationship(
-            "SalesTeam", "RevenueService", "USES",
+            "SalesTeam",
+            "RevenueService",
+            "USES",
             "Sales team uses revenue service for forecasting",
         ),
     ]
@@ -185,7 +192,10 @@ class TestSmartSearchContextAssembly:
             yield
 
     async def test_output_has_structured_headers(
-        self, es_results, entity_results, relationship_results,
+        self,
+        es_results,
+        entity_results,
+        relationship_results,
     ):
         """All 3 structured section headers appear when data is present."""
         agent = _build_agent(
@@ -200,7 +210,10 @@ class TestSmartSearchContextAssembly:
         assert "## Document Chunks" in text
 
     async def test_output_has_summary_header(
-        self, es_results, entity_results, relationship_results,
+        self,
+        es_results,
+        entity_results,
+        relationship_results,
     ):
         """Output contains a summary line with counts."""
         agent = _build_agent(
@@ -307,9 +320,13 @@ class TestSmartSearchContextAssembly:
             assert s.context_max_tokens == 8000
 
             # Use patch to intercept assemble_context and verify budget
-            with patch("pam.agent.agent.assemble_context", wraps=__import__(
-                "pam.agent.context_assembly", fromlist=["assemble_context"],
-            ).assemble_context) as mock_ac:
+            with patch(
+                "pam.agent.agent.assemble_context",
+                wraps=__import__(
+                    "pam.agent.context_assembly",
+                    fromlist=["assemble_context"],
+                ).assemble_context,
+            ) as mock_ac:
                 agent = _build_agent(
                     es_results=es_results,
                     entity_results=entity_results,

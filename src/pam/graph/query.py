@@ -39,8 +39,7 @@ def _truncate(text: str, total: int) -> str:
     if len(text) <= MAX_CHARS:
         return text
     return (
-        text[: MAX_CHARS - 100]
-        + f"\n\n... truncated. {total} total relationships found."
+        text[: MAX_CHARS - 100] + f"\n\n... truncated. {total} total relationships found."
         " Ask to narrow by type or relationship."
     )
 
@@ -86,10 +85,7 @@ async def search_graph_relationships(
 
     if not edges:
         if entity_name:
-            return (
-                f"No relationships found for '{entity_name}' in the knowledge graph."
-                " Searching documents may help."
-            )
+            return f"No relationships found for '{entity_name}' in the knowledge graph. Searching documents may help."
         return "No relevant relationships found in the knowledge graph."
 
     # Cap at MAX_EDGES
@@ -136,10 +132,7 @@ async def search_graph_relationships(
     for i, edge in enumerate(edges):
         valid_at = edge.valid_at or "unknown"
         invalid_at = edge.invalid_at or "current"
-        line = (
-            f"- {edge.fact} (relationship: {edge.name}, "
-            f"valid: {valid_at}, invalidated: {invalid_at})"
-        )
+        line = f"- {edge.fact} (relationship: {edge.name}, valid: {valid_at}, invalidated: {invalid_at})"
         source_docs = edge_sources.get(i)
         if source_docs:
             line += f" [Source: {', '.join(sorted(source_docs))}]"
@@ -174,10 +167,7 @@ async def get_entity_history(
 
     try:
         # Build Cypher query with optional temporal filters
-        cypher = (
-            "MATCH (n:Entity)-[e:RELATES_TO]-(m:Entity)\n"
-            "WHERE n.name =~ $name_pattern\n"
-        )
+        cypher = "MATCH (n:Entity)-[e:RELATES_TO]-(m:Entity)\nWHERE n.name =~ $name_pattern\n"
         params: dict[str, str | int | None] = {
             "name_pattern": f"(?i){re.escape(entity_name)}",
         }
@@ -247,14 +237,9 @@ async def get_entity_history(
             line += f" [Source: {', '.join(sorted(doc_titles))}]"
         parts.append(line)
 
-    result_text = (
-        f"History for '{entity_name}' ({len(records)} changes):\n" + "\n".join(parts)
-    )
+    result_text = f"History for '{entity_name}' ({len(records)} changes):\n" + "\n".join(parts)
     if len(result_text) > MAX_CHARS:
-        result_text = (
-            result_text[: MAX_CHARS - 100]
-            + f"\n\n... truncated. {len(records)} total changes."
-        )
+        result_text = result_text[: MAX_CHARS - 100] + f"\n\n... truncated. {len(records)} total changes."
 
     logger.info("graph_history_results", result_count=len(records))
     return result_text

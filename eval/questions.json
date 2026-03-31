@@ -58,5 +58,65 @@
     "question": "Why might the conversion rate drop after a tracking plan change and how would you investigate?",
     "expected_answer": "A conversion rate drop after a tracking plan change is often caused by event renaming, modified event properties, or changed trigger conditions that break the funnel definition. Investigation steps: (1) Check the tracking plan changelog for recent modifications to purchase/checkout events, (2) Compare raw event volumes before and after the change using the events.raw_events table, (3) Verify that the conversion rate query references the correct event names, (4) Check if the attribution window was changed, (5) Look for implementation bugs by comparing the event schema against the tracking plan spec. Use the analytics.event_volume_daily table to spot sudden volume drops which indicate broken instrumentation rather than real user behavior changes.",
     "difficulty": "complex"
+  },
+  {
+    "id": "q011",
+    "question": "What tables are in the analytics schema?",
+    "expected_answer": "The analytics schema contains: analytics.user_activity_daily (daily user rollup from Airflow DAG), analytics.retention_cohorts_mv (materialized view refreshed every 6 hours), and analytics.event_volume_daily (daily event volume counts for monitoring instrumentation health).",
+    "difficulty": "simple"
+  },
+  {
+    "id": "q012",
+    "question": "How does the retry logic work for failed ingestions?",
+    "expected_answer": "Failed ingestions are retried 3 times with exponential backoff. After all retries are exhausted, the system alerts the on-call engineer via PagerDuty. The retry delay follows the pattern: 1st retry after 30 seconds, 2nd after 2 minutes, 3rd after 10 minutes.",
+    "difficulty": "medium"
+  },
+  {
+    "id": "q013",
+    "question": "Compare DAU and MAU calculation methodologies.",
+    "expected_answer": "DAU counts unique users with at least one qualifying action per calendar day (UTC), while MAU counts unique users with at least one qualifying action within a 30-day rolling window. Both exclude bot traffic and internal employee accounts. DAU is computed from the events.raw_events table daily, while MAU uses a 30-day window over analytics.user_activity_daily. The ratio DAU/MAU (stickiness) is a key engagement metric tracked on the retention dashboard.",
+    "difficulty": "complex"
+  },
+  {
+    "id": "q014",
+    "question": "What happens when a Google Drive webhook fires?",
+    "expected_answer": "When a Google Drive webhook fires, the event must be processed within 5 minutes of receipt per the SLA. The system fetches the changed file, computes a content hash (SHA-256) to detect actual content changes, and if the hash differs from the stored version, triggers the full ingestion pipeline: parse with Docling, chunk, embed, store in PostgreSQL and Elasticsearch, and optionally sync to the knowledge graph.",
+    "difficulty": "medium"
+  },
+  {
+    "id": "q015",
+    "question": "I don't think we track anything. What events exist?",
+    "expected_answer": "The system tracks multiple events across user flows. The signup flow alone tracks 7 events: signup_page_viewed, signup_form_started, signup_email_entered, signup_password_entered, signup_submitted, signup_email_verified, and signup_completed. Additional events are defined in the tracking plan owned by the Product Analytics team. Each event includes properties like user_anonymous_id, utm_source, utm_medium, utm_campaign, device_type, and browser.",
+    "difficulty": "simple"
+  },
+  {
+    "id": "q016",
+    "question": "If the retention dashboard shows stale data, where should I look first?",
+    "expected_answer": "Check the daily_user_rollup Airflow DAG first — it populates analytics.user_activity_daily which feeds the dashboard. Then check the materialized view analytics.retention_cohorts_mv refresh schedule (every 6 hours). If the DAG is healthy, check BigQuery for the last successful write to analytics.user_activity_daily. The raw data flows from Segment into events.raw_events, so a Segment outage could also cause staleness.",
+    "difficulty": "complex"
+  },
+  {
+    "id": "q017",
+    "question": "What is a qualifying action for DAU?",
+    "expected_answer": "A qualifying action for DAU is a page view, feature interaction, or API call performed by a user within a single calendar day (UTC). Bot traffic and internal employee accounts are excluded from the count.",
+    "difficulty": "simple"
+  },
+  {
+    "id": "q018",
+    "question": "How do I add a new event to the tracking plan?",
+    "expected_answer": "New events require approval from Sarah Chen (Senior Product Analyst), the tracking plan owner, via the event-change-request process in Jira. The Growth Engineering team is responsible for implementation. For schema migrations, a three-phase process applies: deprecation notice with sunset date, parallel tracking for at least 2 weeks, then removal after downstream migration is confirmed.",
+    "difficulty": "medium"
+  },
+  {
+    "id": "q019",
+    "question": "What's the difference between the events.raw_events table and analytics.user_activity_daily?",
+    "expected_answer": "events.raw_events is the raw event table populated directly from Segment — it contains individual event records. analytics.user_activity_daily is an aggregated table computed by the daily_user_rollup Airflow DAG — it rolls up raw events into per-user daily summaries. The aggregated table is what the retention dashboard reads from (via the retention_cohorts_mv materialized view).",
+    "difficulty": "medium"
+  },
+  {
+    "id": "q020",
+    "question": "Walk me through troubleshooting a conversion rate drop that coincides with a deployment.",
+    "expected_answer": "Steps: (1) Check the tracking plan changelog for any event modifications deployed in that release, (2) Compare raw event volumes in events.raw_events before and after the deployment timestamp, (3) Verify the conversion funnel query still references correct event names (checkout_success and pricing_page_viewed), (4) Check if the attribution window (30-day) was accidentally changed, (5) Use analytics.event_volume_daily to identify sudden volume drops indicating broken instrumentation vs. real behavior change, (6) Check browser console for JS errors on the checkout page that might prevent event firing, (7) Verify Segment is receiving events by checking Segment's live debugger.",
+    "difficulty": "complex"
   }
 ]

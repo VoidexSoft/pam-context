@@ -70,8 +70,7 @@ class DuckDBService:
                 conn = duckdb.connect(":memory:")
                 rel = self._read_file(conn, path)
                 columns = [
-                    {"name": col, "type": str(dtype)}
-                    for col, dtype in zip(rel.columns, rel.dtypes, strict=True)
+                    {"name": col, "type": str(dtype)} for col, dtype in zip(rel.columns, rel.dtypes, strict=True)
                 ]
                 row_count = rel.count("*").fetchone()[0]
                 result.append(

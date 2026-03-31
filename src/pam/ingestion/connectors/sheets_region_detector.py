@@ -102,12 +102,12 @@ def _classify_block(block: list[list[str]], start_row: int) -> SheetRegion | Non
             )
         # Single row with many columns — likely a header-only table
         return SheetRegion(
-                type="table",
-                start_row=start_row,
-                end_row=start_row,
-                headers=[c.strip() for c in block[0]],
-                rows=[],
-            )
+            type="table",
+            start_row=start_row,
+            end_row=start_row,
+            headers=[c.strip() for c in block[0]],
+            rows=[],
+        )
 
     # Check if it's a config (key-value pairs): exactly 2 non-empty columns consistently
     if _is_config_block(block):

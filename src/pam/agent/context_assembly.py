@@ -293,7 +293,10 @@ def assemble_context(
     # Chunks keep their ES relevance order (already ranked by RRF).
 
     entities, entity_tokens_used, total_entities = truncate_list_by_token_budget(
-        entities, "description", budget.entity_tokens, budget.max_item_tokens,
+        entities,
+        "description",
+        budget.entity_tokens,
+        budget.max_item_tokens,
     )
 
     # Count graph_text tokens toward relationship budget
@@ -301,7 +304,10 @@ def assemble_context(
     effective_rel_budget = max(budget.relationship_tokens - graph_text_tokens, 0)
 
     relationships, rel_tokens_used, total_relationships = truncate_list_by_token_budget(
-        relationships, "description", effective_rel_budget, budget.max_item_tokens,
+        relationships,
+        "description",
+        effective_rel_budget,
+        budget.max_item_tokens,
     )
     relationship_tokens_used = rel_tokens_used + graph_text_tokens
 
@@ -314,7 +320,10 @@ def assemble_context(
     )
 
     chunks_truncated, chunk_tokens_used, total_chunks = truncate_list_by_token_budget(
-        chunks, "content", chunk_budget, budget.max_item_tokens,
+        chunks,
+        "content",
+        chunk_budget,
+        budget.max_item_tokens,
     )
 
     # ---- Stage 3: Dedup chunks ----

@@ -8,12 +8,15 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import func, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
+from pam.api.rate_limit import limiter, rate_limit_exceeded_handler
 from pam.api.routes import admin, auth, chat, documents, graph, ingest, search
 from pam.common.cache import CacheService
 from pam.common.config import settings
@@ -173,6 +176,21 @@ async def lifespan(app: FastAPI):
         )
         await session.commit()
 
+    # --- MCP Server (SSE transport) ---
+    if settings.mcp_enabled:
+        try:
+            from pam.mcp.server import create_mcp_server, initialize
+            from pam.mcp.services import from_app_state
+
+            mcp_services = from_app_state(app.state)
+            initialize(mcp_services)
+            mcp_server = create_mcp_server()
+            app.state.mcp_server = mcp_server
+            app.mount("/mcp", mcp_server.sse_app())
+            logger.info("mcp_server_initialized")
+        except Exception:
+            logger.warning("mcp_server_init_failed", exc_info=True)
+
     yield
 
     # Shutdown
@@ -202,6 +220,11 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
+
+    # Rate limiting
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     # Routes
     app.include_router(chat.router, prefix="/api", tags=["chat"])
@@ -265,12 +288,13 @@ def create_app() -> FastAPI:
         else:
             services["neo4j"] = "down"
 
-        all_up = all(v == "up" for v in services.values())
-        status_code = 200 if all_up else 503
+        # Required services determine overall status
+        required_ok = all(services.get(s) == "up" for s in ("elasticsearch", "postgres"))
+        status_code = 200 if required_ok else 503
         return JSONResponse(
             status_code=status_code,
             content={
-                "status": "healthy" if all_up else "unhealthy",
+                "status": "healthy" if required_ok else "unhealthy",
                 "services": services,
                 "auth_required": settings.auth_required,
             },

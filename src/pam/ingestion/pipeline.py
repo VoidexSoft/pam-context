@@ -185,16 +185,12 @@ class IngestionPipeline:
                     for seg in segments:
                         if seg.metadata.get("graph_episode_uuid"):
                             await self.session.execute(
-                                sa_update(Segment)
-                                .where(Segment.id == seg.id)
-                                .values(metadata_=seg.metadata)
+                                sa_update(Segment).where(Segment.id == seg.id).values(metadata_=seg.metadata)
                             )
                     await self.session.commit()
 
                     # Log graph sync event with diff summary
-                    await pg_store.log_sync(
-                        doc_id, "graph_synced", graph_entities_count, details=diff_summary or {}
-                    )
+                    await pg_store.log_sync(doc_id, "graph_synced", graph_entities_count, details=diff_summary or {})
                     await self.session.commit()
 
                     logger.info(
@@ -238,9 +234,10 @@ class IngestionPipeline:
             logger.exception("pipeline_error", source_id=source_id)
             return IngestionResult(source_id=source_id, title=source_id, segments_created=0, error=str(e))
 
-    async def ingest_all(self) -> list[IngestionResult]:
-        """List all documents from connector and ingest each."""
-        docs = await self.connector.list_documents()
+    async def ingest_all(self, docs: list | None = None) -> list[IngestionResult]:
+        """Ingest documents. Uses pre-fetched *docs* if provided, else lists from connector."""
+        if docs is None:
+            docs = await self.connector.list_documents()
         logger.info("pipeline_ingest_all", total_documents=len(docs))
 
         results = []

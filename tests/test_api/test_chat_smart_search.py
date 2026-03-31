@@ -1,6 +1,6 @@
 """Tests for chat endpoint integration with VDB-powered smart_search."""
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 from pam.agent.agent import AgentResponse, Citation
 

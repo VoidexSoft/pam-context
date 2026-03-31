@@ -21,6 +21,7 @@ from pam.common.logging import CostTracker
 from pam.common.utils import escape_like
 from pam.ingestion.embedders.base import BaseEmbedder
 from pam.retrieval.search_protocol import SearchService
+from pam.retrieval.types import SearchBackendError
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,6 +60,46 @@ Rules:
 10. You can combine document search and graph tools in one answer to give comprehensive results."""
 
 MAX_TOOL_ITERATIONS = 5
+MAX_DOC_CHARS = 50_000  # ~12,500 tokens — prevents blowing context window
+MAX_HISTORY_CHARS = 400_000  # ~100K tokens — leaves room for system prompt + tool results
+
+
+def _content_len(m: dict) -> int:
+    c = m.get("content", "")
+    if isinstance(c, str):
+        return len(c)
+    if isinstance(c, list):
+        return sum(len(str(block)) for block in c)
+    return 0
+
+
+def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) -> list[dict]:
+    """Drop oldest message pairs if total character count exceeds budget.
+
+    Always keeps the last message (the user's current question).
+    Drops from the front two at a time to maintain user/assistant alternation,
+    then ensures the first remaining message has role "user" (required by the
+    Anthropic API).
+    """
+    if not messages:
+        return messages
+
+    total = sum(_content_len(m) for m in messages)
+    if total <= max_chars:
+        return messages
+
+    trimmed = list(messages)
+    while len(trimmed) > 1 and total > max_chars:
+        total -= _content_len(trimmed.pop(0))
+        # Always drop the paired message to maintain user/assistant alternation
+        if len(trimmed) > 1:
+            total -= _content_len(trimmed.pop(0))
+
+    # Ensure the first message is a "user" message (Anthropic API requirement)
+    while len(trimmed) > 1 and trimmed[0].get("role") != "user":
+        trimmed.pop(0)
+
+    return trimmed
 
 
 @dataclass
@@ -78,6 +119,7 @@ class AgentResponse:
     tool_calls: int = 0
     retrieval_mode: str | None = None
     mode_confidence: float | None = None
+    retrieved_context: list[str] = field(default_factory=list)
 
 
 class RetrievalAgent:
@@ -122,12 +164,14 @@ class RetrievalAgent:
         self._default_source_type = source_type
         start = time.perf_counter()
         messages = list(conversation_history or [])
+        messages = _truncate_history(messages)
         messages.append({"role": "user", "content": question})
 
         all_citations: list[Citation] = []
         total_input_tokens = 0
         total_output_tokens = 0
         tool_call_count = 0
+        all_retrieved_context: list[str] = []
 
         for _ in range(MAX_TOOL_ITERATIONS):
             call_start = time.perf_counter()
@@ -164,6 +208,7 @@ class RetrievalAgent:
                     tool_calls=tool_call_count,
                     retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
                     mode_confidence=self._last_classification.confidence if self._last_classification else None,
+                    retrieved_context=all_retrieved_context,
                 )
 
             # Unexpected stop reason (e.g. max_tokens)
@@ -186,6 +231,7 @@ class RetrievalAgent:
                     tool_calls=tool_call_count,
                     retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
                     mode_confidence=self._last_classification.confidence if self._last_classification else None,
+                    retrieved_context=all_retrieved_context,
                 )
 
             # Process tool calls
@@ -199,6 +245,8 @@ class RetrievalAgent:
                     if block.type == "tool_use":
                         tool_call_count += 1
                         result, citations = await self._execute_tool(block.name, block.input)
+                        if block.name in ("search_knowledge", "smart_search") and isinstance(result, str):
+                            all_retrieved_context.append(result)
                         all_citations.extend(citations)
                         tool_results.append(
                             {
@@ -231,6 +279,7 @@ class RetrievalAgent:
             tool_calls=tool_call_count,
             retrieval_mode=self._last_classification.mode.value if self._last_classification else None,
             mode_confidence=self._last_classification.confidence if self._last_classification else None,
+            retrieved_context=all_retrieved_context,
         )
 
     async def answer_streaming(
@@ -249,6 +298,7 @@ class RetrievalAgent:
         self._default_source_type = source_type
         start = time.perf_counter()
         messages = list(conversation_history or [])
+        messages = _truncate_history(messages)
         messages.append({"role": "user", "content": question})
 
         all_citations: list[Citation] = []
@@ -330,6 +380,7 @@ class RetrievalAgent:
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
                     messages=messages,
+                    tools=cast(Any, ALL_TOOLS),
                 ) as stream:
                     async for text in stream.text_stream:
                         yield {"type": "token", "content": text}
@@ -426,10 +477,7 @@ class RetrievalAgent:
             keywords = await extract_query_keywords(self.client, query)
         except Exception as exc:
             logger.warning("smart_search_keyword_extraction_failed", error=str(exc))
-            return (
-                f"Keyword extraction failed: {exc}. "
-                "Try search_knowledge or search_knowledge_graph instead."
-            ), []
+            return (f"Keyword extraction failed: {exc}. Try search_knowledge or search_knowledge_graph instead."), []
 
         # Step A2: Classify query mode
         forced_mode_str = input_.get("mode")
@@ -440,12 +488,16 @@ class RetrievalAgent:
             except ValueError:
                 # Invalid mode string from tool input; fall back to auto-classification
                 classification = await classify_query_mode(
-                    query, client=self.client, vdb_store=self.vdb_store,
+                    query,
+                    client=self.client,
+                    vdb_store=self.vdb_store,
                 )
                 mode = classification.mode
         else:
             classification = await classify_query_mode(
-                query, client=self.client, vdb_store=self.vdb_store,
+                query,
+                client=self.client,
+                vdb_store=self.vdb_store,
             )
             mode = classification.mode
 
@@ -536,7 +588,10 @@ class RetrievalAgent:
             rel_vdb_coro = _rel_vdb_search_coro()
 
         es_result, graph_result, entity_vdb_result, rel_vdb_result = await asyncio.gather(
-            es_coro, graph_coro, entity_vdb_coro, rel_vdb_coro,
+            es_coro,
+            graph_coro,
+            entity_vdb_coro,
+            rel_vdb_coro,
             return_exceptions=True,
         )
 
@@ -605,10 +660,7 @@ class RetrievalAgent:
 
         if warnings:
             parts.append("")
-            parts.extend(
-                f"Warning: {w} search was unavailable, showing partial results."
-                for w in warnings
-            )
+            parts.extend(f"Warning: {w} search was unavailable, showing partial results." for w in warnings)
 
         # Store classification for response metadata propagation
         self._last_classification = classification
@@ -625,12 +677,16 @@ class RetrievalAgent:
         query_embedding = query_embeddings[0]
 
         # Search
-        results = await self.search.search(
-            query=query,
-            query_embedding=query_embedding,
-            top_k=10,
-            source_type=source_type,
-        )
+        try:
+            results = await self.search.search(
+                query=query,
+                query_embedding=query_embedding,
+                top_k=10,
+                source_type=source_type,
+            )
+        except SearchBackendError as exc:
+            logger.warning("search_backend_error", query=query[:100], error=str(exc))
+            return "Search is temporarily unavailable. Please try again.", []
 
         if not results:
             return "No relevant results found for this query.", []
@@ -689,6 +745,12 @@ class RetrievalAgent:
         segments = sorted(doc.segments, key=lambda s: s.position)
         full_content = "\n\n".join(s.content for s in segments)
 
+        # Truncate if too large to prevent context window overflow
+        truncated = False
+        if len(full_content) > MAX_DOC_CHARS:
+            full_content = full_content[:MAX_DOC_CHARS]
+            truncated = True
+
         citation = Citation(
             document_title=doc.title,
             section_path=None,
@@ -697,7 +759,10 @@ class RetrievalAgent:
         )
 
         header = f"Document: {doc.title}\nSource: {doc.source_id}\nSegments: {len(segments)}\n\n"
-        return header + full_content, [citation]
+        result = header + full_content
+        if truncated:
+            result += "\n\n[truncated] Document content was too large. Use search_knowledge for specific sections."
+        return result, [citation]
 
     async def _get_change_history(self, input_: dict) -> tuple[str, list[Citation]]:
         """Query sync_log for recent changes."""

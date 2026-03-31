@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import structlog
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 
-class RetrievalMode(str, Enum):
+class RetrievalMode(StrEnum):
     """Retrieval strategy modes for query routing."""
 
     ENTITY = "entity"  # Shallow graph: ES + entity VDB
@@ -184,27 +184,17 @@ def _rule_based_classify(query: str, settings: Settings) -> ClassificationResult
     query_lower = query.lower().strip()
 
     # Parse keyword lists from settings
-    temporal_keywords = [
-        kw.strip() for kw in settings.mode_temporal_keywords.split(",")
-    ]
-    factual_patterns = [
-        pat.strip() for pat in settings.mode_factual_patterns.split(",")
-    ]
-    conceptual_keywords = [
-        kw.strip() for kw in settings.mode_conceptual_keywords.split(",")
-    ]
+    temporal_keywords = [kw.strip() for kw in settings.mode_temporal_keywords.split(",")]
+    factual_patterns = [pat.strip() for pat in settings.mode_factual_patterns.split(",")]
+    conceptual_keywords = [kw.strip() for kw in settings.mode_conceptual_keywords.split(",")]
 
     # Build regex patterns with word boundaries
     temporal_regexes = [re.compile(rf"\b{re.escape(kw)}\b") for kw in temporal_keywords]
     factual_regexes = [re.compile(rf"^{re.escape(pat)}\b") for pat in factual_patterns]
-    conceptual_regexes = [
-        re.compile(rf"\b{re.escape(kw)}\b") for kw in conceptual_keywords
-    ]
+    conceptual_regexes = [re.compile(rf"\b{re.escape(kw)}\b") for kw in conceptual_keywords]
 
     # 1. Temporal (highest specificity)
-    temporal_matches = sum(
-        1 for rx in temporal_regexes if rx.search(query_lower)
-    )
+    temporal_matches = sum(1 for rx in temporal_regexes if rx.search(query_lower))
     if temporal_matches >= 2:
         return ClassificationResult(RetrievalMode.TEMPORAL, 0.9, "rules")
     if temporal_matches == 1:
@@ -215,18 +205,14 @@ def _rule_based_classify(query: str, settings: Settings) -> ClassificationResult
     if factual_match:
         # Negative signal: check for conceptual keywords or entity mentions
         conceptual_overlap = any(rx.search(query_lower) for rx in conceptual_regexes)
-        has_entity_mention = bool(_MULTI_WORD_CAP_RE.search(query)) or bool(
-            _PASCAL_CASE_RE.search(query)
-        )
+        has_entity_mention = bool(_MULTI_WORD_CAP_RE.search(query)) or bool(_PASCAL_CASE_RE.search(query))
         if conceptual_overlap or has_entity_mention:
             # Reduce confidence below threshold to avoid misclassifying
             return ClassificationResult(RetrievalMode.FACTUAL, 0.5, "rules")
         return ClassificationResult(RetrievalMode.FACTUAL, 0.8, "rules")
 
     # 3. Conceptual (relationship keywords)
-    conceptual_matches = sum(
-        1 for rx in conceptual_regexes if rx.search(query_lower)
-    )
+    conceptual_matches = sum(1 for rx in conceptual_regexes if rx.search(query_lower))
     if conceptual_matches >= 2:
         return ClassificationResult(RetrievalMode.CONCEPTUAL, 0.85, "rules")
     if conceptual_matches == 1:
@@ -250,12 +236,10 @@ def _extract_candidate_names(query: str) -> list[str]:
     candidates: list[str] = []
 
     # Multi-word capitalized names
-    for match in _MULTI_WORD_CAP_RE.finditer(query):
-        candidates.append(match.group(1))
+    candidates.extend(match.group(1) for match in _MULTI_WORD_CAP_RE.finditer(query))
 
     # PascalCase compound words
-    for match in _PASCAL_CASE_RE.finditer(query):
-        candidates.append(match.group(1))
+    candidates.extend(match.group(1) for match in _PASCAL_CASE_RE.finditer(query))
 
     # Single capitalized words (not at sentence start, not stop words)
     for match in _SINGLE_CAP_RE.finditer(query):
@@ -359,9 +343,7 @@ async def _llm_classify(
             method="llm",
         )
     except Exception:
-        logger.warning(
-            "llm_classification_failed", query=query[:100], exc_info=True
-        )
+        logger.warning("llm_classification_failed", query=query[:100], exc_info=True)
         return ClassificationResult(
             mode=RetrievalMode.HYBRID,
             confidence=0.5,

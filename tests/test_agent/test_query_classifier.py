@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,7 +17,6 @@ from pam.agent.query_classifier import (
     classify_query_mode,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -30,7 +28,9 @@ def _default_settings() -> SimpleNamespace:
         mode_confidence_threshold=0.7,
         mode_temporal_keywords="when,history,changed,before,after,since,recently,timeline,evolution,over time",
         mode_factual_patterns="what is,define,how many,who is,list the,describe,what does,what are",
-        mode_conceptual_keywords="depends on,related to,connect,impact,affects,why does,relationship,architecture,pattern,interaction",
+        mode_conceptual_keywords=(
+            "depends on,related to,connect,impact,affects,why does,relationship,architecture,pattern,interaction"
+        ),
         mode_llm_fallback_enabled=True,
     )
 
@@ -112,15 +112,13 @@ class TestRuleBasedClassify:
 
     def test_conceptual_two_keywords(self):
         """Two conceptual keywords -> conceptual with high confidence."""
-        result = self._classify(
-            "How does the service impact the payment architecture?"
-        )
+        result = self._classify("How does the service impact the payment architecture?")
         assert result.mode == RetrievalMode.CONCEPTUAL
         assert result.confidence >= 0.8
 
     def test_conceptual_one_keyword(self):
         """One conceptual keyword -> conceptual with medium confidence."""
-        result = self._classify("What relates to the API gateway?")
+        self._classify("What relates to the API gateway?")
         # 'related to' is a conceptual keyword
         # But 'what' at start is a factual pattern -- factual negative signal
         # triggers because there is a conceptual overlap, so factual confidence=0.5
@@ -185,9 +183,7 @@ class TestExtractCandidateNames:
 
     def test_multiple_candidates(self):
         """Multiple entity types extracted."""
-        candidates = _extract_candidate_names(
-            "How does PaymentGateway connect to Auth Service?"
-        )
+        candidates = _extract_candidate_names("How does PaymentGateway connect to Auth Service?")
         assert "PaymentGateway" in candidates
         assert "Auth Service" in candidates
 
@@ -211,9 +207,7 @@ class TestCheckEntityMentions:
         mock_store.client.search = AsyncMock(return_value=_mock_es_response(1))
         mock_store.entity_index = "pam_entities"
 
-        result = await _check_entity_mentions(
-            "Tell me about Auth Service", mock_store
-        )
+        result = await _check_entity_mentions("Tell me about Auth Service", mock_store)
         assert result is not None
         assert result.mode == RetrievalMode.ENTITY
         assert result.confidence == 0.85
@@ -226,9 +220,7 @@ class TestCheckEntityMentions:
         mock_store.client.search = AsyncMock(return_value=_mock_es_response(0))
         mock_store.entity_index = "pam_entities"
 
-        result = await _check_entity_mentions(
-            "Tell me about Auth Service", mock_store
-        )
+        result = await _check_entity_mentions("Tell me about Auth Service", mock_store)
         assert result is None
 
     @pytest.mark.asyncio
@@ -250,9 +242,7 @@ class TestCheckEntityMentions:
         mock_store.client.search = AsyncMock(side_effect=RuntimeError("ES down"))
         mock_store.entity_index = "pam_entities"
 
-        result = await _check_entity_mentions(
-            "Tell me about Auth Service", mock_store
-        )
+        result = await _check_entity_mentions("Tell me about Auth Service", mock_store)
         assert result is None
 
     @pytest.mark.asyncio
@@ -261,9 +251,7 @@ class TestCheckEntityMentions:
         settings = _default_settings()
         settings.mode_llm_fallback_enabled = False
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             # "Tell me something" is ambiguous -> rules return hybrid 0.4
             result = await classify_query_mode(
                 "Tell me something interesting",
@@ -299,9 +287,7 @@ class TestLlmClassify:
         """LLM returns invalid mode value -> hybrid fallback."""
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(
-            return_value=_mock_llm_response(
-                '{"mode": "unknown_mode", "confidence": 0.8}'
-            )
+            return_value=_mock_llm_response('{"mode": "unknown_mode", "confidence": 0.8}')
         )
 
         result = await _llm_classify("test query", mock_client)
@@ -312,9 +298,7 @@ class TestLlmClassify:
     async def test_llm_json_parse_error_defaults_hybrid(self):
         """LLM returns invalid JSON -> hybrid fallback."""
         mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(
-            return_value=_mock_llm_response("not valid json at all")
-        )
+        mock_client.messages.create = AsyncMock(return_value=_mock_llm_response("not valid json at all"))
 
         result = await _llm_classify("test query", mock_client)
         assert result.mode == RetrievalMode.HYBRID
@@ -324,9 +308,7 @@ class TestLlmClassify:
     async def test_llm_timeout_defaults_hybrid(self):
         """LLM raises timeout -> hybrid fallback."""
         mock_client = AsyncMock()
-        mock_client.messages.create = AsyncMock(
-            side_effect=TimeoutError("Request timed out")
-        )
+        mock_client.messages.create = AsyncMock(side_effect=TimeoutError("Request timed out"))
 
         result = await _llm_classify("test query", mock_client)
         assert result.mode == RetrievalMode.HYBRID
@@ -343,9 +325,7 @@ class TestLlmClassify:
             return_value=_mock_llm_response('{"mode": "entity", "confidence": 0.95}')
         )
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             result = await classify_query_mode(
                 "Tell me something interesting",
                 client=mock_client,
@@ -371,9 +351,7 @@ class TestClassifyQueryMode:
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock()
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             result = await classify_query_mode(
                 "When did the deployment change recently?",
                 client=mock_client,
@@ -390,14 +368,10 @@ class TestClassifyQueryMode:
         settings = _default_settings()
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(
-            return_value=_mock_llm_response(
-                '{"mode": "conceptual", "confidence": 0.85}'
-            )
+            return_value=_mock_llm_response('{"mode": "conceptual", "confidence": 0.85}')
         )
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             result = await classify_query_mode(
                 "Tell me something interesting about the system",
                 client=mock_client,
@@ -420,9 +394,7 @@ class TestClassifyQueryMode:
         mock_store.client.search = AsyncMock(return_value=_mock_es_response(1))
         mock_store.entity_index = "pam_entities"
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             # Query has ambiguous rules but mentions entity name
             result = await classify_query_mode(
                 "Tell me about Auth Service performance",
@@ -440,14 +412,10 @@ class TestClassifyQueryMode:
         settings = _default_settings()
         mock_client = AsyncMock()
         mock_client.messages.create = AsyncMock(
-            return_value=_mock_llm_response(
-                '{"mode": "entity", "confidence": 0.3}'
-            )
+            return_value=_mock_llm_response('{"mode": "entity", "confidence": 0.3}')
         )
 
-        with patch(
-            "pam.agent.query_classifier.get_settings", return_value=settings
-        ):
+        with patch("pam.agent.query_classifier.get_settings", return_value=settings):
             result = await classify_query_mode(
                 "Tell me something interesting",
                 client=mock_client,
@@ -463,9 +431,7 @@ class TestClassifyQueryMode:
         settings = _default_settings()
 
         with (
-            patch(
-                "pam.agent.query_classifier.get_settings", return_value=settings
-            ),
+            patch("pam.agent.query_classifier.get_settings", return_value=settings),
             patch("pam.agent.query_classifier.logger") as mock_logger,
         ):
             await classify_query_mode(
