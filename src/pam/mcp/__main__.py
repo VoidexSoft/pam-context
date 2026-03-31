@@ -139,8 +139,8 @@ def main() -> None:
         finally:
             if services.graph_service is not None:
                 await services.graph_service.close()
-            if services.cache_service is not None and hasattr(services.cache_service, "_redis"):
-                await services.cache_service._redis.aclose()
+            if services.cache_service is not None and hasattr(services.cache_service, "client"):
+                await services.cache_service.client.aclose()
             await services.es_client.close()
             await engine.dispose()
             logger.info("mcp_stdio_server_stopped")

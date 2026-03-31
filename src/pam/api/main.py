@@ -186,6 +186,7 @@ async def lifespan(app: FastAPI):
             initialize(mcp_services)
             mcp_server = create_mcp_server()
             app.state.mcp_server = mcp_server
+            app.mount("/mcp", mcp_server.sse_app())
             logger.info("mcp_server_initialized")
         except Exception:
             logger.warning("mcp_server_init_failed", exc_info=True)
@@ -233,19 +234,6 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api", tags=["auth"])
     app.include_router(admin.router, prefix="/api", tags=["admin"])
     app.include_router(graph.router, prefix="/api", tags=["graph"])
-
-    # MCP SSE transport
-    if settings.mcp_enabled:
-
-        @app.get("/mcp/sse")
-        async def mcp_sse_info():
-            """MCP SSE transport info. Actual SSE connections use the MCP client SDK."""
-            return {
-                "name": "PAM Context MCP Server",
-                "description": "Connect via MCP client SDK using SSE transport",
-                "transport": "sse",
-                "url": "/mcp",
-            }
 
     @app.get("/api/health")
     async def health(

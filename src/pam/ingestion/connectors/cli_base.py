@@ -70,6 +70,7 @@ class CliConnector(BaseConnector, ABC):
                     stdout, stderr = await proc.communicate()
             except TimeoutError:
                 proc.kill()
+                await proc.wait()
                 raise ConnectorError(
                     f"Command timed out after {timeout}s: {' '.join(full_cmd)}",
                     command=full_cmd,
@@ -146,6 +147,7 @@ class CliConnector(BaseConnector, ABC):
                     stdout, stderr = await proc.communicate()
             except TimeoutError:
                 proc.kill()
+                await proc.wait()
                 raise ConnectorError(
                     f"Command timed out after {timeout}s: {' '.join(full_cmd)}",
                     command=full_cmd,
@@ -173,6 +175,13 @@ class CliConnector(BaseConnector, ABC):
                 )
                 await asyncio.sleep(delay)
                 continue
+
+            # Check auth error — don't retry
+            if any(kw in stderr_lower for kw in _AUTH_KEYWORDS):
+                raise ConnectorError(
+                    f"Run '{self.cli_binary} auth login' first: {stderr_text}",
+                    command=full_cmd,
+                )
 
             raise ConnectorError(stderr_text or f"CLI exited with code {proc.returncode}", command=full_cmd)
 

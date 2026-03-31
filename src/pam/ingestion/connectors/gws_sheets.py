@@ -29,7 +29,11 @@ class GwsSheetsConnector(CliConnector):
 
         for folder_id in self.folder_ids:
             query = f'mimeType="{SHEETS_MIME}" and "{folder_id}" in parents'
-            params = json.dumps({"q": query, "pageSize": 100})
+            params = json.dumps({
+                "q": query,
+                "pageSize": 100,
+                "fields": "files(id,name,owners,webViewLink,modifiedTime),nextPageToken",
+            })
             result = await self.run_cli(
                 [
                     "drive",
@@ -42,10 +46,12 @@ class GwsSheetsConnector(CliConnector):
             )
             for f in result.get("files", []):
                 modified_at = datetime.fromisoformat(f["modifiedTime"]) if f.get("modifiedTime") else None
+                owner = f.get("owners", [{}])[0].get("emailAddress") if f.get("owners") else None
                 docs.append(
                     DocumentInfo(
                         source_id=f["id"],
                         title=f["name"],
+                        owner=owner,
                         source_url=f.get("webViewLink"),
                         modified_at=modified_at,
                     )

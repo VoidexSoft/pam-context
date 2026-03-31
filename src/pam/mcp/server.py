@@ -117,24 +117,33 @@ async def _pam_smart_search(
     services = get_services()
     embedding = (await services.embedder.embed_texts([query]))[0]
 
-    # Build concurrent tasks
+    # Normalize mode for routing (default to hybrid)
+    m = (mode or "hybrid").lower()
+
+    # Build concurrent tasks based on mode
     tasks: dict[str, Any] = {}
+    # Documents (ES) always runs
     tasks["documents"] = services.search_service.search(
         query=query,
         query_embedding=embedding,
         top_k=5,
     )
-    if services.graph_service is not None:
+    # Graph: skip for factual and entity modes
+    if services.graph_service is not None and m not in ("factual", "entity"):
         tasks["graph"] = services.graph_service.client.search(query=query, num_results=5)
     if services.vdb_store is not None:
-        tasks["entities"] = services.vdb_store.search_entities(
-            query_embedding=embedding,
-            top_k=5,
-        )
-        tasks["relationships"] = services.vdb_store.search_relationships(
-            query_embedding=embedding,
-            top_k=5,
-        )
+        # Entity VDB: skip for factual and conceptual modes
+        if m not in ("factual", "conceptual"):
+            tasks["entities"] = services.vdb_store.search_entities(
+                query_embedding=embedding,
+                top_k=5,
+            )
+        # Relationship VDB: skip for factual and entity modes
+        if m not in ("factual", "entity"):
+            tasks["relationships"] = services.vdb_store.search_relationships(
+                query_embedding=embedding,
+                top_k=5,
+            )
 
     keys = list(tasks.keys())
     results_list = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -436,7 +445,13 @@ async def _pam_entity_history(entity_name: str, since: str | None = None) -> str
         )
 
     if since:
-        history = [h for h in history if h.get("created_at") and h["created_at"] >= since]
+        since_normalized = since.replace("Z", "+00:00")
+        history = [
+            h
+            for h in history
+            if h.get("created_at")
+            and h["created_at"].replace("Z", "+00:00") >= since_normalized
+        ]
 
     return json.dumps(
         {"entity": entity_name, "history": history, "count": len(history)},
@@ -529,7 +544,7 @@ async def _pam_ingest(folder_path: str) -> str:
             "task_id": str(task.id),
             "status": "started",
             "folder_path": folder_path,
-            "message": "Ingestion task started. Poll /api/ingest/tasks/{task_id} for progress.",
+            "message": f"Ingestion task started. Poll /api/ingest/tasks/{task.id} for progress.",
         },
         indent=2,
     )

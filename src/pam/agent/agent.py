@@ -96,7 +96,7 @@ def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) 
             total -= _content_len(trimmed.pop(0))
 
     # Ensure the first message is a "user" message (Anthropic API requirement)
-    while trimmed and trimmed[0].get("role") != "user":
+    while len(trimmed) > 1 and trimmed[0].get("role") != "user":
         trimmed.pop(0)
 
     return trimmed
@@ -380,6 +380,7 @@ class RetrievalAgent:
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
                     messages=messages,
+                    tools=cast(Any, ALL_TOOLS),
                 ) as stream:
                     async for text in stream.text_stream:
                         yield {"type": "token", "content": text}
