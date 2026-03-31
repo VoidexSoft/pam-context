@@ -129,7 +129,7 @@ async def _create_services():
             merge_model=settings.memory_merge_model,
         )
     except Exception:
-        logger.warning("memory_service_unavailable_in_mcp_mode")
+        logger.warning("memory_service_unavailable_in_mcp_mode", exc_info=True)
 
     services = PamServices(
         search_service=search_service,

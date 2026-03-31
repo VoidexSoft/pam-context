@@ -101,6 +101,10 @@ class MemoryService:
                 new_embedding=embedding,
                 user_id=user_id,
                 project_id=project_id,
+                new_importance=importance,
+                new_source=source,
+                new_metadata=metadata,
+                new_expires_at=expires_at,
             )
 
         # No duplicate — insert new memory
@@ -148,8 +152,16 @@ class MemoryService:
         new_embedding: list[float],
         user_id: uuid_mod.UUID | None,
         project_id: uuid_mod.UUID | None,
+        new_importance: float | None = None,
+        new_source: str | None = None,
+        new_metadata: dict | None = None,
+        new_expires_at: datetime | None = None,
     ) -> MemoryResponse:
-        """Merge new content into an existing memory via LLM."""
+        """Merge new content into an existing memory via LLM.
+
+        Also forwards importance, source, metadata, and expires_at from
+        the incoming store() call so they are not silently discarded.
+        """
         from sqlalchemy import select
 
         merged_content = await self._merge_contents(existing_content, new_content)
@@ -169,23 +181,37 @@ class MemoryService:
 
             existing.content = merged_content
             existing.updated_at = datetime.now(tz=timezone.utc)
+            if new_importance is not None:
+                existing.importance = new_importance
+            if new_source is not None:
+                existing.source = new_source
+            if new_metadata is not None:
+                existing.metadata_ = new_metadata
+            if new_expires_at is not None:
+                existing.expires_at = new_expires_at
             await session.flush()
             await session.commit()
 
-            # Re-index in ES
-            await self._store.index_memory(
-                memory_id=existing_id,
-                content=merged_content,
-                embedding=merged_embedding,
-                user_id=user_id,
-                project_id=project_id,
-                memory_type=existing.type,
-                importance=existing.importance,
-                source=existing.source,
-            )
+            # Snapshot values before session closes
+            response = _memory_to_response(existing)
+            mem_type = existing.type
+            mem_importance = existing.importance
+            mem_source = existing.source
 
-            logger.info("memory_merged", memory_id=str(existing_id))
-            return _memory_to_response(existing)
+        # Re-index in ES (outside session to avoid holding DB connection)
+        await self._store.index_memory(
+            memory_id=existing_id,
+            content=merged_content,
+            embedding=merged_embedding,
+            user_id=user_id,
+            project_id=project_id,
+            memory_type=mem_type,
+            importance=mem_importance,
+            source=mem_source,
+        )
+
+        logger.info("memory_merged", memory_id=str(existing_id))
+        return response
 
     @staticmethod
     def compute_importance(
@@ -301,12 +327,12 @@ class MemoryService:
                 select(Memory)
                 .where(Memory.user_id == user_id)
                 .order_by(Memory.updated_at.desc())
-                .limit(limit)
             )
             if project_id:
                 stmt = stmt.where(Memory.project_id == project_id)
             if type_filter:
                 stmt = stmt.where(Memory.type == type_filter)
+            stmt = stmt.limit(limit)
 
             result = await session.execute(stmt)
             memories = result.scalars().all()
@@ -346,23 +372,32 @@ class MemoryService:
             await session.flush()
             await session.commit()
 
-            # Re-embed and re-index if content changed
-            if content_changed:
-                embeddings = await self._embedder.embed_texts([memory.content])
-                await self._store.index_memory(
-                    memory_id=memory_id,
-                    content=memory.content,
-                    embedding=embeddings[0],
-                    user_id=memory.user_id,
-                    project_id=memory.project_id,
-                    memory_type=memory.type,
-                    importance=memory.importance,
-                    source=memory.source,
-                )
-            elif importance is not None:
-                await self._store.update_importance(memory_id, importance)
+            # Snapshot values before session closes
+            response = _memory_to_response(memory)
+            mem_content = memory.content
+            mem_user_id = memory.user_id
+            mem_project_id = memory.project_id
+            mem_type = memory.type
+            mem_importance = memory.importance
+            mem_source = memory.source
 
-            return _memory_to_response(memory)
+        # ES updates outside session to avoid holding DB connection
+        if content_changed:
+            embeddings = await self._embedder.embed_texts([mem_content])
+            await self._store.index_memory(
+                memory_id=memory_id,
+                content=mem_content,
+                embedding=embeddings[0],
+                user_id=mem_user_id,
+                project_id=mem_project_id,
+                memory_type=mem_type,
+                importance=mem_importance,
+                source=mem_source,
+            )
+        elif importance is not None:
+            await self._store.update_importance(memory_id, importance)
+
+        return response
 
     async def delete(self, memory_id: uuid_mod.UUID) -> bool:
         """Delete a memory from PG and ES. Returns True if found and deleted."""

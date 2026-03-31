@@ -149,6 +149,8 @@ class Settings(BaseSettings):
         """Validate numeric constraints between settings."""
         if not 0.0 <= self.mode_confidence_threshold <= 1.0:
             raise ValueError(f"mode_confidence_threshold must be 0.0-1.0, got {self.mode_confidence_threshold}")
+        if not 0.0 <= self.memory_dedup_threshold <= 1.0:
+            raise ValueError(f"memory_dedup_threshold must be 0.0-1.0, got {self.memory_dedup_threshold}")
         if self.context_entity_budget + self.context_relationship_budget > self.context_max_tokens:
             raise ValueError(
                 f"context budget overflow: entity ({self.context_entity_budget}) + "

@@ -170,6 +170,8 @@ class MemoryStore:
             size=5,
         )
 
+        # ES knn `similarity` parameter already filters by threshold;
+        # no redundant Python post-filter needed.
         return [
             {
                 "memory_id": hit["_id"],
@@ -177,7 +179,6 @@ class MemoryStore:
                 "content": hit["_source"].get("content", ""),
             }
             for hit in result["hits"]["hits"]
-            if hit["_score"] >= threshold
         ]
 
     async def delete(self, memory_id: UUID) -> None:

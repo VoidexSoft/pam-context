@@ -37,7 +37,7 @@ def create_mcp_server() -> FastMCP:
     """Create and return the FastMCP server with all tools registered."""
     mcp = FastMCP(
         "PAM Context",
-        instructions="Business Knowledge Layer for LLMs — search documents, query knowledge graph, trigger ingestion",
+        instructions="Business Knowledge Layer for LLMs — search documents, query knowledge graph, trigger ingestion, store and recall memories",
     )
     _register_search_tools(mcp)
     _register_document_tools(mcp)
@@ -630,13 +630,19 @@ async def _pam_remember(
     if services.memory_service is None:
         return json.dumps({"error": "Memory service is unavailable"})
 
+    try:
+        parsed_user_id = uuid_mod.UUID(user_id) if user_id else None
+        parsed_project_id = uuid_mod.UUID(project_id) if project_id else None
+    except ValueError:
+        return json.dumps({"error": f"Invalid user_id or project_id: {user_id}, {project_id}"})
+
     result = await services.memory_service.store(
         content=content,
         memory_type=memory_type,
         source=source or "mcp",
         importance=importance,
-        user_id=uuid_mod.UUID(user_id) if user_id else None,
-        project_id=uuid_mod.UUID(project_id) if project_id else None,
+        user_id=parsed_user_id,
+        project_id=parsed_project_id,
     )
 
     return json.dumps(
@@ -666,10 +672,16 @@ async def _pam_recall(
     if services.memory_service is None:
         return json.dumps({"error": "Memory service is unavailable"})
 
+    try:
+        parsed_user_id = uuid_mod.UUID(user_id) if user_id else None
+        parsed_project_id = uuid_mod.UUID(project_id) if project_id else None
+    except ValueError:
+        return json.dumps({"error": f"Invalid user_id or project_id: {user_id}, {project_id}"})
+
     results = await services.memory_service.search(
         query=query,
-        user_id=uuid_mod.UUID(user_id) if user_id else None,
-        project_id=uuid_mod.UUID(project_id) if project_id else None,
+        user_id=parsed_user_id,
+        project_id=parsed_project_id,
         type_filter=memory_type,
         top_k=top_k,
     )
