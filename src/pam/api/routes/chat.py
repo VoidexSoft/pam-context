@@ -21,6 +21,63 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
+async def _persist_exchange(
+    request: Request,
+    conversation_id: str,
+    user_message: str,
+    assistant_response: str,
+    user_id: uuid.UUID | None = None,
+) -> None:
+    """Persist conversation exchange and trigger fact extraction.
+
+    Called inline (awaited) before returning the response, so no
+    fire-and-forget / orphaned-task issues.
+    """
+    conv_service = getattr(request.app.state, "conversation_service", None)
+    if conv_service is None:
+        return
+
+    try:
+        conv_id = uuid.UUID(conversation_id)
+
+        # Create conversation if it doesn't exist yet (first turn)
+        existing = await conv_service.get(conv_id)
+        if existing is None:
+            await conv_service.create_with_id(
+                conversation_id=conv_id,
+                user_id=user_id,
+                title=user_message[:100],
+            )
+
+        await conv_service.add_message(conv_id, role="user", content=user_message)
+        await conv_service.add_message(conv_id, role="assistant", content=assistant_response)
+
+    except Exception:
+        logger.warning("chat_persist_error", conversation_id=conversation_id, exc_info=True)
+
+    # Trigger fact extraction
+    extraction = getattr(request.app.state, "extraction_pipeline", None)
+    if extraction is not None:
+        try:
+            await extraction.extract_from_exchange(
+                user_message=user_message,
+                assistant_response=assistant_response,
+                user_id=user_id,
+            )
+        except Exception:
+            logger.warning("chat_extraction_error", exc_info=True)
+
+    # Trigger summarization check
+    summarizer = getattr(request.app.state, "conversation_summarizer", None)
+    if summarizer is not None:
+        try:
+            conv_id = uuid.UUID(conversation_id)
+            if await summarizer.should_summarize(conv_id):
+                await summarizer.summarize(conv_id)
+        except Exception:
+            logger.warning("chat_summarization_error", exc_info=True)
+
+
 class ConversationMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
@@ -100,7 +157,7 @@ async def chat_debug(
 @router.post("/chat", response_model=ChatResponse)
 @limiter.limit(settings.rate_limit_chat)
 async def chat(
-    request: Request,  # noqa: ARG001
+    request: Request,
     body: ChatRequest,
     agent: RetrievalAgent = Depends(get_agent),
     _user: User | None = Depends(get_current_user),
@@ -119,6 +176,12 @@ async def chat(
     except Exception as e:
         logger.exception("chat_error", message=body.message[:100])
         raise HTTPException(status_code=500, detail="An internal error occurred") from e
+
+    # Persist exchange inline
+    await _persist_exchange(
+        request, conversation_id, body.message, result.answer,
+        user_id=_user.id if _user else None,
+    )
 
     return ChatResponse(
         response=result.answer,
@@ -142,7 +205,7 @@ async def chat(
 @router.post("/chat/stream")
 @limiter.limit(settings.rate_limit_chat)
 async def chat_stream(
-    request: Request,  # noqa: ARG001
+    request: Request,
     body: ChatRequest,
     agent: RetrievalAgent = Depends(get_agent),
     _user: User | None = Depends(get_current_user),
@@ -155,14 +218,24 @@ async def chat_stream(
         history = [{"role": m.role, "content": m.content} for m in body.conversation_history]
 
     async def event_generator():
+        full_response = ""
         async for chunk in agent.answer_streaming(
             body.message,
             conversation_history=history,
             source_type=body.source_type,
         ):
+            if chunk.get("type") == "content":
+                full_response += chunk.get("text", "")
             if chunk.get("type") == "done":
                 chunk["conversation_id"] = conversation_id
             yield f"data: {json.dumps(chunk)}\n\n"
+
+        # Persist after streaming completes
+        if full_response:
+            await _persist_exchange(
+                request, conversation_id, body.message, full_response,
+                user_id=_user.id if _user else None,
+            )
 
     return StreamingResponse(
         event_generator(),
