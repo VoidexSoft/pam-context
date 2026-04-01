@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pam.graph.service import GraphitiService
     from pam.ingestion.embedders.base import BaseEmbedder
     from pam.ingestion.stores.entity_relationship_store import EntityRelationshipVDBStore
+    from pam.memory.service import MemoryService
     from pam.retrieval.search_protocol import SearchService
 
 logger = structlog.get_logger()
@@ -33,6 +34,7 @@ class PamServices:
     vdb_store: EntityRelationshipVDBStore | None
     duckdb_service: DuckDBService | None
     cache_service: CacheService | None
+    memory_service: MemoryService | None
 
 
 def from_app_state(app_state: object) -> PamServices:
@@ -46,4 +48,5 @@ def from_app_state(app_state: object) -> PamServices:
         vdb_store=getattr(app_state, "vdb_store", None),
         duckdb_service=getattr(app_state, "duckdb_service", None),
         cache_service=getattr(app_state, "cache_service", None),
+        memory_service=getattr(app_state, "memory_service", None),
     )

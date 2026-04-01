@@ -37,12 +37,16 @@ def create_mcp_server() -> FastMCP:
     """Create and return the FastMCP server with all tools registered."""
     mcp = FastMCP(
         "PAM Context",
-        instructions="Business Knowledge Layer for LLMs — search documents, query knowledge graph, trigger ingestion",
+        instructions=(
+            "Business Knowledge Layer for LLMs — search documents, query knowledge graph, "
+            "trigger ingestion, store and recall memories"
+        ),
     )
     _register_search_tools(mcp)
     _register_document_tools(mcp)
     _register_graph_tools(mcp)
     _register_utility_tools(mcp)
+    _register_memory_tools(mcp)
     _register_resources(mcp)
     return mcp
 
@@ -550,6 +554,199 @@ async def _pam_ingest(folder_path: str) -> str:
     )
 
 
+def _register_memory_tools(mcp: FastMCP) -> None:
+    """Register memory CRUD MCP tools."""
+
+    @mcp.tool()
+    async def pam_remember(
+        content: str,
+        memory_type: str = "fact",
+        source: str | None = None,
+        importance: float = 0.5,
+        user_id: str | None = None,
+        project_id: str | None = None,
+    ) -> str:
+        """Store a fact, preference, or observation in PAM's memory.
+
+        Automatically deduplicates — if a similar memory already exists
+        (cosine similarity > 0.9), the content is merged instead of duplicated.
+
+        memory_type: fact, preference, observation, or conversation_summary.
+        importance: 0.0 to 1.0 (default 0.5). Higher = more prominent in recall.
+        """
+        return await _pam_remember(
+            content=content,
+            memory_type=memory_type,
+            source=source,
+            importance=importance,
+            user_id=user_id,
+            project_id=project_id,
+        )
+
+    @mcp.tool()
+    async def pam_recall(
+        query: str,
+        top_k: int = 10,
+        user_id: str | None = None,
+        project_id: str | None = None,
+        memory_type: str | None = None,
+    ) -> str:
+        """Recall relevant memories from PAM's memory store.
+
+        Searches by semantic similarity to the query. Returns memories
+        ranked by relevance score.
+        """
+        return await _pam_recall(
+            query=query,
+            top_k=top_k,
+            user_id=user_id,
+            project_id=project_id,
+            memory_type=memory_type,
+        )
+
+    @mcp.tool()
+    async def pam_forget(
+        memory_id: str,
+        user_id: str,
+    ) -> str:
+        """Delete a specific memory from PAM's memory store.
+
+        Permanently removes the memory from both PostgreSQL and the
+        search index. Use pam_recall first to find the memory_id.
+        Requires user_id to verify ownership before deletion.
+        """
+        return await _pam_forget(memory_id=memory_id, user_id=user_id)
+
+
+async def _pam_remember(
+    content: str,
+    memory_type: str = "fact",
+    source: str | None = None,
+    importance: float = 0.5,
+    user_id: str | None = None,
+    project_id: str | None = None,
+) -> str:
+    """Implementation of pam_remember."""
+    import uuid as uuid_mod
+
+    services = get_services()
+
+    if services.memory_service is None:
+        return json.dumps({"error": "Memory service is unavailable"})
+
+    try:
+        parsed_user_id = uuid_mod.UUID(user_id) if user_id else None
+        parsed_project_id = uuid_mod.UUID(project_id) if project_id else None
+    except ValueError:
+        return json.dumps({"error": f"Invalid user_id or project_id: {user_id}, {project_id}"})
+
+    # Clamp importance to valid range (REST path uses Pydantic ge=0.0, le=1.0)
+    importance = max(0.0, min(1.0, importance))
+
+    try:
+        result = await services.memory_service.store(
+            content=content,
+            memory_type=memory_type,
+            source=source or "mcp",
+            importance=importance,
+            user_id=parsed_user_id,
+            project_id=parsed_project_id,
+        )
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
+    return json.dumps(
+        {
+            "id": str(result.id),
+            "content": result.content,
+            "type": result.type,
+            "importance": result.importance,
+            "created_at": result.created_at.isoformat() if result.created_at else None,
+        },
+        indent=2,
+    )
+
+
+async def _pam_recall(
+    query: str,
+    top_k: int = 10,
+    user_id: str | None = None,
+    project_id: str | None = None,
+    memory_type: str | None = None,
+) -> str:
+    """Implementation of pam_recall."""
+    import uuid as uuid_mod
+
+    services = get_services()
+
+    if services.memory_service is None:
+        return json.dumps({"error": "Memory service is unavailable"})
+
+    try:
+        parsed_user_id = uuid_mod.UUID(user_id) if user_id else None
+        parsed_project_id = uuid_mod.UUID(project_id) if project_id else None
+    except ValueError:
+        return json.dumps({"error": f"Invalid user_id or project_id: {user_id}, {project_id}"})
+
+    results = await services.memory_service.search(
+        query=query,
+        user_id=parsed_user_id,
+        project_id=parsed_project_id,
+        type_filter=memory_type,
+        top_k=top_k,
+    )
+
+    return json.dumps(
+        {
+            "memories": [
+                {
+                    "id": str(r.memory.id),
+                    "content": r.memory.content,
+                    "type": r.memory.type,
+                    "importance": r.memory.importance,
+                    "score": r.score,
+                    "access_count": r.memory.access_count,
+                    "created_at": r.memory.created_at.isoformat() if r.memory.created_at else None,
+                }
+                for r in results
+            ],
+            "count": len(results),
+        },
+        indent=2,
+    )
+
+
+async def _pam_forget(memory_id: str, user_id: str) -> str:
+    """Implementation of pam_forget."""
+    import uuid as uuid_mod
+
+    services = get_services()
+
+    if services.memory_service is None:
+        return json.dumps({"error": "Memory service is unavailable"})
+
+    try:
+        mid = uuid_mod.UUID(memory_id)
+        parsed_user_id = uuid_mod.UUID(user_id)
+    except ValueError:
+        return json.dumps({"error": f"Invalid memory_id or user_id: {memory_id}, {user_id}"})
+
+    # Always verify ownership before deleting
+    existing = await services.memory_service.get_for_ownership_check(mid)
+    if existing is None:
+        return json.dumps({"deleted": False, "memory_id": memory_id, "error": "Memory not found"})
+    if existing.user_id != parsed_user_id:
+        return json.dumps({"deleted": False, "memory_id": memory_id, "error": "Memory not found"})
+
+    deleted = await services.memory_service.delete(mid)
+
+    if deleted:
+        return json.dumps({"deleted": True, "memory_id": memory_id})
+    return json.dumps(
+        {"deleted": False, "memory_id": memory_id, "error": "Memory not found"}
+    )
+
+
 def _register_resources(mcp: FastMCP) -> None:
     """Register MCP resources for system introspection."""
 
@@ -632,4 +829,5 @@ async def _get_entities(entity_type: str | None = None) -> str:
             indent=2,
         )
     except Exception as e:
+        logger.warning("entity_resource_failed", exc_info=True)
         return json.dumps({"entities": [], "error": str(e)})
