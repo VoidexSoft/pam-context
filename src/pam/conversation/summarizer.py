@@ -6,6 +6,7 @@ import uuid as uuid_mod
 from typing import TYPE_CHECKING
 
 import structlog
+import tiktoken
 from anthropic import AsyncAnthropic
 
 if TYPE_CHECKING:
@@ -13,6 +14,15 @@ if TYPE_CHECKING:
     from pam.memory.service import MemoryService
 
 logger = structlog.get_logger()
+
+_encoder: tiktoken.Encoding | None = None
+
+
+def _get_encoder() -> tiktoken.Encoding:
+    global _encoder
+    if _encoder is None:
+        _encoder = tiktoken.get_encoding("cl100k_base")
+    return _encoder
 
 _SUMMARY_PROMPT = """\
 Summarize this conversation into a concise paragraph that captures the key topics discussed, \
@@ -36,12 +46,14 @@ class ConversationSummarizer:
         anthropic_api_key: str,
         model: str = "claude-haiku-4-5-20251001",
         summary_threshold: int = 20,
+        summary_token_limit: int = 8000,
     ) -> None:
         self._conversation_service = conversation_service
         self._memory_service = memory_service
         self._client = AsyncAnthropic(api_key=anthropic_api_key)
         self._model = model
         self._summary_threshold = summary_threshold
+        self._summary_token_limit = summary_token_limit
 
     async def should_summarize(self, conversation_id: uuid_mod.UUID) -> bool:
         """Check if a conversation exceeds the summary threshold."""
@@ -59,9 +71,14 @@ class ConversationSummarizer:
         if detail is None:
             return ""
 
-        # Build conversation text
+        # Build conversation text, truncated to token budget
         lines = [f"{m.role}: {m.content}" for m in detail.messages]
         conversation_text = "\n".join(lines)
+        encoder = _get_encoder()
+        tokens = encoder.encode(conversation_text)
+        if len(tokens) > self._summary_token_limit:
+            conversation_text = encoder.decode(tokens[-self._summary_token_limit :])
+            conversation_text = "[...earlier messages truncated...]\n" + conversation_text
 
         try:
             prompt = _SUMMARY_PROMPT.format(conversation_text=conversation_text)

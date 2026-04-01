@@ -57,10 +57,12 @@ async def get_conversation(
     user: User | None = Depends(get_current_user),
 ):
     """Get a conversation with all its messages."""
-    _require_user(user)
+    owner = _require_user(user)
     result = await service.get(conversation_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if owner and result.user_id and result.user_id != owner.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     return result
 
 
@@ -74,9 +76,11 @@ async def list_user_conversations(
     user: User | None = Depends(get_current_user),
 ):
     """List conversations for a user."""
-    _require_user(user)
+    owner = _require_user(user)
+    # When auth is enabled, only allow listing your own conversations
+    effective_user_id = owner.id if owner else user_id
     return await service.list_by_user(
-        user_id=user_id,
+        user_id=effective_user_id,
         project_id=project_id,
         limit=limit,
         offset=offset,
@@ -91,10 +95,12 @@ async def add_message(
     user: User | None = Depends(get_current_user),
 ):
     """Add a message to a conversation."""
-    _require_user(user)
+    owner = _require_user(user)
     existing = await service.get(conversation_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if owner and existing.user_id and existing.user_id != owner.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         return await service.add_message(
             conversation_id=conversation_id,
@@ -113,9 +119,11 @@ async def delete_conversation(
     user: User | None = Depends(get_current_user),
 ):
     """Delete a conversation and all its messages."""
-    _require_user(user)
+    owner = _require_user(user)
     existing = await service.get(conversation_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if owner and existing.user_id and existing.user_id != owner.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     await service.delete(conversation_id)
     return {"message": "Conversation deleted", "id": str(conversation_id)}

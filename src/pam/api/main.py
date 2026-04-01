@@ -186,6 +186,7 @@ async def lifespan(app: FastAPI):
                 anthropic_api_key=settings.anthropic_api_key,
                 model=settings.conversation_extraction_model,
                 summary_threshold=settings.conversation_summary_threshold,
+                summary_token_limit=settings.conversation_summary_token_limit,
             )
             logger.info("conversation_summarizer_initialized")
         else:
