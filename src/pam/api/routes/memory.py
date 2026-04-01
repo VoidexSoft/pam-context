@@ -25,8 +25,10 @@ def get_memory_service():
     raise RuntimeError("MemoryService not initialized")
 
 
-def _require_user(user: User | None) -> User:
-    """Raise 401 if no authenticated user."""
+def _require_user(user: User | None) -> User | None:
+    """Raise 401 if auth is enabled but no user. Returns None if auth disabled."""
+    if not settings.auth_required:
+        return None
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     return user
@@ -52,7 +54,7 @@ async def store_memory(
         source=body.source,
         metadata=body.metadata,
         importance=body.importance,
-        user_id=owner.id,
+        user_id=owner.id if owner else None,
         project_id=body.project_id,
         expires_at=body.expires_at,
     )
@@ -73,7 +75,7 @@ async def search_memories(
     owner = _require_user(user)
     return await memory_service.search(
         query=query,
-        user_id=owner.id,
+        user_id=owner.id if owner else None,
         project_id=project_id,
         type_filter=type,
         top_k=min(top_k, 50),
@@ -93,7 +95,7 @@ async def list_user_memories(
 ):
     """List all memories for a user (must be the authenticated user)."""
     owner = _require_user(user)
-    if user_id != owner.id:
+    if owner is not None and user_id != owner.id:
         raise HTTPException(status_code=403, detail="Cannot access another user's memories")
     return await memory_service.list_by_user(
         user_id=user_id,
@@ -113,11 +115,14 @@ async def get_memory(
 ):
     """Get a specific memory by ID (must belong to authenticated user)."""
     owner = _require_user(user)
-    # Verify ownership without inflating access_count
-    existing = await memory_service.get_for_ownership_check(memory_id)
-    if existing is None or existing.user_id != owner.id:
-        raise HTTPException(status_code=404, detail="Memory not found")
+    if owner is not None:
+        # Verify ownership without inflating access_count
+        existing = await memory_service.get_for_ownership_check(memory_id)
+        if existing is None or existing.user_id != owner.id:
+            raise HTTPException(status_code=404, detail="Memory not found")
     result = await memory_service.get(memory_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
     return result
 
 
@@ -132,10 +137,11 @@ async def update_memory(
 ):
     """Update a memory's content, metadata, or importance."""
     owner = _require_user(user)
-    # Verify ownership before updating (without inflating access_count)
-    existing = await memory_service.get_for_ownership_check(memory_id)
-    if existing is None or existing.user_id != owner.id:
-        raise HTTPException(status_code=404, detail="Memory not found")
+    if owner is not None:
+        # Verify ownership before updating (without inflating access_count)
+        existing = await memory_service.get_for_ownership_check(memory_id)
+        if existing is None or existing.user_id != owner.id:
+            raise HTTPException(status_code=404, detail="Memory not found")
     result = await memory_service.update(
         memory_id=memory_id,
         content=body.content,
@@ -159,9 +165,10 @@ async def delete_memory(
 ):
     """Delete a memory (must belong to authenticated user)."""
     owner = _require_user(user)
-    # Verify ownership before deleting (without inflating access_count)
-    existing = await memory_service.get_for_ownership_check(memory_id)
-    if existing is None or existing.user_id != owner.id:
-        raise HTTPException(status_code=404, detail="Memory not found")
+    if owner is not None:
+        # Verify ownership before deleting (without inflating access_count)
+        existing = await memory_service.get_for_ownership_check(memory_id)
+        if existing is None or existing.user_id != owner.id:
+            raise HTTPException(status_code=404, detail="Memory not found")
     await memory_service.delete(memory_id)
     return {"message": "Memory deleted", "id": str(memory_id)}

@@ -37,7 +37,10 @@ def create_mcp_server() -> FastMCP:
     """Create and return the FastMCP server with all tools registered."""
     mcp = FastMCP(
         "PAM Context",
-        instructions="Business Knowledge Layer for LLMs — search documents, query knowledge graph, trigger ingestion, store and recall memories",
+        instructions=(
+            "Business Knowledge Layer for LLMs — search documents, query knowledge graph, "
+            "trigger ingestion, store and recall memories"
+        ),
     )
     _register_search_tools(mcp)
     _register_document_tools(mcp)
@@ -604,13 +607,13 @@ def _register_memory_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     async def pam_forget(
         memory_id: str,
-        user_id: str | None = None,
+        user_id: str,
     ) -> str:
         """Delete a specific memory from PAM's memory store.
 
         Permanently removes the memory from both PostgreSQL and the
         search index. Use pam_recall first to find the memory_id.
-        Provide user_id to verify ownership before deletion.
+        Requires user_id to verify ownership before deletion.
         """
         return await _pam_forget(memory_id=memory_id, user_id=user_id)
 
@@ -713,7 +716,7 @@ async def _pam_recall(
     )
 
 
-async def _pam_forget(memory_id: str, user_id: str | None = None) -> str:
+async def _pam_forget(memory_id: str, user_id: str) -> str:
     """Implementation of pam_forget."""
     import uuid as uuid_mod
 
@@ -724,17 +727,16 @@ async def _pam_forget(memory_id: str, user_id: str | None = None) -> str:
 
     try:
         mid = uuid_mod.UUID(memory_id)
-        parsed_user_id = uuid_mod.UUID(user_id) if user_id else None
+        parsed_user_id = uuid_mod.UUID(user_id)
     except ValueError:
         return json.dumps({"error": f"Invalid memory_id or user_id: {memory_id}, {user_id}"})
 
-    # Verify ownership if user_id is provided
-    if parsed_user_id is not None:
-        existing = await services.memory_service.get_for_ownership_check(mid)
-        if existing is None:
-            return json.dumps({"deleted": False, "memory_id": memory_id, "error": "Memory not found"})
-        if existing.user_id != parsed_user_id:
-            return json.dumps({"deleted": False, "memory_id": memory_id, "error": "Memory not found"})
+    # Always verify ownership before deleting
+    existing = await services.memory_service.get_for_ownership_check(mid)
+    if existing is None:
+        return json.dumps({"deleted": False, "memory_id": memory_id, "error": "Memory not found"})
+    if existing.user_id != parsed_user_id:
+        return json.dumps({"deleted": False, "memory_id": memory_id, "error": "Memory not found"})
 
     deleted = await services.memory_service.delete(mid)
 

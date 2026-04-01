@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,7 +25,7 @@ def _init_services(mock_services: PamServices):
 async def test_pam_remember_stores_fact(mock_services: PamServices):
     """pam_remember calls memory_service.store and returns JSON."""
     memory_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     mock_services.memory_service.store = AsyncMock(
         return_value=MemoryResponse(
             id=memory_id,
@@ -57,7 +57,7 @@ async def test_pam_remember_stores_fact(mock_services: PamServices):
 async def test_pam_recall_returns_scored_results(mock_services: PamServices):
     """pam_recall calls memory_service.search and returns JSON."""
     memory_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     mock_services.memory_service.search = AsyncMock(
         return_value=[
             MemorySearchResult(
@@ -103,31 +103,66 @@ async def test_pam_recall_empty_results(mock_services: PamServices):
 @pytest.mark.asyncio
 async def test_pam_forget_deletes_memory(mock_services: PamServices):
     """pam_forget calls memory_service.delete and returns status."""
+    user_id = uuid.uuid4()
+    memory_id = uuid.uuid4()
+    mock_services.memory_service.get_for_ownership_check = AsyncMock(
+        return_value=MemoryResponse(
+            id=memory_id, type="fact", content="x", importance=0.5,
+            access_count=0, user_id=user_id,
+            created_at=datetime.now(tz=UTC),
+            updated_at=datetime.now(tz=UTC),
+        )
+    )
     mock_services.memory_service.delete = AsyncMock(return_value=True)
 
     from pam.mcp.server import _pam_forget
 
-    memory_id = str(uuid.uuid4())
-    result = await _pam_forget(memory_id=memory_id)
+    result = await _pam_forget(memory_id=str(memory_id), user_id=str(user_id))
     parsed = json.loads(result)
 
     assert parsed["deleted"] is True
-    assert parsed["memory_id"] == memory_id
+    assert parsed["memory_id"] == str(memory_id)
 
 
 @pytest.mark.asyncio
 async def test_pam_forget_not_found(mock_services: PamServices):
     """pam_forget returns error when memory doesn't exist."""
-    mock_services.memory_service.delete = AsyncMock(return_value=False)
+    mock_services.memory_service.get_for_ownership_check = AsyncMock(return_value=None)
 
     from pam.mcp.server import _pam_forget
 
     memory_id = str(uuid.uuid4())
-    result = await _pam_forget(memory_id=memory_id)
+    user_id = str(uuid.uuid4())
+    result = await _pam_forget(memory_id=memory_id, user_id=user_id)
     parsed = json.loads(result)
 
     assert parsed["deleted"] is False
     assert "error" in parsed
+
+
+@pytest.mark.asyncio
+async def test_pam_forget_rejects_wrong_owner(mock_services: PamServices):
+    """pam_forget rejects deletion when user_id doesn't match memory owner."""
+    owner_id = uuid.uuid4()
+    other_user_id = uuid.uuid4()
+    memory_id = uuid.uuid4()
+    mock_services.memory_service.get_for_ownership_check = AsyncMock(
+        return_value=MemoryResponse(
+            id=memory_id, type="fact", content="x", importance=0.5,
+            access_count=0, user_id=owner_id,
+            created_at=datetime.now(tz=UTC),
+            updated_at=datetime.now(tz=UTC),
+        )
+    )
+
+    from pam.mcp.server import _pam_forget
+
+    result = await _pam_forget(memory_id=str(memory_id), user_id=str(other_user_id))
+    parsed = json.loads(result)
+
+    assert parsed["deleted"] is False
+    assert "error" in parsed
+    mock_services.memory_service.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio
