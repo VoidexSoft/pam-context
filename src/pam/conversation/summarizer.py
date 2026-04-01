@@ -1,0 +1,97 @@
+"""Conversation summarizer — compresses long conversations into summary memories."""
+
+from __future__ import annotations
+
+import uuid as uuid_mod
+from typing import TYPE_CHECKING
+
+import structlog
+from anthropic import AsyncAnthropic
+
+if TYPE_CHECKING:
+    from pam.conversation.service import ConversationService
+    from pam.memory.service import MemoryService
+
+logger = structlog.get_logger()
+
+_SUMMARY_PROMPT = """\
+Summarize this conversation into a concise paragraph that captures the key topics discussed, \
+decisions made, facts learned, and any action items. Focus on information that would be \
+useful context for future conversations.
+
+Conversation:
+{conversation_text}
+
+Write a concise summary (2-4 sentences). Include specific details like names, numbers, \
+and decisions — not vague descriptions."""
+
+
+class ConversationSummarizer:
+    """Compresses long conversations into summary memories."""
+
+    def __init__(
+        self,
+        conversation_service: ConversationService,
+        memory_service: MemoryService,
+        anthropic_api_key: str,
+        model: str = "claude-haiku-4-5-20251001",
+        summary_threshold: int = 20,
+    ) -> None:
+        self._conversation_service = conversation_service
+        self._memory_service = memory_service
+        self._client = AsyncAnthropic(api_key=anthropic_api_key)
+        self._model = model
+        self._summary_threshold = summary_threshold
+
+    async def should_summarize(self, conversation_id: uuid_mod.UUID) -> bool:
+        """Check if a conversation exceeds the summary threshold."""
+        detail = await self._conversation_service.get(conversation_id)
+        if detail is None:
+            return False
+        return detail.message_count >= self._summary_threshold
+
+    async def summarize(self, conversation_id: uuid_mod.UUID) -> str:
+        """Generate a summary of the conversation and store as a memory.
+
+        Returns the summary text, or empty string on failure.
+        """
+        detail = await self._conversation_service.get(conversation_id)
+        if detail is None:
+            return ""
+
+        # Build conversation text
+        lines = [f"{m.role}: {m.content}" for m in detail.messages]
+        conversation_text = "\n".join(lines)
+
+        try:
+            prompt = _SUMMARY_PROMPT.format(conversation_text=conversation_text)
+            response = await self._client.messages.create(
+                model=self._model,
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            summary = response.content[0].text.strip()
+        except Exception:
+            logger.warning("summarization_llm_error", conversation_id=str(conversation_id), exc_info=True)
+            return ""
+
+        # Store as conversation_summary memory
+        try:
+            await self._memory_service.store(
+                content=summary,
+                memory_type="conversation_summary",
+                source="conversation",
+                metadata={"conversation_id": str(conversation_id)},
+                user_id=detail.user_id,
+                project_id=detail.project_id,
+            )
+        except Exception:
+            logger.warning("summarization_store_error", exc_info=True)
+            return ""
+
+        logger.info(
+            "conversation_summarized",
+            conversation_id=str(conversation_id),
+            summary_length=len(summary),
+        )
+        return summary
