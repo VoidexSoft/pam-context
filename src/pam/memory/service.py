@@ -233,6 +233,8 @@ class MemoryService:
             mem_type = existing.type
             mem_importance = existing.importance
             mem_source = existing.source
+            mem_user_id = existing.user_id
+            mem_project_id = existing.project_id
 
         # Re-index in ES (outside session to avoid holding DB connection)
         try:
@@ -240,8 +242,8 @@ class MemoryService:
                 memory_id=existing_id,
                 content=merged_content,
                 embedding=merged_embedding,
-                user_id=user_id,
-                project_id=project_id,
+                user_id=mem_user_id,
+                project_id=mem_project_id,
                 memory_type=mem_type,
                 importance=mem_importance,
                 source=mem_source,
@@ -383,6 +385,13 @@ class MemoryService:
             if memory is None:
                 return None
 
+            # Snapshot old values for rollback if ES fails
+            old_content = memory.content
+            old_metadata = memory.metadata_
+            old_importance = memory.importance
+            old_expires_at = memory.expires_at
+            old_updated_at = memory.updated_at
+
             content_changed = False
             if content is not None and content != memory.content:
                 memory.content = content
@@ -409,21 +418,39 @@ class MemoryService:
             mem_importance = memory.importance
             mem_source = memory.source
 
-        # ES updates outside session to avoid holding DB connection
-        if content_changed:
-            embeddings = await self._embedder.embed_texts([mem_content])
-            await self._store.index_memory(
-                memory_id=memory_id,
-                content=mem_content,
-                embedding=embeddings[0],
-                user_id=mem_user_id,
-                project_id=mem_project_id,
-                memory_type=mem_type,
-                importance=mem_importance,
-                source=mem_source,
-            )
-        elif importance is not None:
-            await self._store.update_importance(memory_id, importance)
+        # ES updates outside session — rollback PG if this fails
+        try:
+            if content_changed:
+                embeddings = await self._embedder.embed_texts([mem_content])
+                await self._store.index_memory(
+                    memory_id=memory_id,
+                    content=mem_content,
+                    embedding=embeddings[0],
+                    user_id=mem_user_id,
+                    project_id=mem_project_id,
+                    memory_type=mem_type,
+                    importance=mem_importance,
+                    source=mem_source,
+                )
+            elif importance is not None:
+                await self._store.update_importance(memory_id, importance)
+        except Exception:
+            # Compensate: restore old PG values to keep PG↔ES consistent
+            async with self._session_factory() as rollback_session:
+                res = await rollback_session.execute(
+                    select(Memory).where(Memory.id == memory_id)
+                )
+                mem = res.scalars().first()
+                if mem is not None:
+                    mem.content = old_content
+                    mem.metadata_ = old_metadata
+                    mem.importance = old_importance
+                    mem.expires_at = old_expires_at
+                    mem.updated_at = old_updated_at
+                    await rollback_session.flush()
+                    await rollback_session.commit()
+            logger.error("memory_es_update_failed", memory_id=str(memory_id), exc_info=True)
+            raise
 
         return response
 

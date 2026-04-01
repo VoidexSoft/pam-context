@@ -409,7 +409,7 @@ class MemoryResponse(BaseModel):
 
 
 class MemoryUpdate(BaseModel):
-    content: str | None = None
+    content: str | None = Field(default=None, min_length=1, max_length=10_000)
     metadata: dict | None = None
     importance: float | None = Field(default=None, ge=0.0, le=1.0)
     expires_at: datetime | None = None

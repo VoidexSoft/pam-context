@@ -154,12 +154,15 @@ class MemoryStore:
         if user_id:
             filters.append({"term": {"user_id": str(user_id)}})
 
+        # ES normalizes cosine similarity to (1 + raw_cosine) / 2 for scoring.
+        # Convert the raw cosine threshold to ES's normalized scale.
+        normalized_threshold = (1.0 + threshold) / 2.0
         knn: dict[str, Any] = {
             "field": "embedding",
             "query_vector": embedding,
             "k": 5,
             "num_candidates": 50,
-            "similarity": threshold,
+            "similarity": normalized_threshold,
         }
         if filters:
             knn["filter"] = {"bool": {"must": filters}}

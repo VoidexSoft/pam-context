@@ -80,6 +80,29 @@ async def search_memories(
     )
 
 
+@router.get("/user/{user_id}", response_model=list[MemoryResponse])
+@limiter.limit(settings.rate_limit_memory)
+async def list_user_memories(
+    request: Request,  # noqa: ARG001
+    user_id: uuid.UUID,
+    project_id: uuid.UUID | None = None,
+    type: str | None = None,
+    limit: int = 50,
+    memory_service=Depends(get_memory_service),
+    user: User | None = Depends(get_current_user),
+):
+    """List all memories for a user (must be the authenticated user)."""
+    owner = _require_user(user)
+    if user_id != owner.id:
+        raise HTTPException(status_code=403, detail="Cannot access another user's memories")
+    return await memory_service.list_by_user(
+        user_id=user_id,
+        project_id=project_id,
+        type_filter=type,
+        limit=min(limit, 200),
+    )
+
+
 @router.get("/{memory_id}", response_model=MemoryResponse)
 @limiter.limit(settings.rate_limit_memory)
 async def get_memory(
@@ -90,9 +113,11 @@ async def get_memory(
 ):
     """Get a specific memory by ID (must belong to authenticated user)."""
     owner = _require_user(user)
-    result = await memory_service.get(memory_id)
-    if result is None or result.user_id != owner.id:
+    # Verify ownership without inflating access_count
+    existing = await memory_service.get_for_ownership_check(memory_id)
+    if existing is None or existing.user_id != owner.id:
         raise HTTPException(status_code=404, detail="Memory not found")
+    result = await memory_service.get(memory_id)
     return result
 
 
@@ -140,26 +165,3 @@ async def delete_memory(
         raise HTTPException(status_code=404, detail="Memory not found")
     await memory_service.delete(memory_id)
     return {"message": "Memory deleted", "id": str(memory_id)}
-
-
-@router.get("/user/{user_id}", response_model=list[MemoryResponse])
-@limiter.limit(settings.rate_limit_memory)
-async def list_user_memories(
-    request: Request,  # noqa: ARG001
-    user_id: uuid.UUID,
-    project_id: uuid.UUID | None = None,
-    type: str | None = None,
-    limit: int = 50,
-    memory_service=Depends(get_memory_service),
-    user: User | None = Depends(get_current_user),
-):
-    """List all memories for a user (must be the authenticated user)."""
-    owner = _require_user(user)
-    if user_id != owner.id:
-        raise HTTPException(status_code=403, detail="Cannot access another user's memories")
-    return await memory_service.list_by_user(
-        user_id=user_id,
-        project_id=project_id,
-        type_filter=type,
-        limit=min(limit, 200),
-    )
