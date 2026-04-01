@@ -119,6 +119,20 @@ class TestJwtSecretValidation:
                 Settings(_env_file=None, auth_required=True, jwt_secret=secret, **_VALID_API_KEYS)
 
 
+def test_conversation_settings_defaults():
+    """Conversation settings have expected defaults."""
+    s = Settings(
+        anthropic_api_key="test-key",
+        openai_api_key="test-key",
+    )
+    assert s.conversation_extraction_enabled is True
+    assert s.conversation_extraction_model == "claude-haiku-4-5-20251001"
+    assert s.conversation_summary_threshold == 20
+    assert s.conversation_summary_token_limit == 8000
+    assert s.conversation_context_max_tokens == 2000
+    assert s.context_memory_budget == 2000
+
+
 class TestGetSettings:
     def test_get_settings_returns_settings_instance(self):
         """get_settings() should return a Settings instance."""

@@ -102,6 +102,16 @@ class Settings(BaseSettings):
     memory_dedup_threshold: float = 0.9  # Cosine similarity threshold for dedup
     memory_merge_model: str = "claude-haiku-4-5-20251001"  # LLM for content merge
 
+    # Conversation Service
+    conversation_extraction_enabled: bool = True
+    conversation_extraction_model: str = "claude-haiku-4-5-20251001"
+    conversation_summary_threshold: int = 20  # messages before auto-summarization
+    conversation_summary_token_limit: int = 8000  # token budget for summary
+    conversation_context_max_tokens: int = 2000  # max tokens for conversation context in assembly
+
+    # Context Assembly — memory budget
+    context_memory_budget: int = 2000  # token budget for user memories in context
+
     # CLI connectors
     github_repos: list[dict] = []  # [{"repo":"owner/repo","branch":"main","paths":[],"extensions":[]}]
     use_cli_connectors: bool = False  # Use gws CLI instead of Google API connectors
