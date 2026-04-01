@@ -22,4 +22,5 @@ def mock_services() -> PamServices:
         duckdb_service=MagicMock(),
         cache_service=AsyncMock(),
         memory_service=AsyncMock(),
+        conversation_service=AsyncMock(),
     )

@@ -47,6 +47,7 @@ def create_mcp_server() -> FastMCP:
     _register_graph_tools(mcp)
     _register_utility_tools(mcp)
     _register_memory_tools(mcp)
+    _register_conversation_tools(mcp)
     _register_resources(mcp)
     return mcp
 
@@ -745,6 +746,90 @@ async def _pam_forget(memory_id: str, user_id: str) -> str:
     return json.dumps(
         {"deleted": False, "memory_id": memory_id, "error": "Memory not found"}
     )
+
+
+def _register_conversation_tools(mcp: FastMCP) -> None:
+    """Register conversation MCP tools."""
+
+    @mcp.tool()
+    async def pam_save_conversation(
+        messages: list[dict],
+        title: str | None = None,
+        user_id: str | None = None,
+        project_id: str | None = None,
+    ) -> str:
+        """Save a conversation (list of messages) to PAM.
+
+        Each message must have 'role' and 'content' keys.
+        Returns the conversation_id and number of messages saved.
+        """
+        return await _pam_save_conversation(
+            messages=messages, title=title,
+            user_id=user_id, project_id=project_id,
+        )
+
+    @mcp.tool()
+    async def pam_get_conversation_context(
+        conversation_id: str,
+        max_tokens: int = 2000,
+    ) -> str:
+        """Get recent conversation context formatted for LLM consumption.
+
+        Returns the conversation as 'role: content' lines, truncated to
+        max_tokens from the most recent messages backwards.
+        """
+        return await _pam_get_conversation_context(
+            conversation_id=conversation_id,
+            max_tokens=max_tokens,
+        )
+
+
+async def _pam_save_conversation(
+    messages: list[dict],
+    title: str | None = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
+) -> str:
+    """Save a conversation to PAM."""
+    import uuid as uuid_mod
+
+    svc = get_services().conversation_service
+    if svc is None:
+        return json.dumps({"error": "ConversationService not available"})
+
+    uid = uuid_mod.UUID(user_id) if user_id else None
+    pid = uuid_mod.UUID(project_id) if project_id else None
+
+    conv = await svc.create(user_id=uid, project_id=pid, title=title)
+
+    for msg in messages:
+        await svc.add_message(
+            conversation_id=conv.id,
+            role=msg["role"],
+            content=msg["content"],
+            metadata=msg.get("metadata", {}),
+        )
+
+    return json.dumps({
+        "conversation_id": str(conv.id),
+        "messages_saved": len(messages),
+        "title": conv.title,
+    })
+
+
+async def _pam_get_conversation_context(
+    conversation_id: str,
+    max_tokens: int = 2000,
+) -> str:
+    """Get recent conversation context."""
+    import uuid as uuid_mod
+
+    svc = get_services().conversation_service
+    if svc is None:
+        return json.dumps({"error": "ConversationService not available"})
+
+    conv_id = uuid_mod.UUID(conversation_id)
+    return await svc.get_recent_context(conv_id, max_tokens=max_tokens)
 
 
 def _register_resources(mcp: FastMCP) -> None:
