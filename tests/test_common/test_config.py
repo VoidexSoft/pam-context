@@ -122,6 +122,7 @@ class TestJwtSecretValidation:
 def test_conversation_settings_defaults():
     """Conversation settings have expected defaults."""
     s = Settings(
+        _env_file=None,
         anthropic_api_key="test-key",
         openai_api_key="test-key",
     )
