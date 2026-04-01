@@ -640,3 +640,73 @@ class TestAssembleContext:
         assert result_with_redistribution.chunk_tokens_used > 0
         assert result_with_redistribution.entity_tokens_used == 0
         assert result_with_redistribution.relationship_tokens_used == 0
+
+
+def test_assemble_context_with_memories():
+    """assemble_context() includes memory section when memories provided."""
+    memories = [
+        {"content": "User prefers Python for backend work", "type": "preference", "score": 0.95},
+        {"content": "Team uses PostgreSQL for analytics", "type": "fact", "score": 0.88},
+    ]
+    result = assemble_context(
+        es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
+        memory_results=memories,
+    )
+    assert "User Memories" in result.text
+    assert "User prefers Python" in result.text
+    assert "PostgreSQL" in result.text
+    assert result.memory_tokens_used > 0
+
+
+def test_assemble_context_with_conversation():
+    """assemble_context() includes conversation section when provided."""
+    conversation_context = "user: What is our Q1 target?\nassistant: The Q1 target is $10M."
+    result = assemble_context(
+        es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
+        conversation_context=conversation_context,
+    )
+    assert "Recent Conversation" in result.text
+    assert "Q1 target" in result.text
+    assert result.conversation_tokens_used > 0
+
+
+def test_assemble_context_with_all_sources():
+    """assemble_context() includes all sections when all sources provided."""
+    memories = [
+        {"content": "User prefers concise answers", "type": "preference", "score": 0.9},
+    ]
+    conversation_context = "user: Summarize the report.\nassistant: Here's the summary."
+    entity_results = [
+        {"name": "Revenue", "entity_type": "metric", "description": "Total revenue", "score": 0.8},
+    ]
+    result = assemble_context(
+        es_results=[], graph_text="", entity_vdb_results=entity_results, rel_vdb_results=[],
+        memory_results=memories, conversation_context=conversation_context,
+    )
+    assert "User Memories" in result.text
+    assert "Recent Conversation" in result.text
+    assert "Knowledge Graph Entities" in result.text
+
+
+def test_assemble_context_empty_memories_omitted():
+    """assemble_context() omits memory section when no memories provided."""
+    result = assemble_context(
+        es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
+        memory_results=[], conversation_context="",
+    )
+    assert "User Memories" not in result.text
+    assert "Recent Conversation" not in result.text
+
+
+def test_assemble_context_memory_token_budget():
+    """assemble_context() respects memory token budget."""
+    memories = [
+        {"content": "fact " * 500, "type": "fact", "score": 0.9},
+        {"content": "another fact " * 500, "type": "fact", "score": 0.8},
+    ]
+    budget = ContextBudget(memory_tokens=200)
+    result = assemble_context(
+        es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
+        memory_results=memories, budget=budget,
+    )
+    assert result.memory_tokens_used <= 250  # some overhead for headers

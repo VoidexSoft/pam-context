@@ -62,6 +62,8 @@ class ContextBudget:
     relationship_tokens: int = 6000
     max_total_tokens: int = 12000
     max_item_tokens: int = 500  # per-item description truncation cap
+    memory_tokens: int = 2000
+    conversation_tokens: int = 2000
 
 
 @dataclass
@@ -73,6 +75,8 @@ class AssembledContext:
     relationship_tokens_used: int
     chunk_tokens_used: int
     total_tokens: int
+    memory_tokens_used: int = 0
+    conversation_tokens_used: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +165,8 @@ def _build_context_string(
     total_entities: int,
     total_relationships: int,
     total_chunks: int,
+    memories: list[dict] | None = None,
+    conversation_context: str = "",
 ) -> str:
     """Build the final structured Markdown context string.
 
@@ -170,14 +176,18 @@ def _build_context_string(
     has_entities = bool(entities)
     has_relationships = bool(relationships) or bool(graph_text.strip())
     has_chunks = bool(chunks)
+    has_memories = bool(memories)
+    has_conversation = bool(conversation_context.strip())
 
-    if not has_entities and not has_relationships and not has_chunks:
+    if not has_entities and not has_relationships and not has_chunks and not has_memories and not has_conversation:
         return "No relevant context found in knowledge base"
 
     parts: list[str] = []
 
     # --- Summary header (only mention non-empty categories) ---
     summary_bits: list[str] = []
+    if has_memories:
+        summary_bits.append(f"{len(memories)} user memories")
     if has_entities:
         summary_bits.append(f"{len(entities)} relevant entities")
     if has_relationships:
@@ -185,8 +195,25 @@ def _build_context_string(
         summary_bits.append(f"{rel_count} relationships")
     if has_chunks:
         summary_bits.append(f"{len(chunks)} document chunks")
+    if has_conversation:
+        summary_bits.append("recent conversation")
     parts.append("Found " + ", ".join(summary_bits))
     parts.append("")
+
+    # --- User Memories ---
+    if has_memories:
+        parts.append("## User Memories")
+        for m in memories:
+            mem_type = m.get("type", "fact")
+            content = m.get("content", "")
+            parts.append(f"- [{mem_type}] {content}")
+        parts.append("")
+
+    # --- Recent Conversation ---
+    if has_conversation:
+        parts.append("## Recent Conversation")
+        parts.append(conversation_context.strip())
+        parts.append("")
 
     # --- Entities ---
     if has_entities:
@@ -245,6 +272,8 @@ def assemble_context(
     entity_vdb_results: list[dict],
     rel_vdb_results: list[dict],
     budget: ContextBudget | None = None,
+    memory_results: list[dict] | None = None,
+    conversation_context: str = "",
 ) -> AssembledContext:
     """4-stage context assembly pipeline.
 
@@ -260,6 +289,10 @@ def assemble_context(
         Dicts with ``src_entity``, ``tgt_entity``, ``rel_type``, ``description``, ``score``.
     budget:
         Optional custom budget; defaults to ``ContextBudget()``.
+    memory_results:
+        Dicts with ``content``, ``type``, and ``score`` from user memory search.
+    conversation_context:
+        Pre-formatted recent conversation text.
 
     Returns
     -------
@@ -267,6 +300,24 @@ def assemble_context(
         The assembled Markdown text and per-category token usage.
     """
     budget = budget or ContextBudget()
+
+    # ---- Memory & Conversation truncation ----
+    memory_results = memory_results or []
+    memories_sorted = sorted(memory_results, key=lambda x: x.get("score", 0), reverse=True)
+    memories_truncated, memory_tokens_used, _ = truncate_list_by_token_budget(
+        memories_sorted, "content", budget.memory_tokens, budget.max_item_tokens,
+    )
+
+    conversation_tokens_used = 0
+    truncated_conversation = ""
+    if conversation_context.strip():
+        conv_tokens = count_tokens(conversation_context)
+        if conv_tokens <= budget.conversation_tokens:
+            truncated_conversation = conversation_context
+            conversation_tokens_used = conv_tokens
+        else:
+            truncated_conversation = _truncate_text_to_tokens(conversation_context, budget.conversation_tokens)
+            conversation_tokens_used = budget.conversation_tokens
 
     # ---- Stage 1: Collect & Normalize ----
     chunks: list[dict] = []
@@ -312,7 +363,7 @@ def assemble_context(
     relationship_tokens_used = rel_tokens_used + graph_text_tokens
 
     chunk_budget = _calculate_chunk_budget(
-        budget.max_total_tokens,
+        budget.max_total_tokens - memory_tokens_used - conversation_tokens_used,
         budget.entity_tokens,
         budget.relationship_tokens,
         entity_tokens_used,
@@ -338,15 +389,19 @@ def assemble_context(
         total_entities=total_entities,
         total_relationships=total_relationships,
         total_chunks=total_chunks,
+        memories=memories_truncated if memories_truncated else None,
+        conversation_context=truncated_conversation,
     )
 
-    total_tokens = entity_tokens_used + relationship_tokens_used + chunk_tokens_used
+    total_tokens = entity_tokens_used + relationship_tokens_used + chunk_tokens_used + memory_tokens_used + conversation_tokens_used
 
     logger.debug(
         "context_assembly_budget",
         entities=f"{entity_tokens_used}/{budget.entity_tokens}",
         relationships=f"{relationship_tokens_used}/{budget.relationship_tokens}",
         chunks=f"{chunk_tokens_used}/{chunk_budget}",
+        memory=f"{memory_tokens_used}/{budget.memory_tokens}",
+        conversation=f"{conversation_tokens_used}/{budget.conversation_tokens}",
         total=f"{total_tokens}/{budget.max_total_tokens}",
     )
 
@@ -356,4 +411,6 @@ def assemble_context(
         relationship_tokens_used=relationship_tokens_used,
         chunk_tokens_used=chunk_tokens_used,
         total_tokens=total_tokens,
+        memory_tokens_used=memory_tokens_used,
+        conversation_tokens_used=conversation_tokens_used,
     )
