@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
@@ -149,6 +150,11 @@ class RetrievalAgent:
         # Do NOT share a single RetrievalAgent across concurrent requests.
         self._default_source_type: str | None = None
         self._last_classification: ClassificationResult | None = None
+        # Optional services for memory/conversation injection (set per-request by chat endpoint)
+        self._memory_service = None  # type: ignore[assignment]
+        self._conversation_service = None  # type: ignore[assignment]
+        self._current_user_id: uuid.UUID | None = None
+        self._current_conversation_id: uuid.UUID | None = None
 
     async def answer(
         self,
@@ -636,11 +642,40 @@ class RetrievalAgent:
             )
             citations.append(citation)
 
+        # Step F-pre: Fetch user memories and conversation context (if available)
+        memory_results: list[dict] = []
+        conversation_context = ""
+
+        if self._memory_service and self._current_user_id:
+            try:
+                raw_memories = await self._memory_service.search(
+                    query=query,
+                    user_id=self._current_user_id,
+                    top_k=5,
+                )
+                memory_results = [
+                    {"content": m.memory.content, "type": m.memory.type, "score": m.score}
+                    for m in raw_memories
+                ]
+            except Exception:
+                logger.warning("smart_search_memory_failed", exc_info=True)
+
+        if self._conversation_service and self._current_conversation_id:
+            try:
+                conversation_context = await self._conversation_service.get_recent_context(
+                    self._current_conversation_id,
+                    max_tokens=settings.conversation_context_max_tokens,
+                )
+            except Exception:
+                logger.warning("smart_search_conversation_failed", exc_info=True)
+
         # Step F: Assemble structured context with token budgets
         budget = ContextBudget(
             entity_tokens=settings.context_entity_budget,
             relationship_tokens=settings.context_relationship_budget,
             max_total_tokens=settings.context_max_tokens,
+            memory_tokens=settings.context_memory_budget,
+            conversation_tokens=settings.conversation_context_max_tokens,
         )
         assembled = assemble_context(
             es_results=es_results,
@@ -648,6 +683,8 @@ class RetrievalAgent:
             entity_vdb_results=entity_vdb_results,
             rel_vdb_results=rel_vdb_results,
             budget=budget,
+            memory_results=memory_results,
+            conversation_context=conversation_context,
         )
 
         # Step G: Build final output with keywords header + assembled context

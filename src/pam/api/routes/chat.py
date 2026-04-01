@@ -21,6 +21,16 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
+def _parse_uuid(value: str | None) -> uuid.UUID | None:
+    """Return a UUID if value is a valid UUID string, otherwise None."""
+    if not value:
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
 async def _persist_exchange(
     request: Request,
     conversation_id: str,
@@ -128,6 +138,12 @@ async def chat_debug(
     if body.source_type:
         kwargs["source_type"] = body.source_type
 
+    # Set per-request context for memory + conversation injection
+    agent._memory_service = getattr(request.app.state, "memory_service", None)
+    agent._conversation_service = getattr(request.app.state, "conversation_service", None)
+    agent._current_user_id = _user.id if _user else None
+    agent._current_conversation_id = _parse_uuid(conversation_id)
+
     try:
         result: AgentResponse = await agent.answer(body.message, **kwargs)
     except Exception as e:
@@ -171,6 +187,12 @@ async def chat(
     if body.source_type:
         kwargs["source_type"] = body.source_type
 
+    # Set per-request context for memory + conversation injection
+    agent._memory_service = getattr(request.app.state, "memory_service", None)
+    agent._conversation_service = getattr(request.app.state, "conversation_service", None)
+    agent._current_user_id = _user.id if _user else None
+    agent._current_conversation_id = _parse_uuid(conversation_id)
+
     try:
         result: AgentResponse = await agent.answer(body.message, **kwargs)
     except Exception as e:
@@ -212,6 +234,12 @@ async def chat_stream(
 ):
     """Stream a chat response as Server-Sent Events."""
     conversation_id = body.conversation_id or str(uuid.uuid4())
+
+    # Set per-request context for memory + conversation injection
+    agent._memory_service = getattr(request.app.state, "memory_service", None)
+    agent._conversation_service = getattr(request.app.state, "conversation_service", None)
+    agent._current_user_id = _user.id if _user else None
+    agent._current_conversation_id = _parse_uuid(conversation_id)
 
     history = None
     if body.conversation_history:
