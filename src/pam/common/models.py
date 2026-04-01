@@ -468,3 +468,47 @@ class MemorySearchQuery(BaseModel):
 class MemorySearchResult(BaseModel):
     memory: MemoryResponse
     score: float
+
+
+# ── Conversation Schemas ──────────────────────────────────────────────
+
+
+class MessageCreate(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
+    metadata: dict = Field(default_factory=dict)
+
+
+class ConvMessageResponse(BaseModel):
+    """Response schema for a conversation message (not to be confused with the generic MessageResponse)."""
+
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    role: str
+    content: str
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationCreate(BaseModel):
+    user_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    title: str | None = None
+
+
+class ConversationResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    title: str | None = None
+    started_at: datetime
+    last_active: datetime
+    message_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationDetail(ConversationResponse):
+    messages: list[ConvMessageResponse] = []
