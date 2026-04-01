@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
 from pam.api.rate_limit import limiter, rate_limit_exceeded_handler
-from pam.api.routes import admin, auth, chat, documents, graph, ingest, memory, search
+from pam.api.routes import admin, auth, chat, conversation, documents, graph, ingest, memory, search
 from pam.common.cache import CacheService
 from pam.common.config import settings
 from pam.common.logging import configure_logging
@@ -251,6 +251,7 @@ def create_app() -> FastAPI:
     app.include_router(admin.router, prefix="/api", tags=["admin"])
     app.include_router(graph.router, prefix="/api", tags=["graph"])
     app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
+    app.include_router(conversation.router, prefix="/api/conversations", tags=["conversations"])
 
     # Override the memory service dependency
     from pam.api.routes.memory import get_memory_service as _get_memory_svc
