@@ -91,6 +91,8 @@ def _conversation_to_detail(
 class ConversationService:
     """Manages conversation persistence and message storage."""
 
+    _VALID_ROLES = {"user", "assistant", "system"}
+
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
@@ -191,3 +193,109 @@ class ConversationService:
             await session.commit()
             logger.info("conversation_deleted", conversation_id=str(conversation_id))
             return True
+
+    async def add_message(
+        self,
+        conversation_id: uuid_mod.UUID,
+        role: str,
+        content: str,
+        metadata: dict | None = None,
+    ) -> ConvMessageResponse:
+        """Add a message to an existing conversation."""
+        if role not in self._VALID_ROLES:
+            raise ValueError(f"Invalid role '{role}'. Must be one of: {self._VALID_ROLES}")
+
+        async with self._session_factory() as session:
+            stmt = select(Conversation).where(Conversation.id == conversation_id)
+            result = await session.execute(stmt)
+            conv = result.scalar_one_or_none()
+            if conv is None:
+                raise ValueError(f"Conversation {conversation_id} not found")
+
+            now = datetime.now(tz=timezone.utc)
+            msg = Message(
+                id=uuid_mod.uuid4(),
+                conversation_id=conversation_id,
+                role=role,
+                content=content,
+                metadata_=metadata or {},
+                created_at=now,
+            )
+            session.add(msg)
+            conv.last_active = now
+            await session.flush()
+
+            response = _message_to_response(msg)
+            await session.commit()
+            return response
+
+    async def list_by_user(
+        self,
+        user_id: uuid_mod.UUID,
+        project_id: uuid_mod.UUID | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ConversationResponse]:
+        """List conversations for a user, ordered by last_active desc."""
+        async with self._session_factory() as session:
+            count_subq = (
+                select(
+                    Message.conversation_id,
+                    func.count(Message.id).label("message_count"),
+                )
+                .group_by(Message.conversation_id)
+                .subquery()
+            )
+
+            stmt = (
+                select(Conversation, func.coalesce(count_subq.c.message_count, 0).label("message_count"))
+                .outerjoin(count_subq, Conversation.id == count_subq.c.conversation_id)
+                .where(Conversation.user_id == user_id)
+            )
+            if project_id is not None:
+                stmt = stmt.where(Conversation.project_id == project_id)
+            stmt = stmt.order_by(Conversation.last_active.desc()).limit(limit).offset(offset)
+
+            result = await session.execute(stmt)
+            rows = result.all()
+            return [
+                _conversation_to_response(row.Conversation, message_count=row.message_count)
+                for row in rows
+            ]
+
+    async def get_recent_context(
+        self,
+        conversation_id: uuid_mod.UUID,
+        max_tokens: int = 2000,
+    ) -> str:
+        """Get recent conversation messages as formatted text within a token budget.
+
+        Returns messages from most recent backwards, formatted as 'role: content'.
+        Uses tiktoken directly to avoid coupling to the agent module.
+        """
+        async with self._session_factory() as session:
+            stmt = (
+                select(Conversation)
+                .options(selectinload(Conversation.messages))
+                .where(Conversation.id == conversation_id)
+            )
+            result = await session.execute(stmt)
+            conv = result.scalar_one_or_none()
+            if conv is None:
+                return ""
+
+            # Walk messages from newest to oldest, accumulating within budget
+            messages = list(reversed(conv.messages))
+            selected: list[str] = []
+            tokens_used = 0
+            for msg in messages:
+                line = f"{msg.role}: {msg.content}"
+                line_tokens = len(_get_encoder().encode(line))
+                if tokens_used + line_tokens > max_tokens:
+                    break
+                selected.append(line)
+                tokens_used += line_tokens
+
+            # Reverse back to chronological order
+            selected.reverse()
+            return "\n".join(selected)

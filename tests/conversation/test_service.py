@@ -196,3 +196,112 @@ async def test_delete_conversation_not_found(conversation_service, mock_session)
 
     result = await conversation_service.delete(uuid.uuid4())
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_add_message(conversation_service, mock_session):
+    """add_message() inserts a Message and updates last_active."""
+    conv_id = uuid.uuid4()
+    now = datetime.now(tz=timezone.utc)
+
+    mock_conv = MagicMock()
+    mock_conv.id = conv_id
+    mock_conv.last_active = now
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = mock_conv
+    mock_session.execute.return_value = mock_result
+
+    result = await conversation_service.add_message(
+        conversation_id=conv_id,
+        role="user",
+        content="Hello, PAM!",
+    )
+
+    assert result.role == "user"
+    assert result.content == "Hello, PAM!"
+    assert result.conversation_id == conv_id
+    mock_session.add.assert_called_once()
+    mock_session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_add_message_conversation_not_found(conversation_service, mock_session):
+    """add_message() raises ValueError when conversation doesn't exist."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    with pytest.raises(ValueError, match="not found"):
+        await conversation_service.add_message(
+            conversation_id=uuid.uuid4(),
+            role="user",
+            content="Hello",
+        )
+
+
+@pytest.mark.asyncio
+async def test_add_message_invalid_role(conversation_service):
+    """add_message() raises ValueError for invalid role."""
+    with pytest.raises(ValueError, match="Invalid role"):
+        await conversation_service.add_message(
+            conversation_id=uuid.uuid4(),
+            role="admin",
+            content="Hello",
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_by_user(conversation_service, mock_session):
+    """list_by_user() returns conversations ordered by last_active desc."""
+    user_id = uuid.uuid4()
+    now = datetime.now(tz=timezone.utc)
+
+    mock_conv = MagicMock()
+    mock_conv.id = uuid.uuid4()
+    mock_conv.user_id = user_id
+    mock_conv.project_id = None
+    mock_conv.title = "Chat 1"
+    mock_conv.started_at = now
+    mock_conv.last_active = now
+
+    # Mock the count subquery result
+    mock_row = MagicMock()
+    mock_row.Conversation = mock_conv
+    mock_row.message_count = 3
+
+    mock_result = MagicMock()
+    mock_result.all.return_value = [mock_row]
+    mock_session.execute.return_value = mock_result
+
+    result = await conversation_service.list_by_user(user_id=user_id)
+    assert len(result) == 1
+    assert result[0].message_count == 3
+
+
+@pytest.mark.asyncio
+async def test_get_recent_context(conversation_service, mock_session):
+    """get_recent_context() returns formatted conversation text within token budget."""
+    conv_id = uuid.uuid4()
+    now = datetime.now(tz=timezone.utc)
+
+    msg1 = MagicMock()
+    msg1.role = "user"
+    msg1.content = "What is our revenue target?"
+    msg1.created_at = now
+
+    msg2 = MagicMock()
+    msg2.role = "assistant"
+    msg2.content = "The Q1 revenue target is $10M."
+    msg2.created_at = now
+
+    mock_conv = MagicMock()
+    mock_conv.id = conv_id
+    mock_conv.messages = [msg1, msg2]
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = mock_conv
+    mock_session.execute.return_value = mock_result
+
+    text = await conversation_service.get_recent_context(conv_id, max_tokens=2000)
+    assert "user:" in text
+    assert "assistant:" in text
+    assert "revenue target" in text
