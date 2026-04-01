@@ -100,3 +100,99 @@ def test_conversation_detail_includes_messages():
         messages=[msg],
     )
     assert len(detail.messages) == 1
+
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+from pam.conversation.service import ConversationService
+
+
+@pytest.mark.asyncio
+async def test_create_conversation(conversation_service, mock_session):
+    """create() inserts a Conversation row and returns ConversationResponse."""
+    user_id = uuid.uuid4()
+    result = await conversation_service.create(user_id=user_id, title="Test Chat")
+
+    mock_session.add.assert_called_once()
+    mock_session.flush.assert_awaited_once()
+    assert result.title == "Test Chat"
+    assert result.user_id == user_id
+    assert result.message_count == 0
+
+
+@pytest.mark.asyncio
+async def test_create_with_id(conversation_service, mock_session):
+    """create_with_id() uses the supplied UUID instead of generating one."""
+    conv_id = uuid.uuid4()
+    result = await conversation_service.create_with_id(
+        conversation_id=conv_id, title="Chat with known ID"
+    )
+
+    mock_session.add.assert_called_once()
+    # The Conversation passed to session.add should have our ID
+    added_conv = mock_session.add.call_args[0][0]
+    assert added_conv.id == conv_id
+    assert result.title == "Chat with known ID"
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_found(conversation_service, mock_session):
+    """get() returns ConversationDetail when conversation exists."""
+    conv_id = uuid.uuid4()
+    now = datetime.now(tz=timezone.utc)
+
+    mock_conv = MagicMock()
+    mock_conv.id = conv_id
+    mock_conv.user_id = None
+    mock_conv.project_id = None
+    mock_conv.title = "Chat"
+    mock_conv.started_at = now
+    mock_conv.last_active = now
+    mock_conv.messages = []
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = mock_conv
+    mock_session.execute.return_value = mock_result
+
+    result = await conversation_service.get(conv_id)
+    assert result is not None
+    assert result.id == conv_id
+    assert result.messages == []
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_not_found(conversation_service, mock_session):
+    """get() returns None when conversation doesn't exist."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    result = await conversation_service.get(uuid.uuid4())
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation(conversation_service, mock_session):
+    """delete() removes conversation and returns True."""
+    conv_id = uuid.uuid4()
+
+    mock_conv = MagicMock()
+    mock_conv.id = conv_id
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = mock_conv
+    mock_session.execute.return_value = mock_result
+
+    result = await conversation_service.delete(conv_id)
+    assert result is True
+    mock_session.delete.assert_awaited_once_with(mock_conv)
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_not_found(conversation_service, mock_session):
+    """delete() returns False when conversation doesn't exist."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    result = await conversation_service.delete(uuid.uuid4())
+    assert result is False
