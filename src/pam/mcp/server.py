@@ -797,8 +797,16 @@ async def _pam_save_conversation(
     if svc is None:
         return json.dumps({"error": "ConversationService not available"})
 
-    uid = uuid_mod.UUID(user_id) if user_id else None
-    pid = uuid_mod.UUID(project_id) if project_id else None
+    try:
+        uid = uuid_mod.UUID(user_id) if user_id else None
+        pid = uuid_mod.UUID(project_id) if project_id else None
+    except ValueError:
+        return json.dumps({"error": f"Invalid user_id or project_id: {user_id}, {project_id}"})
+
+    # Validate message structure before creating the conversation
+    for i, msg in enumerate(messages):
+        if "role" not in msg or "content" not in msg:
+            return json.dumps({"error": f"Message at index {i} missing required 'role' or 'content' key"})
 
     conv = await svc.create(user_id=uid, project_id=pid, title=title)
 
@@ -828,7 +836,11 @@ async def _pam_get_conversation_context(
     if svc is None:
         return json.dumps({"error": "ConversationService not available"})
 
-    conv_id = uuid_mod.UUID(conversation_id)
+    try:
+        conv_id = uuid_mod.UUID(conversation_id)
+    except ValueError:
+        return json.dumps({"error": f"Invalid conversation_id: {conversation_id}"})
+
     return await svc.get_recent_context(conv_id, max_tokens=max_tokens)
 
 

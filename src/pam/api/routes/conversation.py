@@ -43,29 +43,17 @@ async def create_conversation(
 ):
     """Create a new conversation."""
     owner = _require_user(user)
+    # When auth is disabled, require user_id in the request body
+    effective_user_id = owner.id if owner else body.user_id
     return await service.create(
-        user_id=owner.id if owner else body.user_id,
+        user_id=effective_user_id,
         project_id=body.project_id,
         title=body.title,
     )
 
 
-@router.get("/{conversation_id}", response_model=ConversationDetail)
-async def get_conversation(
-    conversation_id: uuid.UUID,
-    service=Depends(get_conversation_service),
-    user: User | None = Depends(get_current_user),
-):
-    """Get a conversation with all its messages."""
-    owner = _require_user(user)
-    result = await service.get(conversation_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    if owner and result.user_id and result.user_id != owner.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    return result
-
-
+# NOTE: /user/{user_id} must be registered BEFORE /{conversation_id}
+# to prevent FastAPI from matching "user" as a conversation_id UUID.
 @router.get("/user/{user_id}", response_model=list[ConversationResponse])
 async def list_user_conversations(
     user_id: uuid.UUID,
@@ -85,6 +73,22 @@ async def list_user_conversations(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/{conversation_id}", response_model=ConversationDetail)
+async def get_conversation(
+    conversation_id: uuid.UUID,
+    service=Depends(get_conversation_service),
+    user: User | None = Depends(get_current_user),
+):
+    """Get a conversation with all its messages."""
+    owner = _require_user(user)
+    result = await service.get(conversation_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if owner and result.user_id and result.user_id != owner.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return result
 
 
 @router.post("/{conversation_id}/messages", response_model=ConvMessageResponse)

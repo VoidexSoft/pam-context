@@ -304,7 +304,9 @@ class TestSmartSearchContextAssembly:
             "ANTHROPIC_API_KEY": "test",
             "CONTEXT_ENTITY_BUDGET": "2000",
             "CONTEXT_RELATIONSHIP_BUDGET": "3000",
-            "CONTEXT_MAX_TOKENS": "8000",
+            "CONTEXT_MAX_TOKENS": "10000",
+            "CONTEXT_MEMORY_BUDGET": "1000",
+            "CONVERSATION_CONTEXT_MAX_TOKENS": "1000",
         },
         clear=True,
     )
@@ -317,7 +319,7 @@ class TestSmartSearchContextAssembly:
             s = Settings(_env_file=None)
             assert s.context_entity_budget == 2000
             assert s.context_relationship_budget == 3000
-            assert s.context_max_tokens == 8000
+            assert s.context_max_tokens == 10000
 
             # Use patch to intercept assemble_context and verify budget
             with patch(
@@ -342,6 +344,6 @@ class TestSmartSearchContextAssembly:
                 assert budget is not None
                 assert budget.entity_tokens == 2000
                 assert budget.relationship_tokens == 3000
-                assert budget.max_total_tokens == 8000
+                assert budget.max_total_tokens == 10000
         finally:
             reset_settings()

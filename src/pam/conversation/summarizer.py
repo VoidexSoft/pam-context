@@ -56,11 +56,27 @@ class ConversationSummarizer:
         self._summary_token_limit = summary_token_limit
 
     async def should_summarize(self, conversation_id: uuid_mod.UUID) -> bool:
-        """Check if a conversation exceeds the summary threshold."""
+        """Check if a conversation exceeds the summary threshold.
+
+        Returns False if a summary already exists for this conversation
+        (to avoid re-summarizing on every subsequent message).
+        """
         detail = await self._conversation_service.get(conversation_id)
         if detail is None:
             return False
-        return detail.message_count >= self._summary_threshold
+        if detail.message_count < self._summary_threshold:
+            return False
+        # Check if we already have a summary for this conversation
+        existing = await self._memory_service.search(
+            query=f"conversation summary {conversation_id}",
+            type_filter="conversation_summary",
+            top_k=1,
+        )
+        for r in existing:
+            meta = getattr(r.memory, "metadata_", None) or {}
+            if meta.get("conversation_id") == str(conversation_id):
+                return False
+        return True
 
     async def summarize(self, conversation_id: uuid_mod.UUID) -> str:
         """Generate a summary of the conversation and store as a memory.

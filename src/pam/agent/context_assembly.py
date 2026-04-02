@@ -60,7 +60,7 @@ class ContextBudget:
 
     entity_tokens: int = 4000
     relationship_tokens: int = 6000
-    max_total_tokens: int = 12000
+    max_total_tokens: int = 16000
     max_item_tokens: int = 500  # per-item description truncation cap
     memory_tokens: int = 2000
     conversation_tokens: int = 2000
@@ -147,6 +147,8 @@ def _calculate_chunk_budget(
 ) -> int:
     """Calculate the dynamic chunk budget with unused redistribution.
 
+    *max_total* is the remaining token budget after memory and conversation
+    tokens have been subtracted by the caller.
     Base chunk budget = max_total - entity_budget - relationship_budget.
     Any unused tokens from entities / relationships are added back.
     Result is floored at 0.

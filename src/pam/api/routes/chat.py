@@ -47,17 +47,27 @@ async def _persist_exchange(
     if conv_service is None:
         return
 
-    try:
-        conv_id = uuid.UUID(conversation_id)
+    conv_id = _parse_uuid(conversation_id)
+    if conv_id is None:
+        logger.warning("chat_persist_invalid_uuid", conversation_id=conversation_id)
+        return
 
-        # Create conversation if it doesn't exist yet (first turn)
+    try:
+        # Create conversation if it doesn't exist yet (first turn).
+        # Use try/except to handle race conditions from concurrent requests.
         existing = await conv_service.get(conv_id)
         if existing is None:
-            await conv_service.create_with_id(
-                conversation_id=conv_id,
-                user_id=user_id,
-                title=user_message[:100],
-            )
+            try:
+                await conv_service.create_with_id(
+                    conversation_id=conv_id,
+                    user_id=user_id,
+                    title=user_message[:100],
+                )
+            except Exception:
+                # Race: another request already created it — re-fetch to confirm
+                existing = await conv_service.get(conv_id)
+                if existing is None:
+                    raise
 
         await conv_service.add_message(conv_id, role="user", content=user_message)
         await conv_service.add_message(conv_id, role="assistant", content=assistant_response)
@@ -81,7 +91,6 @@ async def _persist_exchange(
     summarizer = getattr(request.app.state, "conversation_summarizer", None)
     if summarizer is not None:
         try:
-            conv_id = uuid.UUID(conversation_id)
             if await summarizer.should_summarize(conv_id):
                 await summarizer.summarize(conv_id)
         except Exception:
@@ -124,7 +133,7 @@ class ChatDebugResponse(BaseModel):
 @router.post("/chat/debug", response_model=ChatDebugResponse)
 @limiter.limit(settings.rate_limit_chat)
 async def chat_debug(
-    request: Request,  # noqa: ARG001
+    request: Request,
     body: ChatRequest,
     agent: RetrievalAgent = Depends(get_agent),
     _user: User | None = Depends(get_current_user),
@@ -149,6 +158,12 @@ async def chat_debug(
     except Exception as e:
         logger.exception("chat_debug_error", message=body.message[:100])
         raise HTTPException(status_code=500, detail="An internal error occurred") from e
+
+    # Persist exchange inline (same as chat/chat_stream)
+    await _persist_exchange(
+        request, conversation_id, body.message, result.answer,
+        user_id=_user.id if _user else None,
+    )
 
     return ChatDebugResponse(
         response=result.answer,

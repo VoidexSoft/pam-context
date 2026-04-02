@@ -97,7 +97,7 @@ def _truncate_history(messages: list[dict], max_chars: int = MAX_HISTORY_CHARS) 
             total -= _content_len(trimmed.pop(0))
 
     # Ensure the first message is a "user" message (Anthropic API requirement)
-    while len(trimmed) > 1 and trimmed[0].get("role") != "user":
+    while trimmed and trimmed[0].get("role") != "user":
         trimmed.pop(0)
 
     return trimmed

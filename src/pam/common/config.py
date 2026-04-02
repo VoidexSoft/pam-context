@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # Context Assembly Token Budgets
     context_entity_budget: int = 4000
     context_relationship_budget: int = 6000
-    context_max_tokens: int = 12000
+    context_max_tokens: int = 16000
 
     # Mode Router
     mode_confidence_threshold: float = 0.7  # Below this, fall back to hybrid
@@ -162,10 +162,18 @@ class Settings(BaseSettings):
             raise ValueError(f"mode_confidence_threshold must be 0.0-1.0, got {self.mode_confidence_threshold}")
         if not 0.0 <= self.memory_dedup_threshold <= 1.0:
             raise ValueError(f"memory_dedup_threshold must be 0.0-1.0, got {self.memory_dedup_threshold}")
-        if self.context_entity_budget + self.context_relationship_budget > self.context_max_tokens:
+        total_budget = (
+            self.context_entity_budget
+            + self.context_relationship_budget
+            + self.context_memory_budget
+            + self.conversation_context_max_tokens
+        )
+        if total_budget > self.context_max_tokens:
             raise ValueError(
                 f"context budget overflow: entity ({self.context_entity_budget}) + "
-                f"relationship ({self.context_relationship_budget}) > "
+                f"relationship ({self.context_relationship_budget}) + "
+                f"memory ({self.context_memory_budget}) + "
+                f"conversation ({self.conversation_context_max_tokens}) = {total_budget} > "
                 f"max ({self.context_max_tokens})"
             )
         return self
