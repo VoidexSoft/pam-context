@@ -35,7 +35,7 @@ def summarizer(mock_conversation_service, mock_memory_service):
 
 @pytest.mark.asyncio
 async def test_should_summarize_true(summarizer, mock_conversation_service):
-    """should_summarize() returns True when message count exceeds threshold."""
+    """should_summarize() returns the detail when message count exceeds threshold."""
     conv_id = uuid.uuid4()
     now = datetime.now(tz=timezone.utc)
     detail = MagicMock()
@@ -43,27 +43,27 @@ async def test_should_summarize_true(summarizer, mock_conversation_service):
     mock_conversation_service.get.return_value = detail
 
     result = await summarizer.should_summarize(conv_id)
-    assert result is True
+    assert result is detail
 
 
 @pytest.mark.asyncio
 async def test_should_summarize_false(summarizer, mock_conversation_service):
-    """should_summarize() returns False when message count is below threshold."""
+    """should_summarize() returns None when message count is below threshold."""
     conv_id = uuid.uuid4()
     detail = MagicMock()
     detail.message_count = 3
     mock_conversation_service.get.return_value = detail
 
     result = await summarizer.should_summarize(conv_id)
-    assert result is False
+    assert result is None
 
 
 @pytest.mark.asyncio
 async def test_should_summarize_not_found(summarizer, mock_conversation_service):
-    """should_summarize() returns False when conversation not found."""
+    """should_summarize() returns None when conversation not found."""
     mock_conversation_service.get.return_value = None
     result = await summarizer.should_summarize(uuid.uuid4())
-    assert result is False
+    assert result is None
 
 
 @pytest.mark.asyncio

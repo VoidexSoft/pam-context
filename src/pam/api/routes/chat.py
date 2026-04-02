@@ -91,8 +91,9 @@ async def _persist_exchange(
     summarizer = getattr(request.app.state, "conversation_summarizer", None)
     if summarizer is not None:
         try:
-            if await summarizer.should_summarize(conv_id):
-                await summarizer.summarize(conv_id)
+            conv_detail = await summarizer.should_summarize(conv_id)
+            if conv_detail is not None:
+                await summarizer.summarize(conv_id, detail=conv_detail)
         except Exception:
             logger.warning("chat_summarization_error", exc_info=True)
 
@@ -267,8 +268,8 @@ async def chat_stream(
             conversation_history=history,
             source_type=body.source_type,
         ):
-            if chunk.get("type") == "content":
-                full_response += chunk.get("text", "")
+            if chunk.get("type") == "token":
+                full_response += chunk.get("content", "")
             if chunk.get("type") == "done":
                 chunk["conversation_id"] = conversation_id
             yield f"data: {json.dumps(chunk)}\n\n"

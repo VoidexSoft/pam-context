@@ -55,17 +55,17 @@ class ConversationSummarizer:
         self._summary_threshold = summary_threshold
         self._summary_token_limit = summary_token_limit
 
-    async def should_summarize(self, conversation_id: uuid_mod.UUID) -> bool:
+    async def should_summarize(self, conversation_id: uuid_mod.UUID):
         """Check if a conversation exceeds the summary threshold.
 
-        Returns False if a summary already exists for this conversation
-        (to avoid re-summarizing on every subsequent message).
+        Returns the ConversationDetail if summarization is needed, or None
+        if it is not (to avoid re-summarizing on every subsequent message).
         """
         detail = await self._conversation_service.get(conversation_id)
         if detail is None:
-            return False
+            return None
         if detail.message_count < self._summary_threshold:
-            return False
+            return None
         # Check if we already have a summary for this conversation
         existing = await self._memory_service.search(
             query=f"conversation summary {conversation_id}",
@@ -73,17 +73,18 @@ class ConversationSummarizer:
             top_k=1,
         )
         for r in existing:
-            meta = getattr(r.memory, "metadata_", None) or {}
+            meta = r.memory.metadata or {}
             if meta.get("conversation_id") == str(conversation_id):
-                return False
-        return True
+                return None
+        return detail
 
-    async def summarize(self, conversation_id: uuid_mod.UUID) -> str:
+    async def summarize(self, conversation_id: uuid_mod.UUID, detail=None) -> str:
         """Generate a summary of the conversation and store as a memory.
 
         Returns the summary text, or empty string on failure.
         """
-        detail = await self._conversation_service.get(conversation_id)
+        if detail is None:
+            detail = await self._conversation_service.get(conversation_id)
         if detail is None:
             return ""
 

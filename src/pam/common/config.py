@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     rate_limit_ingest: str = "5/minute"
     rate_limit_search: str = "30/minute"
     rate_limit_memory: str = "30/minute"
+    rate_limit_conversation: str = "30/minute"
 
     # App
     log_level: str = "INFO"

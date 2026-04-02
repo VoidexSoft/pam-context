@@ -3,9 +3,10 @@
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from pam.api.auth import get_current_user
+from pam.api.rate_limit import limiter
 from pam.common.config import settings
 from pam.common.models import (
     ConversationCreate,
@@ -36,7 +37,9 @@ def _require_user(user: User | None) -> User | None:
 
 
 @router.post("", response_model=ConversationResponse)
+@limiter.limit(settings.rate_limit_conversation)
 async def create_conversation(
+    request: Request,
     body: ConversationCreate,
     service=Depends(get_conversation_service),
     user: User | None = Depends(get_current_user),
@@ -55,7 +58,9 @@ async def create_conversation(
 # NOTE: /user/{user_id} must be registered BEFORE /{conversation_id}
 # to prevent FastAPI from matching "user" as a conversation_id UUID.
 @router.get("/user/{user_id}", response_model=list[ConversationResponse])
+@limiter.limit(settings.rate_limit_conversation)
 async def list_user_conversations(
+    request: Request,
     user_id: uuid.UUID,
     project_id: uuid.UUID | None = None,
     limit: int = 50,
@@ -76,7 +81,9 @@ async def list_user_conversations(
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail)
+@limiter.limit(settings.rate_limit_conversation)
 async def get_conversation(
+    request: Request,
     conversation_id: uuid.UUID,
     service=Depends(get_conversation_service),
     user: User | None = Depends(get_current_user),
@@ -92,7 +99,9 @@ async def get_conversation(
 
 
 @router.post("/{conversation_id}/messages", response_model=ConvMessageResponse)
+@limiter.limit(settings.rate_limit_conversation)
 async def add_message(
+    request: Request,
     conversation_id: uuid.UUID,
     body: MessageCreate,
     service=Depends(get_conversation_service),
@@ -117,7 +126,9 @@ async def add_message(
 
 
 @router.delete("/{conversation_id}")
+@limiter.limit(settings.rate_limit_conversation)
 async def delete_conversation(
+    request: Request,
     conversation_id: uuid.UUID,
     service=Depends(get_conversation_service),
     user: User | None = Depends(get_current_user),
