@@ -1,13 +1,12 @@
 """Tests for Memory model and schemas."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pam.common.models import Memory
-from pam.memory.service import MemoryService
+from pam.common.models import Memory, MemoryCreate, MemoryResponse
 
 
 def test_memory_model_has_required_fields():
@@ -19,9 +18,6 @@ def test_memory_model_has_required_fields():
         "expires_at", "created_at", "updated_at",
     }
     assert expected.issubset(columns), f"Missing columns: {expected - columns}"
-
-
-from pam.common.models import MemoryCreate, MemoryResponse, MemoryUpdate, MemorySearchQuery
 
 
 def test_memory_create_schema_defaults():
@@ -62,7 +58,7 @@ def test_memory_create_rejects_oversized_content():
 
 def test_memory_response_from_attributes():
     """MemoryResponse can be constructed from ORM-like attributes."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     mr = MemoryResponse(
         id=uuid.uuid4(),
         type="fact",
@@ -123,8 +119,8 @@ async def test_store_memory_with_duplicate_merges(memory_service, mock_store, mo
     mock_existing.expires_at = None
     mock_existing.user_id = None
     mock_existing.project_id = None
-    mock_existing.created_at = datetime.now(tz=timezone.utc)
-    mock_existing.updated_at = datetime.now(tz=timezone.utc)
+    mock_existing.created_at = datetime.now(tz=UTC)
+    mock_existing.updated_at = datetime.now(tz=UTC)
 
     mock_get_result = MagicMock()
     mock_get_result.scalars.return_value.first.return_value = mock_existing
@@ -169,8 +165,8 @@ async def test_merge_uses_max_importance(memory_service, mock_store, mock_embedd
     mock_existing.expires_at = None
     mock_existing.user_id = None
     mock_existing.project_id = None
-    mock_existing.created_at = datetime.now(tz=timezone.utc)
-    mock_existing.updated_at = datetime.now(tz=timezone.utc)
+    mock_existing.created_at = datetime.now(tz=UTC)
+    mock_existing.updated_at = datetime.now(tz=UTC)
 
     mock_get_result = MagicMock()
     mock_get_result.scalars.return_value.first.return_value = mock_existing
@@ -214,8 +210,8 @@ async def test_search_memories(memory_service, mock_store, mock_embedder):
     mock_memory.metadata_ = {}
     mock_memory.last_accessed_at = None
     mock_memory.expires_at = None
-    mock_memory.created_at = datetime.now(tz=timezone.utc)
-    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+    mock_memory.created_at = datetime.now(tz=UTC)
+    mock_memory.updated_at = datetime.now(tz=UTC)
 
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = [mock_memory]
@@ -250,8 +246,8 @@ async def test_get_memory_by_id(memory_service):
     mock_memory.metadata_ = {}
     mock_memory.last_accessed_at = None
     mock_memory.expires_at = None
-    mock_memory.created_at = datetime.now(tz=timezone.utc)
-    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+    mock_memory.created_at = datetime.now(tz=UTC)
+    mock_memory.updated_at = datetime.now(tz=UTC)
 
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_memory
@@ -334,8 +330,8 @@ async def test_update_memory(memory_service, mock_store, mock_embedder):
     mock_memory.metadata_ = {}
     mock_memory.last_accessed_at = None
     mock_memory.expires_at = None
-    mock_memory.created_at = datetime.now(tz=timezone.utc)
-    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+    mock_memory.created_at = datetime.now(tz=UTC)
+    mock_memory.updated_at = datetime.now(tz=UTC)
 
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_memory
@@ -371,8 +367,8 @@ async def test_update_importance_only(memory_service, mock_store, mock_embedder)
     mock_memory.metadata_ = {}
     mock_memory.last_accessed_at = None
     mock_memory.expires_at = None
-    mock_memory.created_at = datetime.now(tz=timezone.utc)
-    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+    mock_memory.created_at = datetime.now(tz=UTC)
+    mock_memory.updated_at = datetime.now(tz=UTC)
 
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_memory
@@ -403,9 +399,9 @@ async def test_update_clear_expires_at(memory_service, mock_store):
     mock_memory.source = None
     mock_memory.metadata_ = {}
     mock_memory.last_accessed_at = None
-    mock_memory.expires_at = datetime.now(tz=timezone.utc)
-    mock_memory.created_at = datetime.now(tz=timezone.utc)
-    mock_memory.updated_at = datetime.now(tz=timezone.utc)
+    mock_memory.expires_at = datetime.now(tz=UTC)
+    mock_memory.created_at = datetime.now(tz=UTC)
+    mock_memory.updated_at = datetime.now(tz=UTC)
 
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_memory

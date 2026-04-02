@@ -1,7 +1,7 @@
 """Tests for conversation REST API routes."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -46,7 +46,7 @@ async def client(app):
 @pytest.mark.asyncio
 async def test_create_conversation(client, mock_conv_service):
     """POST /api/conversations creates a conversation."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     mock_conv_service.create.return_value = ConversationResponse(
         id=uuid.uuid4(),
         user_id=None,
@@ -66,7 +66,7 @@ async def test_create_conversation(client, mock_conv_service):
 async def test_get_conversation(client, mock_conv_service):
     """GET /api/conversations/{id} returns conversation detail."""
     conv_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     mock_conv_service.get.return_value = ConversationDetail(
         id=conv_id,
         title="Chat",
@@ -93,7 +93,7 @@ async def test_get_conversation_not_found(client, mock_conv_service):
 async def test_add_message(client, mock_conv_service):
     """POST /api/conversations/{id}/messages adds a message."""
     conv_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     # Need to mock get() for ownership check
     mock_conv_service.get.return_value = ConversationDetail(
         id=conv_id, title="Chat", started_at=now, last_active=now,
@@ -120,7 +120,7 @@ async def test_add_message(client, mock_conv_service):
 async def test_list_conversations(client, mock_conv_service):
     """GET /api/conversations/user/{user_id} lists conversations."""
     user_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     mock_conv_service.list_by_user.return_value = [
         ConversationResponse(
             id=uuid.uuid4(),
@@ -143,7 +143,7 @@ async def test_list_conversations(client, mock_conv_service):
 async def test_delete_conversation(client, mock_conv_service):
     """DELETE /api/conversations/{id} deletes conversation."""
     conv_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     # Mock get for ownership check
     mock_conv_service.get.return_value = ConversationDetail(
         id=conv_id, title="Chat", started_at=now, last_active=now,

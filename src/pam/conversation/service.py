@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import uuid as uuid_mod
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, ClassVar
 
 import structlog
 import tiktoken
@@ -91,7 +91,7 @@ def _conversation_to_detail(
 class ConversationService:
     """Manages conversation persistence and message storage."""
 
-    _VALID_ROLES = {"user", "assistant", "system"}
+    _VALID_ROLES: ClassVar[set[str]] = {"user", "assistant", "system"}
 
     def __init__(
         self,
@@ -107,7 +107,7 @@ class ConversationService:
     ) -> ConversationResponse:
         """Create a new conversation with a server-generated ID."""
         async with self._session_factory() as session:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             conv = Conversation(
                 id=uuid_mod.uuid4(),
                 user_id=user_id,
@@ -137,7 +137,7 @@ class ConversationService:
         client matches the one stored in the database.
         """
         async with self._session_factory() as session:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             conv = Conversation(
                 id=conversation_id,
                 user_id=user_id,
@@ -212,7 +212,7 @@ class ConversationService:
             if conv is None:
                 raise ValueError(f"Conversation {conversation_id} not found")
 
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             msg = Message(
                 id=uuid_mod.uuid4(),
                 conversation_id=conversation_id,

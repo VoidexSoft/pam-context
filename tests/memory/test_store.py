@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from pam.memory.store import MemoryStore, get_memory_index_mapping
+from pam.memory.store import get_memory_index_mapping
 
 
 def test_memory_index_mapping_structure():

@@ -13,10 +13,10 @@ if TYPE_CHECKING:
 
     from pam.agent.duckdb_service import DuckDBService
     from pam.common.cache import CacheService
+    from pam.conversation.service import ConversationService
     from pam.graph.service import GraphitiService
     from pam.ingestion.embedders.base import BaseEmbedder
     from pam.ingestion.stores.entity_relationship_store import EntityRelationshipVDBStore
-    from pam.conversation.service import ConversationService
     from pam.memory.service import MemoryService
     from pam.retrieval.search_protocol import SearchService
 

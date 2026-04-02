@@ -161,7 +161,7 @@ async def _run_pipeline(
                     await status_session.commit()
 
                 # Run the pipeline for each connector with a separate DB session
-                for (source_type, connector), docs in zip(connectors, prefetched_docs):
+                for (source_type, connector), docs in zip(connectors, prefetched_docs, strict=True):
                     async with session_factory() as pipeline_session:
                         parser = DoclingParser()
                         es_store = ElasticsearchStore(

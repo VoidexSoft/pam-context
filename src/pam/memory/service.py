@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid as uuid_mod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
@@ -135,7 +135,7 @@ class MemoryService:
 
         # No duplicate — insert new memory
         memory_id = uuid_mod.uuid4()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         memory = Memory(
             id=memory_id,
             user_id=user_id,
@@ -186,9 +186,9 @@ class MemoryService:
         existing_id: uuid_mod.UUID,
         existing_content: str,
         new_content: str,
-        new_embedding: list[float],
-        user_id: uuid_mod.UUID | None,
-        project_id: uuid_mod.UUID | None,
+        new_embedding: list[float],  # noqa: ARG002
+        user_id: uuid_mod.UUID | None,  # noqa: ARG002
+        project_id: uuid_mod.UUID | None,  # noqa: ARG002
         new_importance: float | None = None,
         new_source: str | None = None,
         new_metadata: dict | None = None,
@@ -216,7 +216,7 @@ class MemoryService:
                 raise RuntimeError("Dedup target not found")
 
             existing.content = merged_content
-            existing.updated_at = datetime.now(tz=timezone.utc)
+            existing.updated_at = datetime.now(tz=UTC)
             if new_importance is not None:
                 existing.importance = max(existing.importance, new_importance)
             if new_source is not None:
@@ -318,7 +318,7 @@ class MemoryService:
             if memory is None:
                 return None
             memory.access_count = (memory.access_count or 0) + 1
-            memory.last_accessed_at = datetime.now(tz=timezone.utc)
+            memory.last_accessed_at = datetime.now(tz=UTC)
             await session.flush()
             await session.commit()
             return _memory_to_response(memory)
@@ -405,7 +405,7 @@ class MemoryService:
             elif clear_expires_at:
                 memory.expires_at = None
 
-            memory.updated_at = datetime.now(tz=timezone.utc)
+            memory.updated_at = datetime.now(tz=UTC)
             await session.flush()
             await session.commit()
 

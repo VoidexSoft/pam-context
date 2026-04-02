@@ -1,9 +1,20 @@
 """Tests for Conversation and Message models."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
-from pam.common.models import Conversation, Message
+import pytest
+
+from pam.common.models import (
+    Conversation,
+    ConversationCreate,
+    ConversationDetail,
+    ConversationResponse,
+    ConvMessageResponse,
+    Message,
+    MessageCreate,
+)
 
 
 def test_conversation_model_has_required_fields():
@@ -32,15 +43,6 @@ def test_message_role_constraint():
     assert "ck_messages_role" in constraints
 
 
-from pam.common.models import (
-    ConversationCreate,
-    ConversationResponse,
-    ConversationDetail,
-    MessageCreate,
-    ConvMessageResponse,
-)
-
-
 def test_conversation_create_schema():
     """ConversationCreate accepts optional user_id, project_id, title."""
     c = ConversationCreate(title="Test Chat")
@@ -65,7 +67,7 @@ def test_message_create_schema():
 
 def test_conversation_response_schema():
     """ConversationResponse has all expected fields."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     cr = ConversationResponse(
         id=uuid.uuid4(),
         user_id=None,
@@ -80,7 +82,7 @@ def test_conversation_response_schema():
 
 def test_conversation_detail_includes_messages():
     """ConversationDetail extends ConversationResponse with messages list."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     msg = ConvMessageResponse(
         id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
@@ -100,11 +102,6 @@ def test_conversation_detail_includes_messages():
         messages=[msg],
     )
     assert len(detail.messages) == 1
-
-
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from pam.conversation.service import ConversationService
 
 
 @pytest.mark.asyncio
@@ -139,7 +136,7 @@ async def test_create_with_id(conversation_service, mock_session):
 async def test_get_conversation_found(conversation_service, mock_session):
     """get() returns ConversationDetail when conversation exists."""
     conv_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     mock_conv = MagicMock()
     mock_conv.id = conv_id
@@ -202,7 +199,7 @@ async def test_delete_conversation_not_found(conversation_service, mock_session)
 async def test_add_message(conversation_service, mock_session):
     """add_message() inserts a Message and updates last_active."""
     conv_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     mock_conv = MagicMock()
     mock_conv.id = conv_id
@@ -254,7 +251,7 @@ async def test_add_message_invalid_role(conversation_service):
 async def test_list_by_user(conversation_service, mock_session):
     """list_by_user() returns conversations ordered by last_active desc."""
     user_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     mock_conv = MagicMock()
     mock_conv.id = uuid.uuid4()
@@ -282,7 +279,7 @@ async def test_list_by_user(conversation_service, mock_session):
 async def test_get_recent_context(conversation_service, mock_session):
     """get_recent_context() returns formatted conversation text within token budget."""
     conv_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     msg1 = MagicMock()
     msg1.role = "user"

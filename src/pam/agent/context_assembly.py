@@ -395,7 +395,10 @@ def assemble_context(
         conversation_context=truncated_conversation,
     )
 
-    total_tokens = entity_tokens_used + relationship_tokens_used + chunk_tokens_used + memory_tokens_used + conversation_tokens_used
+    total_tokens = (
+        entity_tokens_used + relationship_tokens_used + chunk_tokens_used
+        + memory_tokens_used + conversation_tokens_used
+    )
 
     logger.debug(
         "context_assembly_budget",

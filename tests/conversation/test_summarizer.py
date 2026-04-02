@@ -1,7 +1,6 @@
 """Tests for ConversationSummarizer."""
 
 import uuid
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,8 +17,7 @@ def mock_memory_service():
 
 @pytest.fixture
 def mock_conversation_service():
-    svc = AsyncMock()
-    return svc
+    return AsyncMock()
 
 
 @pytest.fixture
@@ -37,7 +35,6 @@ def summarizer(mock_conversation_service, mock_memory_service):
 async def test_should_summarize_true(summarizer, mock_conversation_service):
     """should_summarize() returns the detail when message count exceeds threshold."""
     conv_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
     detail = MagicMock()
     detail.message_count = 10
     mock_conversation_service.get.return_value = detail
@@ -71,7 +68,6 @@ async def test_summarize_creates_memory(summarizer, mock_conversation_service, m
     """summarize() generates summary and stores as conversation_summary memory."""
     conv_id = uuid.uuid4()
     user_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
 
     msg1 = MagicMock()
     msg1.role = "user"

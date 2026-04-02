@@ -2,8 +2,8 @@
 
 import json
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -22,7 +22,7 @@ def _init_services(mock_services: PamServices):
 async def test_pam_save_conversation(mock_services):
     """pam_save_conversation stores messages in a conversation."""
     conv_id = uuid.uuid4()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     mock_services.conversation_service.create.return_value = MagicMock(id=conv_id, title="Test Chat")
     mock_services.conversation_service.add_message.return_value = MagicMock(
