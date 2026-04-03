@@ -41,7 +41,8 @@ async def _persist_exchange(
     """Persist conversation exchange and trigger fact extraction.
 
     Called inline (awaited) before returning the response, so no
-    fire-and-forget / orphaned-task issues.
+    fire-and-forget / orphaned-task issues.  Extraction and summarization
+    only run when persistence succeeds to avoid orphaned memories.
     """
     conv_service = getattr(request.app.state, "conversation_service", None)
     if conv_service is None:
@@ -52,6 +53,8 @@ async def _persist_exchange(
         logger.warning("chat_persist_invalid_uuid", conversation_id=conversation_id)
         return
 
+    # Track the conversation detail so we can extract project_id later.
+    persisted_detail = None
     try:
         # Create conversation if it doesn't exist yet (first turn).
         # Use try/except to handle race conditions from concurrent requests.
@@ -71,9 +74,14 @@ async def _persist_exchange(
 
         await conv_service.add_message(conv_id, role="user", content=user_message)
         await conv_service.add_message(conv_id, role="assistant", content=assistant_response)
+        # Re-fetch to get the latest detail (including project_id).
+        persisted_detail = existing or await conv_service.get(conv_id)
 
     except Exception:
         logger.warning("chat_persist_error", conversation_id=conversation_id, exc_info=True)
+        return  # Skip extraction/summarization when persistence fails
+
+    project_id = getattr(persisted_detail, "project_id", None) if persisted_detail else None
 
     # Trigger fact extraction
     extraction = getattr(request.app.state, "extraction_pipeline", None)
@@ -83,6 +91,7 @@ async def _persist_exchange(
                 user_message=user_message,
                 assistant_response=assistant_response,
                 user_id=user_id,
+                project_id=project_id,
             )
         except Exception:
             logger.warning("chat_extraction_error", exc_info=True)
@@ -263,23 +272,24 @@ async def chat_stream(
 
     async def event_generator():
         full_response = ""
-        async for chunk in agent.answer_streaming(
-            body.message,
-            conversation_history=history,
-            source_type=body.source_type,
-        ):
-            if chunk.get("type") == "token":
-                full_response += chunk.get("content", "")
-            if chunk.get("type") == "done":
-                chunk["conversation_id"] = conversation_id
-            yield f"data: {json.dumps(chunk)}\n\n"
-
-        # Persist after streaming completes
-        if full_response:
-            await _persist_exchange(
-                request, conversation_id, body.message, full_response,
-                user_id=_user.id if _user else None,
-            )
+        try:
+            async for chunk in agent.answer_streaming(
+                body.message,
+                conversation_history=history,
+                source_type=body.source_type,
+            ):
+                if chunk.get("type") == "token":
+                    full_response += chunk.get("content", "")
+                if chunk.get("type") == "done":
+                    chunk["conversation_id"] = conversation_id
+                yield f"data: {json.dumps(chunk)}\n\n"
+        finally:
+            # Persist after streaming completes (or on client disconnect)
+            if full_response:
+                await _persist_exchange(
+                    request, conversation_id, body.message, full_response,
+                    user_id=_user.id if _user else None,
+                )
 
     return StreamingResponse(
         event_generator(),

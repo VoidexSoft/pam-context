@@ -93,7 +93,9 @@ async def get_conversation(
     result = await service.get(conversation_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    if owner and result.user_id and result.user_id != owner.id:
+    # Deny access if auth is enabled and the conversation has a different owner
+    # (ownerless conversations are only accessible when auth is disabled)
+    if owner and (not result.user_id or result.user_id != owner.id):
         raise HTTPException(status_code=403, detail="Access denied")
     return result
 
@@ -112,17 +114,14 @@ async def add_message(
     existing = await service.get(conversation_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    if owner and existing.user_id and existing.user_id != owner.id:
+    if owner and (not existing.user_id or existing.user_id != owner.id):
         raise HTTPException(status_code=403, detail="Access denied")
-    try:
-        return await service.add_message(
-            conversation_id=conversation_id,
-            role=body.role,
-            content=body.content,
-            metadata=body.metadata,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+    return await service.add_message(
+        conversation_id=conversation_id,
+        role=body.role,
+        content=body.content,
+        metadata=body.metadata,
+    )
 
 
 @router.delete("/{conversation_id}")
@@ -138,7 +137,7 @@ async def delete_conversation(
     existing = await service.get(conversation_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    if owner and existing.user_id and existing.user_id != owner.id:
+    if owner and (not existing.user_id or existing.user_id != owner.id):
         raise HTTPException(status_code=403, detail="Access denied")
     await service.delete(conversation_id)
     return {"message": "Conversation deleted", "id": str(conversation_id)}

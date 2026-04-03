@@ -803,20 +803,31 @@ async def _pam_save_conversation(
     except ValueError:
         return json.dumps({"error": f"Invalid user_id or project_id: {user_id}, {project_id}"})
 
-    # Validate message structure before creating the conversation
+    # Validate message structure and role values before creating the conversation
+    valid_roles = {"user", "assistant", "system"}
     for i, msg in enumerate(messages):
         if "role" not in msg or "content" not in msg:
             return json.dumps({"error": f"Message at index {i} missing required 'role' or 'content' key"})
+        if msg["role"] not in valid_roles:
+            return json.dumps({
+                "error": f"Message at index {i} has invalid role '{msg['role']}'. "
+                f"Must be one of: {sorted(valid_roles)}",
+            })
 
     conv = await svc.create(user_id=uid, project_id=pid, title=title)
 
-    for msg in messages:
-        await svc.add_message(
-            conversation_id=conv.id,
-            role=msg["role"],
-            content=msg["content"],
-            metadata=msg.get("metadata", {}),
-        )
+    try:
+        for msg in messages:
+            await svc.add_message(
+                conversation_id=conv.id,
+                role=msg["role"],
+                content=msg["content"],
+                metadata=msg.get("metadata", {}),
+            )
+    except Exception:
+        # Clean up the orphaned conversation record on failure
+        await svc.delete(conv.id)
+        raise
 
     return json.dumps({
         "conversation_id": str(conv.id),
@@ -841,7 +852,8 @@ async def _pam_get_conversation_context(
     except ValueError:
         return json.dumps({"error": f"Invalid conversation_id: {conversation_id}"})
 
-    return await svc.get_recent_context(conv_id, max_tokens=max_tokens)
+    context = await svc.get_recent_context(conv_id, max_tokens=max_tokens)
+    return json.dumps({"conversation_id": conversation_id, "context": context})
 
 
 def _register_resources(mcp: FastMCP) -> None:

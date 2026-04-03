@@ -32,15 +32,18 @@ def summarizer(mock_conversation_service, mock_memory_service):
 
 
 @pytest.mark.asyncio
-async def test_should_summarize_true(summarizer, mock_conversation_service):
+async def test_should_summarize_true(summarizer, mock_conversation_service, mock_memory_service):
     """should_summarize() returns the detail when message count exceeds threshold."""
     conv_id = uuid.uuid4()
     detail = MagicMock()
     detail.message_count = 10
     mock_conversation_service.get.return_value = detail
+    # Explicitly return no existing summaries so the dedup guard is tested
+    mock_memory_service.search.return_value = []
 
     result = await summarizer.should_summarize(conv_id)
     assert result is detail
+    mock_memory_service.search.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -50,6 +53,22 @@ async def test_should_summarize_false(summarizer, mock_conversation_service):
     detail = MagicMock()
     detail.message_count = 3
     mock_conversation_service.get.return_value = detail
+
+    result = await summarizer.should_summarize(conv_id)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_should_summarize_already_summarized(summarizer, mock_conversation_service, mock_memory_service):
+    """should_summarize() returns None when a summary already exists for this conversation."""
+    conv_id = uuid.uuid4()
+    detail = MagicMock()
+    detail.message_count = 10
+    mock_conversation_service.get.return_value = detail
+
+    existing_summary = MagicMock()
+    existing_summary.memory.metadata = {"conversation_id": str(conv_id)}
+    mock_memory_service.search.return_value = [existing_summary]
 
     result = await summarizer.should_summarize(conv_id)
     assert result is None
