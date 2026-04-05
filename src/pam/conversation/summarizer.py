@@ -68,18 +68,19 @@ class ConversationSummarizer:
             return None
         if detail.message_count < self._summary_threshold:
             return None
-        # Check if we already have a summary for this conversation.
-        # Use a targeted search and verify conversation_id in metadata to
-        # avoid false negatives from semantic ranking instability.
-        existing = await self._memory_service.search(
-            query=f"conversation summary {conversation_id}",
-            type_filter="conversation_summary",
-            top_k=5,
+        # Check if we already have a summary for this conversation. Use a
+        # direct JSONB metadata lookup rather than semantic search: the target
+        # summary can rank below top-k under load, and a missed dedup creates
+        # duplicate conversation_summary memories on every subsequent message.
+        existing = await self._memory_service.find_by_metadata(
+            memory_type="conversation_summary",
+            metadata_key="conversation_id",
+            metadata_value=str(conversation_id),
+            user_id=detail.user_id,
+            limit=1,
         )
-        for r in existing:
-            meta = r.memory.metadata or {}
-            if meta.get("conversation_id") == str(conversation_id):
-                return None
+        if existing:
+            return None
         return detail
 
     async def summarize(self, conversation_id: uuid_mod.UUID, detail=None) -> str:

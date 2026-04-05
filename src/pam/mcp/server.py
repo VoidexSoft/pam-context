@@ -824,10 +824,19 @@ async def _pam_save_conversation(
                 content=msg["content"],
                 metadata=msg.get("metadata", {}),
             )
-    except Exception:
-        # Clean up the orphaned conversation record on failure
-        await svc.delete(conv.id)
-        raise
+    except Exception as exc:
+        # Clean up the orphaned conversation record on failure, then return a
+        # JSON error payload. MCP tools must return a string — never raise —
+        # so the client receives a structured error instead of a transport crash.
+        try:
+            await svc.delete(conv.id)
+        except Exception:
+            logger.warning(
+                "pam_save_conversation_orphan_cleanup_failed",
+                conversation_id=str(conv.id),
+                exc_info=True,
+            )
+        return json.dumps({"error": f"Failed to save conversation: {exc}"})
 
     return json.dumps({
         "conversation_id": str(conv.id),

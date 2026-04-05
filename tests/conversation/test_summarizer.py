@@ -37,13 +37,14 @@ async def test_should_summarize_true(summarizer, mock_conversation_service, mock
     conv_id = uuid.uuid4()
     detail = MagicMock()
     detail.message_count = 10
+    detail.user_id = uuid.uuid4()
     mock_conversation_service.get.return_value = detail
     # Explicitly return no existing summaries so the dedup guard is tested
-    mock_memory_service.search.return_value = []
+    mock_memory_service.find_by_metadata.return_value = []
 
     result = await summarizer.should_summarize(conv_id)
     assert result is detail
-    mock_memory_service.search.assert_awaited_once()
+    mock_memory_service.find_by_metadata.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -64,11 +65,12 @@ async def test_should_summarize_already_summarized(summarizer, mock_conversation
     conv_id = uuid.uuid4()
     detail = MagicMock()
     detail.message_count = 10
+    detail.user_id = uuid.uuid4()
     mock_conversation_service.get.return_value = detail
 
     existing_summary = MagicMock()
-    existing_summary.memory.metadata = {"conversation_id": str(conv_id)}
-    mock_memory_service.search.return_value = [existing_summary]
+    existing_summary.metadata = {"conversation_id": str(conv_id)}
+    mock_memory_service.find_by_metadata.return_value = [existing_summary]
 
     result = await summarizer.should_summarize(conv_id)
     assert result is None

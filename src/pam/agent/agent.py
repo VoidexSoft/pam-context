@@ -170,8 +170,12 @@ class RetrievalAgent:
         self._default_source_type = source_type
         start = time.perf_counter()
         messages = list(conversation_history or [])
-        messages = _truncate_history(messages)
+        # Append the current user question BEFORE truncation so it is always
+        # preserved as the last message, and _truncate_history's "keep at least
+        # one message" invariant guarantees the current turn survives even if
+        # a single oversized prior message would otherwise trim the list to [].
         messages.append({"role": "user", "content": question})
+        messages = _truncate_history(messages)
 
         all_citations: list[Citation] = []
         total_input_tokens = 0
@@ -304,8 +308,12 @@ class RetrievalAgent:
         self._default_source_type = source_type
         start = time.perf_counter()
         messages = list(conversation_history or [])
-        messages = _truncate_history(messages)
+        # Append the current user question BEFORE truncation so it is always
+        # preserved as the last message, and _truncate_history's "keep at least
+        # one message" invariant guarantees the current turn survives even if
+        # a single oversized prior message would otherwise trim the list to [].
         messages.append({"role": "user", "content": question})
+        messages = _truncate_history(messages)
 
         all_citations: list[Citation] = []
         total_input_tokens = 0
@@ -446,6 +454,43 @@ class RetrievalAgent:
                 chunk += " "  # trailing space as word separator
             chunks.append(chunk)
         return chunks
+
+    async def _fetch_user_context(self, query: str) -> tuple[list[dict], str]:
+        """Fetch user memories + recent conversation context for the current request.
+
+        Returns ``(memory_results, conversation_context)``. Both tools
+        (smart_search and search_knowledge) call this so per-user memory and
+        conversation state are injected regardless of which tool the LLM picks.
+        Returns empty results when the services or per-request IDs aren't set.
+        """
+        memory_results: list[dict] = []
+        conversation_context = ""
+
+        if self._memory_service and self._current_user_id:
+            try:
+                raw_memories = await self._memory_service.search(
+                    query=query,
+                    user_id=self._current_user_id,
+                    top_k=5,
+                )
+                memory_results = [
+                    {"content": m.memory.content, "type": m.memory.type, "score": m.score}
+                    for m in raw_memories
+                ]
+            except Exception:
+                logger.warning("user_context_memory_failed", exc_info=True)
+
+        if self._conversation_service and self._current_conversation_id:
+            try:
+                settings = get_settings()
+                conversation_context = await self._conversation_service.get_recent_context(
+                    self._current_conversation_id,
+                    max_tokens=settings.conversation_context_max_tokens,
+                )
+            except Exception:
+                logger.warning("user_context_conversation_failed", exc_info=True)
+
+        return memory_results, conversation_context
 
     async def _execute_tool(self, tool_name: str, tool_input: dict) -> tuple[str, list[Citation]]:
         """Execute a tool call and return (result_text, citations)."""
@@ -643,31 +688,7 @@ class RetrievalAgent:
             citations.append(citation)
 
         # Step F-pre: Fetch user memories and conversation context (if available)
-        memory_results: list[dict] = []
-        conversation_context = ""
-
-        if self._memory_service and self._current_user_id:
-            try:
-                raw_memories = await self._memory_service.search(
-                    query=query,
-                    user_id=self._current_user_id,
-                    top_k=5,
-                )
-                memory_results = [
-                    {"content": m.memory.content, "type": m.memory.type, "score": m.score}
-                    for m in raw_memories
-                ]
-            except Exception:
-                logger.warning("smart_search_memory_failed", exc_info=True)
-
-        if self._conversation_service and self._current_conversation_id:
-            try:
-                conversation_context = await self._conversation_service.get_recent_context(
-                    self._current_conversation_id,
-                    max_tokens=settings.conversation_context_max_tokens,
-                )
-            except Exception:
-                logger.warning("smart_search_conversation_failed", exc_info=True)
+        memory_results, conversation_context = await self._fetch_user_context(query)
 
         # Step F: Assemble structured context with token budgets
         budget = ContextBudget(
@@ -709,6 +730,10 @@ class RetrievalAgent:
         query = input_["query"]
         source_type = input_.get("source_type") or self._default_source_type
 
+        # Fetch per-user memory + conversation context so they are injected
+        # regardless of which tool the LLM chose (see _fetch_user_context).
+        memory_results, conversation_context = await self._fetch_user_context(query)
+
         # Embed the query
         query_embeddings = await self.embedder.embed_texts([query])
         query_embedding = query_embeddings[0]
@@ -724,9 +749,6 @@ class RetrievalAgent:
         except SearchBackendError as exc:
             logger.warning("search_backend_error", query=query[:100], error=str(exc))
             return "Search is temporarily unavailable. Please try again.", []
-
-        if not results:
-            return "No relevant results found for this query.", []
 
         # Format results for the LLM
         citations = []
@@ -748,7 +770,20 @@ class RetrievalAgent:
             url_part = f" ({r.source_url})" if r.source_url else ""
             formatted_parts.append(f"[Result {i}] Source: {source_label}{url_part}\n{r.content}")
 
-        return "\n\n---\n\n".join(formatted_parts), citations
+        search_body = "\n\n---\n\n".join(formatted_parts) if formatted_parts else "No relevant results found for this query."
+
+        # Prepend memory + conversation sections so the LLM sees per-user context
+        # even when it chose search_knowledge over smart_search.
+        sections: list[str] = []
+        if memory_results:
+            memory_lines = [f"- [{m['type']}] {m['content']}" for m in memory_results]
+            sections.append("## User Memories\n" + "\n".join(memory_lines))
+        if conversation_context:
+            sections.append("## Recent Conversation\n" + conversation_context)
+        if sections:
+            return "\n\n".join([*sections, "## Search Results", search_body]), citations
+
+        return search_body, citations
 
     async def _get_document_context(self, input_: dict) -> tuple[str, list[Citation]]:
         """Fetch full document content by title or source_id."""

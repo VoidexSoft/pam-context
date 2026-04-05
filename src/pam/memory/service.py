@@ -336,6 +336,35 @@ class MemoryService:
                 return None
             return _memory_to_response(memory)
 
+    async def find_by_metadata(
+        self,
+        memory_type: str,
+        metadata_key: str,
+        metadata_value: str,
+        user_id: uuid_mod.UUID | None = None,
+        limit: int = 1,
+    ) -> list[MemoryResponse]:
+        """Find memories by exact JSONB metadata field match via SQL.
+
+        Used by callers that need reliable dedup lookups (e.g. conversation
+        summary dedup), where semantic search is unreliable because the target
+        memory may rank below the top-k under load.
+        """
+        from sqlalchemy import select
+
+        async with self._session_factory() as session:
+            stmt = (
+                select(Memory)
+                .where(Memory.type == memory_type)
+                .where(Memory.metadata_[metadata_key].astext == metadata_value)
+                .limit(limit)
+            )
+            if user_id is not None:
+                stmt = stmt.where(Memory.user_id == user_id)
+            result = await session.execute(stmt)
+            memories = result.scalars().all()
+            return [_memory_to_response(m) for m in memories]
+
     async def list_by_user(
         self,
         user_id: uuid_mod.UUID,

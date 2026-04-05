@@ -116,12 +116,20 @@ async def add_message(
         raise HTTPException(status_code=404, detail="Conversation not found")
     if owner and (not existing.user_id or existing.user_id != owner.id):
         raise HTTPException(status_code=403, detail="Access denied")
-    return await service.add_message(
-        conversation_id=conversation_id,
-        role=body.role,
-        content=body.content,
-        metadata=body.metadata,
-    )
+    try:
+        return await service.add_message(
+            conversation_id=conversation_id,
+            role=body.role,
+            content=body.content,
+            metadata=body.metadata,
+        )
+    except ValueError as exc:
+        # Service raises ValueError("Conversation {id} not found") when the
+        # conversation is deleted between the ownership check above and the
+        # insert — surface as 404 instead of a 500.
+        if "not found" in str(exc).lower():
+            raise HTTPException(status_code=404, detail="Conversation not found") from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.delete("/{conversation_id}")

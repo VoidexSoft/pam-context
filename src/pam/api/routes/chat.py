@@ -74,8 +74,11 @@ async def _persist_exchange(
 
         await conv_service.add_message(conv_id, role="user", content=user_message)
         await conv_service.add_message(conv_id, role="assistant", content=assistant_response)
-        # Re-fetch to get the latest detail (including project_id).
-        persisted_detail = existing or await conv_service.get(conv_id)
+        # Always re-fetch to get the latest detail (fresh message_count +
+        # project_id). Relying on the pre-add `existing` snapshot left
+        # message_count stale, so the summarizer's should_summarize() could
+        # miss the threshold on the exact turn it was crossed.
+        persisted_detail = await conv_service.get(conv_id)
 
     except Exception:
         logger.warning("chat_persist_error", conversation_id=conversation_id, exc_info=True)
