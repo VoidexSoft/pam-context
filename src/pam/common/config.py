@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # Context Assembly Token Budgets
     context_entity_budget: int = 4000
     context_relationship_budget: int = 6000
-    context_max_tokens: int = 12000
+    context_max_tokens: int = 16000
 
     # Mode Router
     mode_confidence_threshold: float = 0.7  # Below this, fall back to hybrid
@@ -102,6 +102,16 @@ class Settings(BaseSettings):
     memory_dedup_threshold: float = 0.9  # Cosine similarity threshold for dedup
     memory_merge_model: str = "claude-haiku-4-5-20251001"  # LLM for content merge
 
+    # Conversation Service
+    conversation_extraction_enabled: bool = True
+    conversation_extraction_model: str = "claude-haiku-4-5-20251001"
+    conversation_summary_threshold: int = 20  # messages before auto-summarization
+    conversation_summary_token_limit: int = 8000  # token budget for summary
+    conversation_context_max_tokens: int = 2000  # max tokens for conversation context in assembly
+
+    # Context Assembly — memory budget
+    context_memory_budget: int = 2000  # token budget for user memories in context
+
     # CLI connectors
     github_repos: list[dict] = []  # [{"repo":"owner/repo","branch":"main","paths":[],"extensions":[]}]
     use_cli_connectors: bool = False  # Use gws CLI instead of Google API connectors
@@ -117,6 +127,7 @@ class Settings(BaseSettings):
     rate_limit_ingest: str = "5/minute"
     rate_limit_search: str = "30/minute"
     rate_limit_memory: str = "30/minute"
+    rate_limit_conversation: str = "30/minute"
 
     # App
     log_level: str = "INFO"
@@ -152,10 +163,18 @@ class Settings(BaseSettings):
             raise ValueError(f"mode_confidence_threshold must be 0.0-1.0, got {self.mode_confidence_threshold}")
         if not 0.0 <= self.memory_dedup_threshold <= 1.0:
             raise ValueError(f"memory_dedup_threshold must be 0.0-1.0, got {self.memory_dedup_threshold}")
-        if self.context_entity_budget + self.context_relationship_budget > self.context_max_tokens:
+        total_budget = (
+            self.context_entity_budget
+            + self.context_relationship_budget
+            + self.context_memory_budget
+            + self.conversation_context_max_tokens
+        )
+        if total_budget > self.context_max_tokens:
             raise ValueError(
                 f"context budget overflow: entity ({self.context_entity_budget}) + "
-                f"relationship ({self.context_relationship_budget}) > "
+                f"relationship ({self.context_relationship_budget}) + "
+                f"memory ({self.context_memory_budget}) + "
+                f"conversation ({self.conversation_context_max_tokens}) = {total_budget} > "
                 f"max ({self.context_max_tokens})"
             )
         return self

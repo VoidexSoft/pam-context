@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from pam.api.deps import get_db, get_es_client
 from pam.api.middleware import CorrelationIdMiddleware, RequestLoggingMiddleware
 from pam.api.rate_limit import limiter, rate_limit_exceeded_handler
-from pam.api.routes import admin, auth, chat, documents, graph, ingest, memory, search
+from pam.api.routes import admin, auth, chat, conversation, documents, graph, ingest, memory, search
 from pam.common.cache import CacheService
 from pam.common.config import settings
 from pam.common.logging import configure_logging
@@ -153,6 +153,51 @@ async def lifespan(app: FastAPI):
         app.state.memory_service = None
         logger.warning("memory_service_init_failed", exc_info=True)
 
+    # --- Conversation Service ---
+    try:
+        from pam.conversation.service import ConversationService
+
+        conversation_service = ConversationService(
+            session_factory=session_factory,
+        )
+        app.state.conversation_service = conversation_service
+        logger.info("conversation_service_initialized")
+
+        # --- Fact Extraction Pipeline (depends on memory + conversation) ---
+        if app.state.memory_service and settings.conversation_extraction_enabled:
+            from pam.conversation.extraction import FactExtractionPipeline
+
+            app.state.extraction_pipeline = FactExtractionPipeline(
+                memory_service=app.state.memory_service,
+                anthropic_api_key=settings.anthropic_api_key,
+                model=settings.conversation_extraction_model,
+            )
+            logger.info("extraction_pipeline_initialized")
+        else:
+            app.state.extraction_pipeline = None
+
+        # --- Conversation Summarizer ---
+        if app.state.memory_service:
+            from pam.conversation.summarizer import ConversationSummarizer
+
+            app.state.conversation_summarizer = ConversationSummarizer(
+                conversation_service=conversation_service,
+                memory_service=app.state.memory_service,
+                anthropic_api_key=settings.anthropic_api_key,
+                model=settings.conversation_extraction_model,
+                summary_threshold=settings.conversation_summary_threshold,
+                summary_token_limit=settings.conversation_summary_token_limit,
+            )
+            logger.info("conversation_summarizer_initialized")
+        else:
+            app.state.conversation_summarizer = None
+
+    except Exception:
+        app.state.conversation_service = None
+        app.state.extraction_pipeline = None
+        app.state.conversation_summarizer = None
+        logger.warning("conversation_service_init_failed", exc_info=True)
+
     # --- Graphiti / Neo4j ---
     graph_service = None
     try:
@@ -251,6 +296,7 @@ def create_app() -> FastAPI:
     app.include_router(admin.router, prefix="/api", tags=["admin"])
     app.include_router(graph.router, prefix="/api", tags=["graph"])
     app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
+    app.include_router(conversation.router, prefix="/api/conversations", tags=["conversations"])
 
     # Override the memory service dependency
     from pam.api.routes.memory import get_memory_service as _get_memory_svc
@@ -262,6 +308,17 @@ def create_app() -> FastAPI:
         return svc
 
     app.dependency_overrides[_get_memory_svc] = _memory_svc_override
+
+    # Override the conversation service dependency
+    from pam.api.routes.conversation import get_conversation_service as _get_conv_svc
+
+    def _conv_svc_override():
+        svc = getattr(app.state, "conversation_service", None)
+        if svc is None:
+            raise RuntimeError("ConversationService not initialized")
+        return svc
+
+    app.dependency_overrides[_get_conv_svc] = _conv_svc_override
 
     @app.get("/api/health")
     async def health(

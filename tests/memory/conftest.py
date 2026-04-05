@@ -10,7 +10,7 @@ from pam.memory.service import MemoryService
 from pam.memory.store import MemoryStore
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_es_client() -> AsyncMock:
     """Create a mock Elasticsearch client."""
     client = AsyncMock()
@@ -22,7 +22,7 @@ def mock_es_client() -> AsyncMock:
     return client
 
 
-@pytest.fixture()
+@pytest.fixture
 def memory_store(mock_es_client: AsyncMock) -> MemoryStore:
     """Create a MemoryStore with mocked ES client."""
     return MemoryStore(
@@ -32,7 +32,7 @@ def memory_store(mock_es_client: AsyncMock) -> MemoryStore:
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_embedder() -> AsyncMock:
     """Create a mock embedder."""
     embedder = AsyncMock()
@@ -40,7 +40,7 @@ def mock_embedder() -> AsyncMock:
     return embedder
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_store() -> AsyncMock:
     """Create a mock MemoryStore."""
     store = AsyncMock(spec=MemoryStore)
@@ -52,7 +52,7 @@ def mock_store() -> AsyncMock:
     return store
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_session_factory() -> MagicMock:
     """Create a mock async session factory."""
     factory = MagicMock()
@@ -62,7 +62,7 @@ def mock_session_factory() -> MagicMock:
     return factory
 
 
-@pytest.fixture()
+@pytest.fixture
 def memory_service(mock_session_factory, mock_store, mock_embedder) -> MemoryService:
     """Create a MemoryService with all dependencies mocked."""
     return MemoryService(

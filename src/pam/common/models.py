@@ -209,6 +209,48 @@ class Memory(Base):
     )
 
 
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True
+    )
+    title: Mapped[str | None] = mapped_column(String(500))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_active: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at"
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('user', 'assistant', 'system')",
+            name="ck_messages_role",
+        ),
+        {"comment": "Individual messages within a conversation"},
+    )
+
+
 # ── Pydantic Schemas ────────────────────────────────────────────────────
 
 
@@ -426,3 +468,47 @@ class MemorySearchQuery(BaseModel):
 class MemorySearchResult(BaseModel):
     memory: MemoryResponse
     score: float
+
+
+# ── Conversation Schemas ──────────────────────────────────────────────
+
+
+class MessageCreate(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
+    metadata: dict = Field(default_factory=dict)
+
+
+class ConvMessageResponse(BaseModel):
+    """Response schema for a conversation message (not to be confused with the generic MessageResponse)."""
+
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    role: str
+    content: str
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationCreate(BaseModel):
+    user_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    title: str | None = None
+
+
+class ConversationResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    title: str | None = None
+    started_at: datetime
+    last_active: datetime
+    message_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationDetail(ConversationResponse):
+    messages: list[ConvMessageResponse] = []
