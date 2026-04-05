@@ -107,10 +107,10 @@ async def test_extract_multiple_facts(extraction_pipeline, mock_memory_service):
     llm_response = MagicMock()
     text_block = MagicMock()
     text_block.text = (
-        '['
+        "["
         '{"type": "fact", "content": "Team uses PostgreSQL for analytics"},'
         '{"type": "preference", "content": "User prefers concise answers"}'
-        ']'
+        "]"
     )
     llm_response.content = [text_block]
 

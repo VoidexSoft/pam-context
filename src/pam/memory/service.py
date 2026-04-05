@@ -171,9 +171,7 @@ class MemoryService:
             from sqlalchemy import delete as sa_delete
 
             async with self._session_factory() as rollback_session:
-                await rollback_session.execute(
-                    sa_delete(Memory).where(Memory.id == memory_id)
-                )
+                await rollback_session.execute(sa_delete(Memory).where(Memory.id == memory_id))
                 await rollback_session.commit()
             logger.error("memory_es_index_failed", memory_id=str(memory_id), exc_info=True)
             raise
@@ -207,9 +205,7 @@ class MemoryService:
         merged_embedding = embeddings[0]
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(Memory).where(Memory.id == existing_id)
-            )
+            result = await session.execute(select(Memory).where(Memory.id == existing_id))
             existing = result.scalars().first()
             if existing is None:
                 logger.warning("memory_dedup_race", existing_id=str(existing_id))
@@ -286,9 +282,7 @@ class MemoryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(Memory).where(Memory.id.in_(memory_ids))
-            )
+            result = await session.execute(select(Memory).where(Memory.id.in_(memory_ids)))
             memories = result.scalars().all()
 
         # Build scored results, ordered by ES score
@@ -311,9 +305,7 @@ class MemoryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(Memory).where(Memory.id == memory_id)
-            )
+            result = await session.execute(select(Memory).where(Memory.id == memory_id))
             memory = result.scalars().first()
             if memory is None:
                 return None
@@ -328,9 +320,7 @@ class MemoryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(Memory).where(Memory.id == memory_id)
-            )
+            result = await session.execute(select(Memory).where(Memory.id == memory_id))
             memory = result.scalars().first()
             if memory is None:
                 return None
@@ -376,11 +366,7 @@ class MemoryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            stmt = (
-                select(Memory)
-                .where(Memory.user_id == user_id)
-                .order_by(Memory.updated_at.desc())
-            )
+            stmt = select(Memory).where(Memory.user_id == user_id).order_by(Memory.updated_at.desc())
             if project_id:
                 stmt = stmt.where(Memory.project_id == project_id)
             if type_filter:
@@ -407,9 +393,7 @@ class MemoryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(Memory).where(Memory.id == memory_id)
-            )
+            result = await session.execute(select(Memory).where(Memory.id == memory_id))
             memory = result.scalars().first()
             if memory is None:
                 return None
@@ -466,9 +450,7 @@ class MemoryService:
         except Exception:
             # Compensate: restore old PG values to keep PG↔ES consistent
             async with self._session_factory() as rollback_session:
-                res = await rollback_session.execute(
-                    select(Memory).where(Memory.id == memory_id)
-                )
+                res = await rollback_session.execute(select(Memory).where(Memory.id == memory_id))
                 mem = res.scalars().first()
                 if mem is not None:
                     mem.content = old_content
@@ -488,9 +470,7 @@ class MemoryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(Memory).where(Memory.id == memory_id)
-            )
+            result = await session.execute(select(Memory).where(Memory.id == memory_id))
             memory = result.scalars().first()
             if memory is None:
                 return False
@@ -520,10 +500,7 @@ class MemoryService:
                 messages=[
                     {
                         "role": "user",
-                        "content": (
-                            f"Existing memory: {old_content}\n\n"
-                            f"New memory: {new_content}"
-                        ),
+                        "content": (f"Existing memory: {old_content}\n\nNew memory: {new_content}"),
                     }
                 ],
             )

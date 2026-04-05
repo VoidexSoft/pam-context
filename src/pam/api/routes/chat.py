@@ -174,7 +174,10 @@ async def chat_debug(
 
     # Persist exchange inline (same as chat/chat_stream)
     await _persist_exchange(
-        request, conversation_id, body.message, result.answer,
+        request,
+        conversation_id,
+        body.message,
+        result.answer,
         user_id=_user.id if _user else None,
     )
 
@@ -229,7 +232,10 @@ async def chat(
 
     # Persist exchange inline
     await _persist_exchange(
-        request, conversation_id, body.message, result.answer,
+        request,
+        conversation_id,
+        body.message,
+        result.answer,
         user_id=_user.id if _user else None,
     )
 
@@ -290,7 +296,10 @@ async def chat_stream(
             # Persist after streaming completes (or on client disconnect)
             if full_response:
                 await _persist_exchange(
-                    request, conversation_id, body.message, full_response,
+                    request,
+                    conversation_id,
+                    body.message,
+                    full_response,
                     user_id=_user.id if _user else None,
                 )
 

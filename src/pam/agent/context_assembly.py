@@ -307,7 +307,10 @@ def assemble_context(
     memory_results = memory_results or []
     memories_sorted = sorted(memory_results, key=lambda x: x.get("score", 0), reverse=True)
     memories_truncated, memory_tokens_used, _ = truncate_list_by_token_budget(
-        memories_sorted, "content", budget.memory_tokens, budget.max_item_tokens,
+        memories_sorted,
+        "content",
+        budget.memory_tokens,
+        budget.max_item_tokens,
     )
 
     conversation_tokens_used = 0
@@ -396,8 +399,11 @@ def assemble_context(
     )
 
     total_tokens = (
-        entity_tokens_used + relationship_tokens_used + chunk_tokens_used
-        + memory_tokens_used + conversation_tokens_used
+        entity_tokens_used
+        + relationship_tokens_used
+        + chunk_tokens_used
+        + memory_tokens_used
+        + conversation_tokens_used
     )
 
     logger.debug(

@@ -24,6 +24,7 @@ def _get_encoder() -> tiktoken.Encoding:
         _encoder = tiktoken.get_encoding("cl100k_base")
     return _encoder
 
+
 _SUMMARY_PROMPT = """\
 Summarize this conversation into a concise paragraph that captures the key topics discussed, \
 decisions made, facts learned, and any action items. Focus on information that would be \
@@ -56,7 +57,8 @@ class ConversationSummarizer:
         self._summary_token_limit = summary_token_limit
 
     async def should_summarize(
-        self, conversation_id: uuid_mod.UUID,
+        self,
+        conversation_id: uuid_mod.UUID,
     ) -> object | None:
         """Check if a conversation exceeds the summary threshold.
 
