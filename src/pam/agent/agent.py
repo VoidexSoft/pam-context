@@ -770,7 +770,11 @@ class RetrievalAgent:
             url_part = f" ({r.source_url})" if r.source_url else ""
             formatted_parts.append(f"[Result {i}] Source: {source_label}{url_part}\n{r.content}")
 
-        search_body = "\n\n---\n\n".join(formatted_parts) if formatted_parts else "No relevant results found for this query."
+        search_body = (
+            "\n\n---\n\n".join(formatted_parts)
+            if formatted_parts
+            else "No relevant results found for this query."
+        )
 
         # Prepend memory + conversation sections so the LLM sees per-user context
         # even when it chose search_knowledge over smart_search.
