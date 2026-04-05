@@ -474,8 +474,7 @@ class RetrievalAgent:
                     top_k=5,
                 )
                 memory_results = [
-                    {"content": m.memory.content, "type": m.memory.type, "score": m.score}
-                    for m in raw_memories
+                    {"content": m.memory.content, "type": m.memory.type, "score": m.score} for m in raw_memories
                 ]
             except Exception:
                 logger.warning("user_context_memory_failed", exc_info=True)
@@ -771,9 +770,7 @@ class RetrievalAgent:
             formatted_parts.append(f"[Result {i}] Source: {source_label}{url_part}\n{r.content}")
 
         search_body = (
-            "\n\n---\n\n".join(formatted_parts)
-            if formatted_parts
-            else "No relevant results found for this query."
+            "\n\n---\n\n".join(formatted_parts) if formatted_parts else "No relevant results found for this query."
         )
 
         # Prepend memory + conversation sections so the LLM sees per-user context

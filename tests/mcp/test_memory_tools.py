@@ -107,8 +107,12 @@ async def test_pam_forget_deletes_memory(mock_services: PamServices):
     memory_id = uuid.uuid4()
     mock_services.memory_service.get_for_ownership_check = AsyncMock(
         return_value=MemoryResponse(
-            id=memory_id, type="fact", content="x", importance=0.5,
-            access_count=0, user_id=user_id,
+            id=memory_id,
+            type="fact",
+            content="x",
+            importance=0.5,
+            access_count=0,
+            user_id=user_id,
             created_at=datetime.now(tz=UTC),
             updated_at=datetime.now(tz=UTC),
         )
@@ -148,8 +152,12 @@ async def test_pam_forget_rejects_wrong_owner(mock_services: PamServices):
     memory_id = uuid.uuid4()
     mock_services.memory_service.get_for_ownership_check = AsyncMock(
         return_value=MemoryResponse(
-            id=memory_id, type="fact", content="x", importance=0.5,
-            access_count=0, user_id=owner_id,
+            id=memory_id,
+            type="fact",
+            content="x",
+            importance=0.5,
+            access_count=0,
+            user_id=owner_id,
             created_at=datetime.now(tz=UTC),
             updated_at=datetime.now(tz=UTC),
         )

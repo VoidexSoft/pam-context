@@ -29,11 +29,13 @@ class GwsSheetsConnector(CliConnector):
 
         for folder_id in self.folder_ids:
             query = f'mimeType="{SHEETS_MIME}" and "{folder_id}" in parents'
-            params = json.dumps({
-                "q": query,
-                "pageSize": 100,
-                "fields": "files(id,name,owners,webViewLink,modifiedTime),nextPageToken",
-            })
+            params = json.dumps(
+                {
+                    "q": query,
+                    "pageSize": 100,
+                    "fields": "files(id,name,owners,webViewLink,modifiedTime),nextPageToken",
+                }
+            )
             result = await self.run_cli(
                 [
                     "drive",

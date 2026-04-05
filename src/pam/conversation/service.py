@@ -29,6 +29,7 @@ def _get_encoder() -> tiktoken.Encoding:
         _encoder = tiktoken.get_encoding("cl100k_base")
     return _encoder
 
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -60,9 +61,7 @@ def _conversation_to_response(conv: Conversation, message_count: int = 0) -> Con
     )
 
 
-def _conversation_to_detail(
-    conv: Conversation, message_limit: int | None = None
-) -> ConversationDetail:
+def _conversation_to_detail(conv: Conversation, message_limit: int | None = None) -> ConversationDetail:
     """Convert a Conversation ORM instance to ConversationDetail with messages.
 
     Parameters
@@ -258,10 +257,7 @@ class ConversationService:
 
             result = await session.execute(stmt)
             rows = result.all()
-            return [
-                _conversation_to_response(row.Conversation, message_count=row.message_count)
-                for row in rows
-            ]
+            return [_conversation_to_response(row.Conversation, message_count=row.message_count) for row in rows]
 
     async def get_recent_context(
         self,

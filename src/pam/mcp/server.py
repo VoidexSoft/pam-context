@@ -452,10 +452,7 @@ async def _pam_entity_history(entity_name: str, since: str | None = None) -> str
     if since:
         since_normalized = since.replace("Z", "+00:00")
         history = [
-            h
-            for h in history
-            if h.get("created_at")
-            and h["created_at"].replace("Z", "+00:00") >= since_normalized
+            h for h in history if h.get("created_at") and h["created_at"].replace("Z", "+00:00") >= since_normalized
         ]
 
     return json.dumps(
@@ -743,9 +740,7 @@ async def _pam_forget(memory_id: str, user_id: str) -> str:
 
     if deleted:
         return json.dumps({"deleted": True, "memory_id": memory_id})
-    return json.dumps(
-        {"deleted": False, "memory_id": memory_id, "error": "Memory not found"}
-    )
+    return json.dumps({"deleted": False, "memory_id": memory_id, "error": "Memory not found"})
 
 
 def _register_conversation_tools(mcp: FastMCP) -> None:
@@ -764,8 +759,10 @@ def _register_conversation_tools(mcp: FastMCP) -> None:
         Returns the conversation_id and number of messages saved.
         """
         return await _pam_save_conversation(
-            messages=messages, title=title,
-            user_id=user_id, project_id=project_id,
+            messages=messages,
+            title=title,
+            user_id=user_id,
+            project_id=project_id,
         )
 
     @mcp.tool()
@@ -809,10 +806,12 @@ async def _pam_save_conversation(
         if "role" not in msg or "content" not in msg:
             return json.dumps({"error": f"Message at index {i} missing required 'role' or 'content' key"})
         if msg["role"] not in valid_roles:
-            return json.dumps({
-                "error": f"Message at index {i} has invalid role '{msg['role']}'. "
-                f"Must be one of: {sorted(valid_roles)}",
-            })
+            return json.dumps(
+                {
+                    "error": f"Message at index {i} has invalid role '{msg['role']}'. "
+                    f"Must be one of: {sorted(valid_roles)}",
+                }
+            )
 
     conv = await svc.create(user_id=uid, project_id=pid, title=title)
 
@@ -838,11 +837,13 @@ async def _pam_save_conversation(
             )
         return json.dumps({"error": f"Failed to save conversation: {exc}"})
 
-    return json.dumps({
-        "conversation_id": str(conv.id),
-        "messages_saved": len(messages),
-        "title": conv.title,
-    })
+    return json.dumps(
+        {
+            "conversation_id": str(conv.id),
+            "messages_saved": len(messages),
+            "title": conv.title,
+        }
+    )
 
 
 async def _pam_get_conversation_context(

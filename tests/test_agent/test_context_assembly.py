@@ -649,7 +649,10 @@ def test_assemble_context_with_memories():
         {"content": "Team uses PostgreSQL for analytics", "type": "fact", "score": 0.88},
     ]
     result = assemble_context(
-        es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
+        es_results=[],
+        graph_text="",
+        entity_vdb_results=[],
+        rel_vdb_results=[],
         memory_results=memories,
     )
     assert "User Memories" in result.text
@@ -662,7 +665,10 @@ def test_assemble_context_with_conversation():
     """assemble_context() includes conversation section when provided."""
     conversation_context = "user: What is our Q1 target?\nassistant: The Q1 target is $10M."
     result = assemble_context(
-        es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
+        es_results=[],
+        graph_text="",
+        entity_vdb_results=[],
+        rel_vdb_results=[],
         conversation_context=conversation_context,
     )
     assert "Recent Conversation" in result.text
@@ -680,8 +686,12 @@ def test_assemble_context_with_all_sources():
         {"name": "Revenue", "entity_type": "metric", "description": "Total revenue", "score": 0.8},
     ]
     result = assemble_context(
-        es_results=[], graph_text="", entity_vdb_results=entity_results, rel_vdb_results=[],
-        memory_results=memories, conversation_context=conversation_context,
+        es_results=[],
+        graph_text="",
+        entity_vdb_results=entity_results,
+        rel_vdb_results=[],
+        memory_results=memories,
+        conversation_context=conversation_context,
     )
     assert "User Memories" in result.text
     assert "Recent Conversation" in result.text
@@ -691,8 +701,12 @@ def test_assemble_context_with_all_sources():
 def test_assemble_context_empty_memories_omitted():
     """assemble_context() omits memory section when no memories provided."""
     result = assemble_context(
-        es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
-        memory_results=[], conversation_context="",
+        es_results=[],
+        graph_text="",
+        entity_vdb_results=[],
+        rel_vdb_results=[],
+        memory_results=[],
+        conversation_context="",
     )
     assert "User Memories" not in result.text
     assert "Recent Conversation" not in result.text
@@ -706,7 +720,11 @@ def test_assemble_context_memory_token_budget():
     ]
     budget = ContextBudget(memory_tokens=200)
     result = assemble_context(
-        es_results=[], graph_text="", entity_vdb_results=[], rel_vdb_results=[],
-        memory_results=memories, budget=budget,
+        es_results=[],
+        graph_text="",
+        entity_vdb_results=[],
+        rel_vdb_results=[],
+        memory_results=memories,
+        budget=budget,
     )
     assert result.memory_tokens_used <= 250  # some overhead for headers

@@ -96,8 +96,12 @@ async def test_add_message(client, mock_conv_service):
     now = datetime.now(tz=UTC)
     # Need to mock get() for ownership check
     mock_conv_service.get.return_value = ConversationDetail(
-        id=conv_id, title="Chat", started_at=now, last_active=now,
-        message_count=1, messages=[],
+        id=conv_id,
+        title="Chat",
+        started_at=now,
+        last_active=now,
+        message_count=1,
+        messages=[],
     )
     mock_conv_service.add_message.return_value = ConvMessageResponse(
         id=uuid.uuid4(),
@@ -146,8 +150,12 @@ async def test_delete_conversation(client, mock_conv_service):
     now = datetime.now(tz=UTC)
     # Mock get for ownership check
     mock_conv_service.get.return_value = ConversationDetail(
-        id=conv_id, title="Chat", started_at=now, last_active=now,
-        message_count=0, messages=[],
+        id=conv_id,
+        title="Chat",
+        started_at=now,
+        last_active=now,
+        message_count=0,
+        messages=[],
     )
     mock_conv_service.delete.return_value = True
 

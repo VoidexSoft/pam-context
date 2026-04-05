@@ -30,11 +30,13 @@ class GwsDocsConnector(CliConnector):
 
         for folder_id in self.folder_ids:
             query = f'mimeType="{GOOGLE_DOC_MIME}" and "{folder_id}" in parents'
-            params = json.dumps({
-                "q": query,
-                "pageSize": 100,
-                "fields": "files(id,name,owners,webViewLink,modifiedTime),nextPageToken",
-            })
+            params = json.dumps(
+                {
+                    "q": query,
+                    "pageSize": 100,
+                    "fields": "files(id,name,owners,webViewLink,modifiedTime),nextPageToken",
+                }
+            )
             result = await self.run_cli(
                 [
                     "drive",
@@ -64,9 +66,7 @@ class GwsDocsConnector(CliConnector):
     async def fetch_document(self, source_id: str) -> RawDocument:
         # Fetch file metadata (including modifiedTime for bi-temporal timestamps)
         meta_params = json.dumps({"fileId": source_id, "fields": "name,owners,webViewLink,modifiedTime"})
-        meta = await self.run_cli(
-            ["drive", "files", "get", "--params", meta_params]
-        )
+        meta = await self.run_cli(["drive", "files", "get", "--params", meta_params])
         title = meta.get("name", source_id)
         owner = meta.get("owners", [{}])[0].get("emailAddress") if meta.get("owners") else None
         modified_at = datetime.fromisoformat(meta["modifiedTime"]) if meta.get("modifiedTime") else None

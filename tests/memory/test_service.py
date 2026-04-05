@@ -13,9 +13,19 @@ def test_memory_model_has_required_fields():
     """Memory ORM model has all expected columns."""
     columns = {c.name for c in Memory.__table__.columns}
     expected = {
-        "id", "user_id", "project_id", "type", "content", "source",
-        "metadata", "importance", "access_count", "last_accessed_at",
-        "expires_at", "created_at", "updated_at",
+        "id",
+        "user_id",
+        "project_id",
+        "type",
+        "content",
+        "source",
+        "metadata",
+        "importance",
+        "access_count",
+        "last_accessed_at",
+        "expires_at",
+        "created_at",
+        "updated_at",
     }
     assert expected.issubset(columns), f"Missing columns: {expected - columns}"
 
@@ -435,9 +445,7 @@ async def test_store_rejects_oversized_content(memory_service):
 async def test_merge_contents_fallback(memory_service):
     """_merge_contents falls back to new content when LLM call fails."""
     with patch("anthropic.AsyncAnthropic") as mock_cls:
-        mock_cls.return_value.messages.create = AsyncMock(
-            side_effect=RuntimeError("API unavailable")
-        )
+        mock_cls.return_value.messages.create = AsyncMock(side_effect=RuntimeError("API unavailable"))
 
         result = await memory_service._merge_contents("old fact", "new fact")
         assert result == "new fact"
