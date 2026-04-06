@@ -2,7 +2,10 @@
 
 import pytest
 
-from pam.common.models import GlossaryTerm
+from pam.common.models import (
+    GlossaryTerm,
+    GlossaryTermCreate,
+)
 
 
 def test_glossary_term_model_has_required_fields():
@@ -13,13 +16,6 @@ def test_glossary_term_model_has_required_fields():
         "category", "metadata", "created_at", "updated_at",
     }
     assert expected.issubset(columns), f"Missing columns: {expected - columns}"
-
-
-from pam.common.models import (
-    GlossaryTermCreate,
-    GlossaryTermResponse,
-    GlossaryTermUpdate,
-)
 
 
 def test_glossary_term_create_defaults():
