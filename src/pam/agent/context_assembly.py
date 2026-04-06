@@ -60,10 +60,11 @@ class ContextBudget:
 
     entity_tokens: int = 4000
     relationship_tokens: int = 6000
-    max_total_tokens: int = 16000
+    max_total_tokens: int = 17000
     max_item_tokens: int = 500  # per-item description truncation cap
     memory_tokens: int = 2000
     conversation_tokens: int = 2000
+    glossary_tokens: int = 1000
 
 
 @dataclass
@@ -77,6 +78,7 @@ class AssembledContext:
     total_tokens: int
     memory_tokens_used: int = 0
     conversation_tokens_used: int = 0
+    glossary_tokens_used: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +171,7 @@ def _build_context_string(
     total_chunks: int,
     memories: list[dict] | None = None,
     conversation_context: str = "",
+    glossary_terms: list[dict] | None = None,
 ) -> str:
     """Build the final structured Markdown context string.
 
@@ -182,8 +185,9 @@ def _build_context_string(
     has_chunks = bool(chunks)
     has_memories = bool(memories)
     has_conversation = bool(conversation_context.strip())
+    has_glossary = bool(glossary_terms)
 
-    if not has_entities and not has_relationships and not has_chunks and not has_memories and not has_conversation:
+    if not has_entities and not has_relationships and not has_chunks and not has_memories and not has_conversation and not has_glossary:
         return "No relevant context found in knowledge base"
 
     parts: list[str] = []
@@ -201,6 +205,8 @@ def _build_context_string(
         summary_bits.append(f"{len(chunks)} document chunks")
     if has_conversation:
         summary_bits.append("recent conversation")
+    if has_glossary:
+        summary_bits.append(f"{len(glossary_terms)} glossary terms")
     parts.append("Found " + ", ".join(summary_bits))
     parts.append("")
 
@@ -211,6 +217,17 @@ def _build_context_string(
             mem_type = m.get("type", "fact")
             content = m.get("content", "")
             parts.append(f"- [{mem_type}] {content}")
+        parts.append("")
+
+    # --- Glossary Terms ---
+    if has_glossary:
+        parts.append("## Domain Glossary")
+        for g in glossary_terms:
+            canonical = g.get("canonical", "")
+            definition = g.get("definition", "")
+            aliases = g.get("aliases", [])
+            alias_str = f" (aka {', '.join(aliases)})" if aliases else ""
+            parts.append(f"- **{canonical}**{alias_str}: {definition}")
         parts.append("")
 
     # --- Recent Conversation ---
@@ -278,6 +295,7 @@ def assemble_context(
     budget: ContextBudget | None = None,
     memory_results: list[dict] | None = None,
     conversation_context: str = "",
+    glossary_results: list[dict] | None = None,
 ) -> AssembledContext:
     """4-stage context assembly pipeline.
 
@@ -326,6 +344,13 @@ def assemble_context(
             truncated_conversation = _truncate_text_to_tokens(conversation_context, budget.conversation_tokens)
             conversation_tokens_used = budget.conversation_tokens
 
+    # ---- Glossary truncation ----
+    glossary_results = glossary_results or []
+    glossary_sorted = sorted(glossary_results, key=lambda x: x.get("score", 0), reverse=True)
+    glossary_truncated, glossary_tokens_used, _ = truncate_list_by_token_budget(
+        glossary_sorted, "definition", budget.glossary_tokens, budget.max_item_tokens,
+    )
+
     # ---- Stage 1: Collect & Normalize ----
     chunks: list[dict] = []
     for r in es_results:
@@ -370,7 +395,7 @@ def assemble_context(
     relationship_tokens_used = rel_tokens_used + graph_text_tokens
 
     chunk_budget = _calculate_chunk_budget(
-        budget.max_total_tokens - memory_tokens_used - conversation_tokens_used,
+        budget.max_total_tokens - memory_tokens_used - conversation_tokens_used - glossary_tokens_used,
         budget.entity_tokens,
         budget.relationship_tokens,
         entity_tokens_used,
@@ -398,6 +423,7 @@ def assemble_context(
         total_chunks=total_chunks,
         memories=memories_truncated if memories_truncated else None,
         conversation_context=truncated_conversation,
+        glossary_terms=glossary_truncated if glossary_truncated else None,
     )
 
     total_tokens = (
@@ -406,6 +432,7 @@ def assemble_context(
         + chunk_tokens_used
         + memory_tokens_used
         + conversation_tokens_used
+        + glossary_tokens_used
     )
 
     logger.debug(
@@ -415,6 +442,7 @@ def assemble_context(
         chunks=f"{chunk_tokens_used}/{chunk_budget}",
         memory=f"{memory_tokens_used}/{budget.memory_tokens}",
         conversation=f"{conversation_tokens_used}/{budget.conversation_tokens}",
+        glossary=f"{glossary_tokens_used}/{budget.glossary_tokens}",
         total=f"{total_tokens}/{budget.max_total_tokens}",
     )
 
@@ -426,4 +454,5 @@ def assemble_context(
         total_tokens=total_tokens,
         memory_tokens_used=memory_tokens_used,
         conversation_tokens_used=conversation_tokens_used,
+        glossary_tokens_used=glossary_tokens_used,
     )

@@ -197,3 +197,27 @@ async def test_delete_returns_false_when_not_found(mock_session_factory, mock_st
 
     result = await service.delete(uuid.uuid4())
     assert result is False
+
+
+def test_context_budget_includes_glossary():
+    """ContextBudget has a glossary_tokens field."""
+    from pam.agent.context_assembly import ContextBudget
+
+    budget = ContextBudget()
+    assert hasattr(budget, "glossary_tokens")
+    assert budget.glossary_tokens > 0
+
+
+def test_assembled_context_includes_glossary():
+    """AssembledContext has glossary_tokens_used field."""
+    from pam.agent.context_assembly import AssembledContext
+
+    ctx = AssembledContext(
+        text="test",
+        entity_tokens_used=0,
+        relationship_tokens_used=0,
+        chunk_tokens_used=0,
+        total_tokens=0,
+        glossary_tokens_used=100,
+    )
+    assert ctx.glossary_tokens_used == 100
