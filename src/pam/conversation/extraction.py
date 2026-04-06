@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import uuid as uuid_mod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import structlog
 from anthropic import AsyncAnthropic
+from anthropic.types import TextBlock
 
 if TYPE_CHECKING:
     from pam.memory.service import MemoryService
@@ -75,7 +76,7 @@ class FactExtractionPipeline:
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            raw_text = response.content[0].text.strip()
+            raw_text = cast(TextBlock, response.content[0]).text.strip()
             extracted = json.loads(raw_text)
 
             if not isinstance(extracted, list):

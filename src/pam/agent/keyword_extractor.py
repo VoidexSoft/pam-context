@@ -7,9 +7,11 @@ to document search (ES) and knowledge graph search (Graphiti).
 
 import json
 from dataclasses import dataclass
+from typing import cast
 
 import structlog
 from anthropic import AsyncAnthropic
+from anthropic.types import TextBlock
 
 logger = structlog.get_logger()
 
@@ -81,7 +83,7 @@ async def extract_query_keywords(
             messages=[{"role": "user", "content": prompt}],
             timeout=timeout,
         )
-        raw_text = response.content[0].text.strip()
+        raw_text = cast(TextBlock, response.content[0]).text.strip()
         data = json.loads(raw_text)
         return QueryKeywords(
             high_level_keywords=data.get("high_level_keywords", []),

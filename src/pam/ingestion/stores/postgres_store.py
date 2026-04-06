@@ -52,8 +52,8 @@ class PostgresStore:
                 "updated_at": func.now(),
             },
         )
-        stmt = stmt.returning(Document.id)
-        result = await self.session.execute(stmt)
+        returning_stmt = stmt.returning(Document.id)
+        result = await self.session.execute(returning_stmt)
         doc_id: uuid.UUID = result.scalar_one()
         await self.session.flush()
 

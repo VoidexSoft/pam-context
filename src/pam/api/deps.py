@@ -55,8 +55,8 @@ def get_cache_service(request: Request) -> CacheService | None:
     return cast(CacheService | None, request.app.state.cache_service)
 
 
-def get_graph_service(request: Request) -> GraphitiService:
-    return cast(GraphitiService, request.app.state.graph_service)
+def get_graph_service(request: Request) -> GraphitiService | None:
+    return cast("GraphitiService | None", getattr(request.app.state, "graph_service", None))
 
 
 async def get_agent(

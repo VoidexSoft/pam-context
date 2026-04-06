@@ -451,9 +451,12 @@ async def _pam_entity_history(entity_name: str, since: str | None = None) -> str
 
     if since:
         since_normalized = since.replace("Z", "+00:00")
-        history = [
-            h for h in history if h.get("created_at") and h["created_at"].replace("Z", "+00:00") >= since_normalized
-        ]
+        filtered: list[dict] = []
+        for h in history:
+            created = h.get("created_at")
+            if created and created.replace("Z", "+00:00") >= since_normalized:
+                filtered.append(h)
+        history = filtered
 
     return json.dumps(
         {"entity": entity_name, "history": history, "count": len(history)},

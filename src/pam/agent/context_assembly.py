@@ -175,6 +175,8 @@ def _build_context_string(
     Empty categories are omitted entirely (no headers with nothing beneath).
     If *all* categories are empty the fallback message is returned.
     """
+    if memories is None:
+        memories = []
     has_entities = bool(entities)
     has_relationships = bool(relationships) or bool(graph_text.strip())
     has_chunks = bool(chunks)
@@ -327,7 +329,7 @@ def assemble_context(
     # ---- Stage 1: Collect & Normalize ----
     chunks: list[dict] = []
     for r in es_results:
-        source_label = getattr(r, "document_title", None) or getattr(r, "source_id", "Unknown")
+        source_label: str = getattr(r, "document_title", None) or getattr(r, "source_id", None) or "Unknown"
         section_path = getattr(r, "section_path", "")
         if section_path:
             source_label += f" > {section_path}"

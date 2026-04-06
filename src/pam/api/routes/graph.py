@@ -93,7 +93,7 @@ class SyncLogResponse(BaseModel):
 @router.get("/graph/status")
 async def graph_status(
     db: AsyncSession = Depends(get_db),
-    graph_service: GraphitiService = Depends(get_graph_service),
+    graph_service: GraphitiService | None = Depends(get_graph_service),
 ):
     """Return Neo4j connection status, entity counts, and last sync time.
 
@@ -171,7 +171,7 @@ def _extract_entity_type(labels: list[str]) -> str:
 @router.get("/graph/neighborhood/{entity_name:path}", response_model=NeighborhoodResponse)
 async def graph_neighborhood(
     entity_name: str,
-    graph_service: GraphitiService = Depends(get_graph_service),
+    graph_service: GraphitiService | None = Depends(get_graph_service),
 ) -> NeighborhoodResponse:
     """Return 1-hop subgraph for a named entity.
 
@@ -288,7 +288,7 @@ async def graph_entities(
     entity_type: str | None = None,
     limit: int = _MAX_ENTITIES_PER_PAGE,
     cursor: str | None = None,
-    graph_service: GraphitiService = Depends(get_graph_service),
+    graph_service: GraphitiService | None = Depends(get_graph_service),
 ) -> EntityListResponse:
     """List entity nodes with optional type filter and cursor pagination.
 
@@ -386,7 +386,7 @@ async def graph_entities(
 )
 async def entity_history(
     entity_name: str,
-    graph_service: GraphitiService = Depends(get_graph_service),
+    graph_service: GraphitiService | None = Depends(get_graph_service),
 ) -> EntityHistoryResponse:
     """Return all edges (including invalidated) for a named entity.
 

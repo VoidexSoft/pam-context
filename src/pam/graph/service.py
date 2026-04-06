@@ -42,7 +42,7 @@ class GraphitiService:
             LLMConfig(api_key=anthropic_api_key, model=anthropic_model),
         )
         embedder = OpenAIEmbedder(
-            OpenAIEmbedderConfig(api_key=openai_api_key, model=embedding_model),
+            OpenAIEmbedderConfig(api_key=openai_api_key, embedding_model=embedding_model),
         )
         client = Graphiti(
             neo4j_uri,

@@ -28,10 +28,12 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from pam.agent.duckdb_service import DuckDBService
+    from pam.conversation.service import ConversationService
     from pam.graph.service import GraphitiService
     from pam.ingestion.stores.entity_relationship_store import (
         EntityRelationshipVDBStore,
     )
+    from pam.memory.service import MemoryService
 
 logger = structlog.get_logger()
 
@@ -151,8 +153,8 @@ class RetrievalAgent:
         self._default_source_type: str | None = None
         self._last_classification: ClassificationResult | None = None
         # Optional services for memory/conversation injection (set per-request by chat endpoint)
-        self._memory_service = None  # type: ignore[assignment]
-        self._conversation_service = None  # type: ignore[assignment]
+        self._memory_service: MemoryService | None = None
+        self._conversation_service: ConversationService | None = None
         self._current_user_id: uuid.UUID | None = None
         self._current_conversation_id: uuid.UUID | None = None
 
@@ -189,7 +191,7 @@ class RetrievalAgent:
                 model=self.model,
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
-                messages=messages,
+                messages=cast(Any, messages),
                 tools=cast(Any, ALL_TOOLS),
             )
             call_latency = (time.perf_counter() - call_start) * 1000
@@ -330,7 +332,7 @@ class RetrievalAgent:
                     model=self.model,
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
-                    messages=messages,
+                    messages=cast(Any, messages),
                     tools=cast(Any, ALL_TOOLS),
                 )
                 total_input_tokens += response.usage.input_tokens
@@ -393,7 +395,7 @@ class RetrievalAgent:
                     model=self.model,
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
-                    messages=messages,
+                    messages=cast(Any, messages),
                     tools=cast(Any, ALL_TOOLS),
                 ) as stream:
                     async for text in stream.text_stream:
@@ -832,10 +834,10 @@ class RetrievalAgent:
         )
 
         header = f"Document: {doc.title}\nSource: {doc.source_id}\nSegments: {len(segments)}\n\n"
-        result = header + full_content
+        output = header + full_content
         if truncated:
-            result += "\n\n[truncated] Document content was too large. Use search_knowledge for specific sections."
-        return result, [citation]
+            output += "\n\n[truncated] Document content was too large. Use search_knowledge for specific sections."
+        return output, [citation]
 
     async def _get_change_history(self, input_: dict) -> tuple[str, list[Citation]]:
         """Query sync_log for recent changes."""

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -39,7 +39,7 @@ class PamServices:
     conversation_service: ConversationService | None
 
 
-def from_app_state(app_state: object) -> PamServices:
+def from_app_state(app_state: Any) -> PamServices:
     """Extract PamServices from a FastAPI app.state object."""
     return PamServices(
         search_service=app_state.search_service,
