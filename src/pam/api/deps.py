@@ -78,4 +78,5 @@ async def get_agent(
         duckdb_service=duckdb_service,
         graph_service=graph_service,
         vdb_store=vdb_store,
+        glossary_service=getattr(request.app.state, "glossary_service", None),
     )
