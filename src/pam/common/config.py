@@ -182,7 +182,8 @@ class Settings(BaseSettings):
                 f"context budget overflow: entity ({self.context_entity_budget}) + "
                 f"relationship ({self.context_relationship_budget}) + "
                 f"memory ({self.context_memory_budget}) + "
-                f"conversation ({self.conversation_context_max_tokens}) = {total_budget} > "
+                f"conversation ({self.conversation_context_max_tokens}) + "
+                f"glossary ({self.glossary_context_budget}) = {total_budget} > "
                 f"max ({self.context_max_tokens})"
             )
         return self
