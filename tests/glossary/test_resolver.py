@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,7 +9,7 @@ import pytest
 from pam.glossary.resolver import AliasResolver
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_glossary_store() -> AsyncMock:
     """Mock GlossaryStore for resolver tests."""
     store = AsyncMock()
@@ -18,7 +17,7 @@ def mock_glossary_store() -> AsyncMock:
     return store
 
 
-@pytest.fixture()
+@pytest.fixture
 def resolver(mock_glossary_store) -> AliasResolver:
     return AliasResolver(store=mock_glossary_store)
 

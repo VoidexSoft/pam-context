@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import uuid as uuid_mod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
 
-from pam.common.models import GlossaryTerm, GlossaryTermResponse, GlossarySearchResult
+from pam.common.models import GlossarySearchResult, GlossaryTerm, GlossaryTermResponse
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -115,7 +115,7 @@ class GlossaryService:
 
         # Insert new term
         term_id = uuid_mod.uuid4()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         term = GlossaryTerm(
             id=term_id,
             project_id=project_id,
@@ -316,7 +316,7 @@ class GlossaryService:
             if metadata is not None:
                 term.metadata_ = metadata
 
-            term.updated_at = datetime.now(tz=timezone.utc)
+            term.updated_at = datetime.now(tz=UTC)
             await session.flush()
             await session.commit()
 

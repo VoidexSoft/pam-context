@@ -1,8 +1,8 @@
 """Tests for GlossaryTerm model and schemas."""
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -158,8 +158,8 @@ async def test_search_returns_scored_results(mock_session_factory, mock_store, m
         definition="Total fare",
         category="metric",
         metadata_={},
-        created_at=datetime.now(tz=timezone.utc),
-        updated_at=datetime.now(tz=timezone.utc),
+        created_at=datetime.now(tz=UTC),
+        updated_at=datetime.now(tz=UTC),
     )
     mock_session = AsyncMock()
     mock_result = MagicMock()

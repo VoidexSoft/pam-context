@@ -9,7 +9,7 @@ import pytest
 from pam.glossary.store import GlossaryStore
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_es_client() -> AsyncMock:
     """Create a mock Elasticsearch client."""
     client = AsyncMock()
@@ -20,7 +20,7 @@ def mock_es_client() -> AsyncMock:
     return client
 
 
-@pytest.fixture()
+@pytest.fixture
 def glossary_store(mock_es_client: AsyncMock) -> GlossaryStore:
     """Create a GlossaryStore with mocked ES client."""
     return GlossaryStore(
@@ -30,7 +30,7 @@ def glossary_store(mock_es_client: AsyncMock) -> GlossaryStore:
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_embedder() -> AsyncMock:
     """Create a mock embedder."""
     embedder = AsyncMock()
@@ -38,7 +38,7 @@ def mock_embedder() -> AsyncMock:
     return embedder
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_store() -> AsyncMock:
     """Create a mock GlossaryStore."""
     store = AsyncMock(spec=GlossaryStore)
@@ -50,7 +50,7 @@ def mock_store() -> AsyncMock:
     return store
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_session_factory() -> MagicMock:
     """Create a mock async session factory."""
     factory = MagicMock()

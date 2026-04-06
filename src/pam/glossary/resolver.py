@@ -98,10 +98,11 @@ class AliasResolver:
             return ResolvedQuery(original_query=query, expanded_query=query)
 
         # Build expanded query: original + glossary context
-        expansions = []
-        for rt in resolved_terms:
-            if rt["matched"].lower() != rt["canonical"].lower():
-                expansions.append(f'{rt["matched"]} (= {rt["canonical"]})')
+        expansions = [
+            f'{rt["matched"]} (= {rt["canonical"]})'
+            for rt in resolved_terms
+            if rt["matched"].lower() != rt["canonical"].lower()
+        ]
 
         expanded = query
         if expansions:

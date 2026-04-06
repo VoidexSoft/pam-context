@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from pam.glossary.store import GlossaryStore, get_glossary_index_mapping
+from pam.glossary.store import get_glossary_index_mapping
 
 
 def test_glossary_index_mapping_structure():
