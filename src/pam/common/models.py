@@ -17,7 +17,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # ── SQLAlchemy ORM ──────────────────────────────────────────────────────
@@ -248,6 +248,33 @@ class Message(Base):
             name="ck_messages_role",
         ),
         {"comment": "Individual messages within a conversation"},
+    )
+
+
+class GlossaryTerm(Base):
+    __tablename__ = "glossary_terms"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), index=True
+    )
+    canonical: Mapped[str] = mapped_column(String(300), nullable=False)
+    aliases: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    definition: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('metric', 'team', 'product', 'acronym', 'concept', 'other')",
+            name="ck_glossary_terms_category",
+        ),
+        UniqueConstraint("project_id", "canonical", name="uq_glossary_terms_project_canonical"),
+        {"comment": "Curated domain terminology with aliases for query expansion"},
     )
 
 
@@ -512,3 +539,48 @@ class ConversationResponse(BaseModel):
 
 class ConversationDetail(ConversationResponse):
     messages: list[ConvMessageResponse] = []
+
+
+# -- Glossary Schemas --
+
+
+class GlossaryTermCreate(BaseModel):
+    canonical: str = Field(min_length=1, max_length=300)
+    aliases: list[str] = Field(default_factory=list)
+    definition: str = Field(min_length=1, max_length=5_000)
+    category: Literal["metric", "team", "product", "acronym", "concept", "other"] = "concept"
+    metadata: dict = Field(default_factory=dict)
+    project_id: uuid.UUID | None = None
+
+
+class GlossaryTermResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID | None = None
+    canonical: str
+    aliases: list[str] = Field(default_factory=list)
+    definition: str
+    category: str
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class GlossaryTermUpdate(BaseModel):
+    canonical: str | None = Field(default=None, min_length=1, max_length=300)
+    aliases: list[str] | None = None
+    definition: str | None = Field(default=None, min_length=1, max_length=5_000)
+    category: Literal["metric", "team", "product", "acronym", "concept", "other"] | None = None
+    metadata: dict | None = None
+
+
+class GlossarySearchResult(BaseModel):
+    term: GlossaryTermResponse
+    score: float
+
+
+class GlossaryResolveResult(BaseModel):
+    original_query: str
+    expanded_query: str
+    resolved_terms: list[dict] = Field(default_factory=list)
