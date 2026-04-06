@@ -23,4 +23,5 @@ def mock_services() -> PamServices:
         cache_service=AsyncMock(),
         memory_service=AsyncMock(),
         conversation_service=AsyncMock(),
+        glossary_service=AsyncMock(),
     )
