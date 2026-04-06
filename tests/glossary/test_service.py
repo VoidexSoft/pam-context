@@ -53,3 +53,13 @@ def test_glossary_term_create_rejects_invalid_category():
 
     with pytest.raises(ValidationError):
         GlossaryTermCreate(canonical="Test", definition="Def", category="invalid")
+
+
+def test_glossary_config_settings_exist():
+    """Config has glossary-related settings."""
+    from pam.common.config import Settings
+
+    fields = Settings.model_fields
+    assert "glossary_index" in fields
+    assert "glossary_dedup_threshold" in fields
+    assert "glossary_context_budget" in fields
