@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from pam.graph.service import GraphitiService
     from pam.ingestion.embedders.base import BaseEmbedder
     from pam.ingestion.stores.entity_relationship_store import EntityRelationshipVDBStore
+    from pam.glossary.service import GlossaryService
     from pam.memory.service import MemoryService
     from pam.retrieval.search_protocol import SearchService
 
@@ -37,6 +38,7 @@ class PamServices:
     cache_service: CacheService | None
     memory_service: MemoryService | None
     conversation_service: ConversationService | None
+    glossary_service: GlossaryService | None
 
 
 def from_app_state(app_state: Any) -> PamServices:
@@ -52,4 +54,5 @@ def from_app_state(app_state: Any) -> PamServices:
         cache_service=getattr(app_state, "cache_service", None),
         memory_service=getattr(app_state, "memory_service", None),
         conversation_service=getattr(app_state, "conversation_service", None),
+        glossary_service=getattr(app_state, "glossary_service", None),
     )
