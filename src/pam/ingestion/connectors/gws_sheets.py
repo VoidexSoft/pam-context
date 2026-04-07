@@ -46,6 +46,8 @@ class GwsSheetsConnector(CliConnector):
                     "--page-all",
                 ]
             )
+            if not isinstance(result, dict):
+                raise TypeError(f"Expected dict from drive files list, got {type(result).__name__}")
             for f in result.get("files", []):
                 modified_at = datetime.fromisoformat(f["modifiedTime"]) if f.get("modifiedTime") else None
                 owner = f.get("owners", [{}])[0].get("emailAddress") if f.get("owners") else None
@@ -73,6 +75,8 @@ class GwsSheetsConnector(CliConnector):
                 params,
             ]
         )
+        if not isinstance(data, dict):
+            raise TypeError(f"Expected dict from sheets get, got {type(data).__name__}")
 
         title = data.get("properties", {}).get("title", source_id)
         tabs: dict[str, dict] = {}

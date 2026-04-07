@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import uuid as uuid_mod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import structlog
 import tiktoken
 from anthropic import AsyncAnthropic
+from anthropic.types import TextBlock
 
 if TYPE_CHECKING:
     from pam.conversation.service import ConversationService
@@ -111,7 +112,7 @@ class ConversationSummarizer:
                 max_tokens=512,
                 messages=[{"role": "user", "content": prompt}],
             )
-            summary = response.content[0].text.strip()
+            summary = cast(TextBlock, response.content[0]).text.strip()
         except Exception:
             logger.warning("summarization_llm_error", conversation_id=str(conversation_id), exc_info=True)
             return ""

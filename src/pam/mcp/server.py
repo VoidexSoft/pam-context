@@ -38,8 +38,8 @@ def create_mcp_server() -> FastMCP:
     mcp = FastMCP(
         "PAM Context",
         instructions=(
-            "Business Knowledge Layer for LLMs — search documents, query knowledge graph, "
-            "trigger ingestion, store and recall memories"
+            "Business Knowledge Layer for LLMs -- search documents, query knowledge graph, "
+            "trigger ingestion, store and recall memories, manage domain glossary"
         ),
     )
     _register_search_tools(mcp)
@@ -48,6 +48,7 @@ def create_mcp_server() -> FastMCP:
     _register_utility_tools(mcp)
     _register_memory_tools(mcp)
     _register_conversation_tools(mcp)
+    _register_glossary_tools(mcp)
     _register_resources(mcp)
     return mcp
 
@@ -451,9 +452,12 @@ async def _pam_entity_history(entity_name: str, since: str | None = None) -> str
 
     if since:
         since_normalized = since.replace("Z", "+00:00")
-        history = [
-            h for h in history if h.get("created_at") and h["created_at"].replace("Z", "+00:00") >= since_normalized
-        ]
+        filtered: list[dict] = []
+        for h in history:
+            created = h.get("created_at")
+            if created and created.replace("Z", "+00:00") >= since_normalized:
+                filtered.append(h)
+        history = filtered
 
     return json.dumps(
         {"entity": entity_name, "history": history, "count": len(history)},
@@ -866,6 +870,181 @@ async def _pam_get_conversation_context(
     return json.dumps({"conversation_id": conversation_id, "context": context})
 
 
+def _register_glossary_tools(mcp: FastMCP) -> None:
+    """Register glossary MCP tools."""
+
+    @mcp.tool()
+    async def pam_glossary_add(
+        canonical: str,
+        definition: str,
+        category: str = "concept",
+        aliases: list[str] | None = None,
+        project_id: str | None = None,
+    ) -> str:
+        """Add a new term to PAM's glossary.
+
+        Stores a domain term with its canonical name, definition, aliases, and category.
+        Deduplicates: if a semantically similar term exists, returns an error.
+
+        category: metric, team, product, acronym, concept, or other.
+        aliases: alternative names/abbreviations (e.g., ["GBs", "gross books"]).
+        """
+        return await _pam_glossary_add(
+            canonical=canonical,
+            definition=definition,
+            category=category,
+            aliases=aliases,
+            project_id=project_id,
+        )
+
+    @mcp.tool()
+    async def pam_glossary_search(
+        query: str,
+        top_k: int = 10,
+        project_id: str | None = None,
+        category: str | None = None,
+    ) -> str:
+        """Search PAM's glossary for domain terminology.
+
+        Returns terms ranked by semantic similarity to the query.
+        """
+        return await _pam_glossary_search(
+            query=query,
+            top_k=top_k,
+            project_id=project_id,
+            category=category,
+        )
+
+    @mcp.tool()
+    async def pam_glossary_resolve(
+        query: str,
+        project_id: str | None = None,
+    ) -> str:
+        """Resolve aliases in a query string using PAM's glossary.
+
+        Expands abbreviations and aliases to their canonical forms.
+        Example: "What's the GBs target?" expands GBs to Gross Bookings.
+        """
+        return await _pam_glossary_resolve(query=query, project_id=project_id)
+
+
+async def _pam_glossary_add(
+    canonical: str,
+    definition: str,
+    category: str = "concept",
+    aliases: list[str] | None = None,
+    project_id: str | None = None,
+) -> str:
+    """Implementation of pam_glossary_add."""
+    import uuid as uuid_mod
+
+    services = get_services()
+    if services.glossary_service is None:
+        return json.dumps({"error": "Glossary service is unavailable"})
+
+    try:
+        parsed_project_id = uuid_mod.UUID(project_id) if project_id else None
+    except ValueError:
+        return json.dumps({"error": f"Invalid project_id: {project_id}"})
+
+    try:
+        result = await services.glossary_service.add(
+            canonical=canonical,
+            definition=definition,
+            category=category,
+            aliases=aliases or [],
+            project_id=parsed_project_id,
+        )
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
+    return json.dumps(
+        {
+            "id": str(result.id),
+            "canonical": result.canonical,
+            "aliases": result.aliases,
+            "definition": result.definition,
+            "category": result.category,
+            "created_at": result.created_at.isoformat() if result.created_at else None,
+        },
+        indent=2,
+    )
+
+
+async def _pam_glossary_search(
+    query: str,
+    top_k: int = 10,
+    project_id: str | None = None,
+    category: str | None = None,
+) -> str:
+    """Implementation of pam_glossary_search."""
+    import uuid as uuid_mod
+
+    services = get_services()
+    if services.glossary_service is None:
+        return json.dumps({"error": "Glossary service is unavailable"})
+
+    try:
+        parsed_project_id = uuid_mod.UUID(project_id) if project_id else None
+    except ValueError:
+        return json.dumps({"error": f"Invalid project_id: {project_id}"})
+
+    results = await services.glossary_service.search(
+        query=query,
+        project_id=parsed_project_id,
+        category=category,
+        top_k=top_k,
+    )
+
+    return json.dumps(
+        {
+            "terms": [
+                {
+                    "id": str(r.term.id),
+                    "canonical": r.term.canonical,
+                    "aliases": r.term.aliases,
+                    "definition": r.term.definition,
+                    "category": r.term.category,
+                    "score": r.score,
+                }
+                for r in results
+            ],
+            "count": len(results),
+        },
+        indent=2,
+    )
+
+
+async def _pam_glossary_resolve(
+    query: str,
+    project_id: str | None = None,
+) -> str:
+    """Implementation of pam_glossary_resolve."""
+    import uuid as uuid_mod
+
+    services = get_services()
+    if services.glossary_service is None:
+        return json.dumps({"error": "Glossary service is unavailable"})
+
+    try:
+        parsed_project_id = uuid_mod.UUID(project_id) if project_id else None
+    except ValueError:
+        return json.dumps({"error": f"Invalid project_id: {project_id}"})
+
+    result = await services.glossary_service.resolve_aliases(
+        query=query, project_id=parsed_project_id,
+    )
+
+    return json.dumps(
+        {
+            "original_query": result.original_query,
+            "expanded_query": result.expanded_query,
+            "resolved_terms": [rt.model_dump() for rt in result.resolved_terms],
+        },
+        indent=2,
+    )
+
+
 def _register_resources(mcp: FastMCP) -> None:
     """Register MCP resources for system introspection."""
 
@@ -883,6 +1062,11 @@ def _register_resources(mcp: FastMCP) -> None:
     async def all_entities_resource() -> str:
         """List all entities from the entity VDB index."""
         return await _get_entities(entity_type=None)
+
+    @mcp.resource("pam://glossary")
+    async def glossary_resource() -> str:
+        """Domain glossary -- curated terminology with aliases and definitions."""
+        return await _get_glossary()
 
 
 async def _get_stats() -> str:
@@ -950,3 +1134,30 @@ async def _get_entities(entity_type: str | None = None) -> str:
     except Exception as e:
         logger.warning("entity_resource_failed", exc_info=True)
         return json.dumps({"entities": [], "error": str(e)})
+
+
+async def _get_glossary() -> str:
+    """Implementation of pam://glossary resource."""
+    services = get_services()
+    if services.glossary_service is None:
+        return json.dumps({"terms": [], "error": "Glossary service is unavailable"})
+
+    max_terms = 200
+    terms = await services.glossary_service.list_terms(limit=max_terms)
+
+    return json.dumps(
+        {
+            "terms": [
+                {
+                    "canonical": t.canonical,
+                    "aliases": t.aliases,
+                    "definition": t.definition,
+                    "category": t.category,
+                }
+                for t in terms
+            ],
+            "count": len(terms),
+            "truncated": len(terms) >= max_terms,
+        },
+        indent=2,
+    )

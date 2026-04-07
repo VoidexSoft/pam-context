@@ -28,10 +28,14 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from pam.agent.duckdb_service import DuckDBService
+    from pam.conversation.service import ConversationService
+    from pam.glossary.resolver import AliasResolver
+    from pam.glossary.service import GlossaryService
     from pam.graph.service import GraphitiService
     from pam.ingestion.stores.entity_relationship_store import (
         EntityRelationshipVDBStore,
     )
+    from pam.memory.service import MemoryService
 
 logger = structlog.get_logger()
 
@@ -135,6 +139,7 @@ class RetrievalAgent:
         duckdb_service: DuckDBService | None = None,
         graph_service: GraphitiService | None = None,
         vdb_store: EntityRelationshipVDBStore | None = None,
+        glossary_service: GlossaryService | None = None,
     ) -> None:
         self.client = AsyncAnthropic(api_key=api_key)
         self.model = model
@@ -145,14 +150,18 @@ class RetrievalAgent:
         self.duckdb_service = duckdb_service
         self.graph_service = graph_service
         self.vdb_store = vdb_store
+        self.glossary_service = glossary_service
+        self._alias_resolver: AliasResolver | None = (
+            glossary_service.create_resolver() if glossary_service is not None else None
+        )
         # NOTE: _default_source_type is instance state set per-call by answer()/answer_streaming().
         # This is safe because agents are instantiated per-request (see api/deps.py).
         # Do NOT share a single RetrievalAgent across concurrent requests.
         self._default_source_type: str | None = None
         self._last_classification: ClassificationResult | None = None
         # Optional services for memory/conversation injection (set per-request by chat endpoint)
-        self._memory_service = None  # type: ignore[assignment]
-        self._conversation_service = None  # type: ignore[assignment]
+        self._memory_service: MemoryService | None = None
+        self._conversation_service: ConversationService | None = None
         self._current_user_id: uuid.UUID | None = None
         self._current_conversation_id: uuid.UUID | None = None
 
@@ -189,7 +198,7 @@ class RetrievalAgent:
                 model=self.model,
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
-                messages=messages,
+                messages=cast(Any, messages),
                 tools=cast(Any, ALL_TOOLS),
             )
             call_latency = (time.perf_counter() - call_start) * 1000
@@ -330,7 +339,7 @@ class RetrievalAgent:
                     model=self.model,
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
-                    messages=messages,
+                    messages=cast(Any, messages),
                     tools=cast(Any, ALL_TOOLS),
                 )
                 total_input_tokens += response.usage.input_tokens
@@ -393,7 +402,7 @@ class RetrievalAgent:
                     model=self.model,
                     max_tokens=4096,
                     system=SYSTEM_PROMPT,
-                    messages=messages,
+                    messages=cast(Any, messages),
                     tools=cast(Any, ALL_TOOLS),
                 ) as stream:
                     async for text in stream.text_stream:
@@ -528,6 +537,24 @@ class RetrievalAgent:
         except Exception as exc:
             logger.warning("smart_search_keyword_extraction_failed", error=str(exc))
             return (f"Keyword extraction failed: {exc}. Try search_knowledge or search_knowledge_graph instead."), []
+
+        # Step A1: Resolve glossary aliases
+        from pam.common.models import ResolvedTermItem
+
+        resolved_terms: list[ResolvedTermItem] = []
+        if self._alias_resolver is not None:
+            try:
+                resolved = await self._alias_resolver.resolve(query)
+                if resolved.resolved_terms:
+                    resolved_terms = resolved.resolved_terms
+                    # Enhance ES query with canonical terms for better BM25 recall
+                    expansions = [rt.canonical for rt in resolved_terms
+                                  if rt.matched.lower() != rt.canonical.lower()]
+                    if expansions:
+                        query = f"{query} {' '.join(expansions)}"
+                        logger.info("smart_search_query_expanded", expansions=expansions)
+            except Exception:
+                logger.warning("smart_search_alias_resolution_failed", exc_info=True)
 
         # Step A2: Classify query mode
         forced_mode_str = input_.get("mode")
@@ -690,12 +717,22 @@ class RetrievalAgent:
         memory_results, conversation_context = await self._fetch_user_context(query)
 
         # Step F: Assemble structured context with token budgets
+        # Fetch relevant glossary terms for context
+        glossary_context: list[dict] = []
+        if resolved_terms:
+            glossary_context.extend({
+                "canonical": rt.canonical,
+                "definition": rt.definition,
+                "aliases": [],
+                "score": 1.0,
+            } for rt in resolved_terms)
         budget = ContextBudget(
             entity_tokens=settings.context_entity_budget,
             relationship_tokens=settings.context_relationship_budget,
             max_total_tokens=settings.context_max_tokens,
             memory_tokens=settings.context_memory_budget,
             conversation_tokens=settings.conversation_context_max_tokens,
+            glossary_tokens=settings.glossary_context_budget,
         )
         assembled = assemble_context(
             es_results=es_results,
@@ -705,6 +742,7 @@ class RetrievalAgent:
             budget=budget,
             memory_results=memory_results,
             conversation_context=conversation_context,
+            glossary_results=glossary_context if glossary_context else None,
         )
 
         # Step G: Build final output with keywords header + assembled context
@@ -832,10 +870,10 @@ class RetrievalAgent:
         )
 
         header = f"Document: {doc.title}\nSource: {doc.source_id}\nSegments: {len(segments)}\n\n"
-        result = header + full_content
+        output = header + full_content
         if truncated:
-            result += "\n\n[truncated] Document content was too large. Use search_knowledge for specific sections."
-        return result, [citation]
+            output += "\n\n[truncated] Document content was too large. Use search_knowledge for specific sections."
+        return output, [citation]
 
     async def _get_change_history(self, input_: dict) -> tuple[str, list[Citation]]:
         """Query sync_log for recent changes."""

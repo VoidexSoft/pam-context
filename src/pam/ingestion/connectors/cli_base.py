@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from abc import ABC
+from typing import Any
 
 import structlog
 
@@ -85,7 +86,8 @@ class CliConnector(BaseConnector, ABC):
                     args=args,
                     exit_code=0,
                 )
-                return json.loads(stdout)
+                parsed: dict[str, Any] | list[Any] = json.loads(stdout)
+                return parsed
 
             # Check rate limit — retry with backoff
             stderr_lower = stderr_text.lower()
