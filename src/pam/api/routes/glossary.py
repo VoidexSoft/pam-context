@@ -84,13 +84,7 @@ async def resolve_aliases(
 
     Returns the expanded query with resolved terms noted.
     """
-    from pam.glossary.resolver import AliasResolver
-
-    resolver = AliasResolver(
-        store=glossary_service._store,
-        project_id=project_id,
-    )
-    result = await resolver.resolve(query=query, project_id=project_id)
+    result = await glossary_service.resolve_aliases(query=query, project_id=project_id)
     return GlossaryResolveResult(
         original_query=result.original_query,
         expanded_query=result.expanded_query,

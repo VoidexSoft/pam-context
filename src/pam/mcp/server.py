@@ -1031,19 +1031,15 @@ async def _pam_glossary_resolve(
     except ValueError:
         return json.dumps({"error": f"Invalid project_id: {project_id}"})
 
-    from pam.glossary.resolver import AliasResolver
-
-    resolver = AliasResolver(
-        store=services.glossary_service._store,
-        project_id=parsed_project_id,
+    result = await services.glossary_service.resolve_aliases(
+        query=query, project_id=parsed_project_id,
     )
-    result = await resolver.resolve(query=query, project_id=parsed_project_id)
 
     return json.dumps(
         {
             "original_query": result.original_query,
             "expanded_query": result.expanded_query,
-            "resolved_terms": result.resolved_terms,
+            "resolved_terms": [rt.model_dump() for rt in result.resolved_terms],
         },
         indent=2,
     )
@@ -1146,7 +1142,8 @@ async def _get_glossary() -> str:
     if services.glossary_service is None:
         return json.dumps({"terms": [], "error": "Glossary service is unavailable"})
 
-    terms = await services.glossary_service.list_terms(limit=100)
+    max_terms = 200
+    terms = await services.glossary_service.list_terms(limit=max_terms)
 
     return json.dumps(
         {
@@ -1160,6 +1157,7 @@ async def _get_glossary() -> str:
                 for t in terms
             ],
             "count": len(terms),
+            "truncated": len(terms) >= max_terms,
         },
         indent=2,
     )

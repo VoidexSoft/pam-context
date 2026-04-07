@@ -11,8 +11,11 @@ import structlog
 from pam.common.models import GlossarySearchResult, GlossaryTerm, GlossaryTermResponse
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+    from pam.glossary.resolver import AliasResolver, ResolvedQuery
     from pam.glossary.store import GlossaryStore
     from pam.ingestion.embedders.base import BaseEmbedder
 
@@ -48,6 +51,25 @@ class GlossaryService:
         self._store = store
         self._embedder = embedder
         self._dedup_threshold = dedup_threshold
+
+    def create_resolver(
+        self,
+        min_score: float = 3.0,
+        project_id: UUID | None = None,
+    ) -> AliasResolver:
+        """Create an AliasResolver backed by this service's store."""
+        from pam.glossary.resolver import AliasResolver
+
+        return AliasResolver(store=self._store, min_score=min_score, project_id=project_id)
+
+    async def resolve_aliases(
+        self,
+        query: str,
+        project_id: UUID | None = None,
+    ) -> ResolvedQuery:
+        """Convenience: resolve aliases in a query using the default resolver."""
+        resolver = self.create_resolver(project_id=project_id)
+        return await resolver.resolve(query=query, project_id=project_id)
 
     @classmethod
     async def create_from_settings(
@@ -128,31 +150,27 @@ class GlossaryService:
             updated_at=now,
         )
 
-        async with self._session_factory() as session:
-            session.add(term)
-            await session.flush()
-            await session.commit()
+        # Index in ES first, then commit PG — avoids a window where the term
+        # exists in PG but is not yet searchable in ES.
+        await self._store.index_term(
+            term_id=term_id,
+            canonical=canonical,
+            aliases=aliases,
+            definition=definition,
+            embedding=embedding,
+            category=category,
+            project_id=project_id,
+        )
 
-        # Index in ES -- rollback PG if this fails
         try:
-            await self._store.index_term(
-                term_id=term_id,
-                canonical=canonical,
-                aliases=aliases,
-                definition=definition,
-                embedding=embedding,
-                category=category,
-                project_id=project_id,
-            )
+            async with self._session_factory() as session:
+                session.add(term)
+                await session.flush()
+                await session.commit()
         except Exception:
-            from sqlalchemy import delete as sa_delete
-
-            async with self._session_factory() as rollback_session:
-                await rollback_session.execute(
-                    sa_delete(GlossaryTerm).where(GlossaryTerm.id == term_id)
-                )
-                await rollback_session.commit()
-            logger.error("glossary_es_index_failed", term_id=str(term_id), exc_info=True)
+            # Roll back ES document if PG commit fails
+            await self._store.delete(term_id)
+            logger.error("glossary_pg_commit_failed", term_id=str(term_id), exc_info=True)
             raise
 
         logger.info("glossary_term_added", term_id=str(term_id), canonical=canonical)

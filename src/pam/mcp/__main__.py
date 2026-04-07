@@ -138,6 +138,7 @@ async def _create_services():
         cache_service=cache_service,
         memory_service=memory_service,
         conversation_service=None,
+        glossary_service=None,
     )
     return services, engine
 

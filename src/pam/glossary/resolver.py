@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from pam.common.models import ResolvedTermItem
+
 if TYPE_CHECKING:
     from uuid import UUID
 
@@ -22,7 +24,7 @@ class ResolvedQuery:
 
     original_query: str
     expanded_query: str
-    resolved_terms: list[dict] = field(default_factory=list)
+    resolved_terms: list[ResolvedTermItem] = field(default_factory=list)
 
 
 class AliasResolver:
@@ -61,7 +63,7 @@ class AliasResolver:
         if not candidates:
             return ResolvedQuery(original_query=query, expanded_query=query)
 
-        resolved_terms: list[dict] = []
+        resolved_terms: list[ResolvedTermItem] = []
         seen_canonicals: set[str] = set()
 
         for candidate in candidates:
@@ -87,21 +89,21 @@ class AliasResolver:
                 continue
 
             seen_canonicals.add(canonical.lower())
-            resolved_terms.append({
-                "matched": candidate,
-                "canonical": canonical,
-                "definition": hit.get("definition", ""),
-                "category": hit.get("category", ""),
-            })
+            resolved_terms.append(ResolvedTermItem(
+                matched=candidate,
+                canonical=canonical,
+                definition=hit.get("definition", ""),
+                category=hit.get("category", ""),
+            ))
 
         if not resolved_terms:
             return ResolvedQuery(original_query=query, expanded_query=query)
 
         # Build expanded query: original + glossary context
         expansions = [
-            f'{rt["matched"]} (= {rt["canonical"]})'
+            f'{rt.matched} (= {rt.canonical})'
             for rt in resolved_terms
-            if rt["matched"].lower() != rt["canonical"].lower()
+            if rt.matched.lower() != rt.canonical.lower()
         ]
 
         expanded = query

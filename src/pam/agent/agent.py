@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from pam.agent.duckdb_service import DuckDBService
     from pam.conversation.service import ConversationService
+    from pam.glossary.resolver import AliasResolver
     from pam.glossary.service import GlossaryService
     from pam.graph.service import GraphitiService
     from pam.ingestion.stores.entity_relationship_store import (
@@ -150,6 +151,9 @@ class RetrievalAgent:
         self.graph_service = graph_service
         self.vdb_store = vdb_store
         self.glossary_service = glossary_service
+        self._alias_resolver: AliasResolver | None = (
+            glossary_service.create_resolver() if glossary_service is not None else None
+        )
         # NOTE: _default_source_type is instance state set per-call by answer()/answer_streaming().
         # This is safe because agents are instantiated per-request (see api/deps.py).
         # Do NOT share a single RetrievalAgent across concurrent requests.
@@ -535,18 +539,17 @@ class RetrievalAgent:
             return (f"Keyword extraction failed: {exc}. Try search_knowledge or search_knowledge_graph instead."), []
 
         # Step A1: Resolve glossary aliases
-        resolved_terms: list[dict] = []
-        if self.glossary_service is not None:
-            try:
-                from pam.glossary.resolver import AliasResolver
+        from pam.common.models import ResolvedTermItem
 
-                resolver = AliasResolver(store=self.glossary_service._store)
-                resolved = await resolver.resolve(query)
+        resolved_terms: list[ResolvedTermItem] = []
+        if self._alias_resolver is not None:
+            try:
+                resolved = await self._alias_resolver.resolve(query)
                 if resolved.resolved_terms:
                     resolved_terms = resolved.resolved_terms
                     # Enhance ES query with canonical terms for better BM25 recall
-                    expansions = [rt["canonical"] for rt in resolved_terms
-                                  if rt["matched"].lower() != rt["canonical"].lower()]
+                    expansions = [rt.canonical for rt in resolved_terms
+                                  if rt.matched.lower() != rt.canonical.lower()]
                     if expansions:
                         query = f"{query} {' '.join(expansions)}"
                         logger.info("smart_search_query_expanded", expansions=expansions)
@@ -717,13 +720,12 @@ class RetrievalAgent:
         # Fetch relevant glossary terms for context
         glossary_context: list[dict] = []
         if resolved_terms:
-            for rt in resolved_terms:
-                glossary_context.append({
-                    "canonical": rt["canonical"],
-                    "definition": rt.get("definition", ""),
-                    "aliases": [],
-                    "score": 1.0,
-                })
+            glossary_context.extend({
+                "canonical": rt.canonical,
+                "definition": rt.definition,
+                "aliases": [],
+                "score": 1.0,
+            } for rt in resolved_terms)
         budget = ContextBudget(
             entity_tokens=settings.context_entity_budget,
             relationship_tokens=settings.context_relationship_budget,

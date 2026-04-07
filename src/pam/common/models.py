@@ -580,7 +580,14 @@ class GlossarySearchResult(BaseModel):
     score: float
 
 
+class ResolvedTermItem(BaseModel):
+    matched: str
+    canonical: str
+    definition: str = ""
+    category: str = ""
+
+
 class GlossaryResolveResult(BaseModel):
     original_query: str
     expanded_query: str
-    resolved_terms: list[dict] = Field(default_factory=list)
+    resolved_terms: list[ResolvedTermItem] = Field(default_factory=list)

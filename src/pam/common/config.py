@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # Context Assembly Token Budgets
     context_entity_budget: int = 4000
     context_relationship_budget: int = 6000
-    context_max_tokens: int = 17000
+    context_max_tokens: int = 17000  # Sum of entity + relationship + memory + conversation + glossary budgets
 
     # Mode Router
     mode_confidence_threshold: float = 0.7  # Below this, fall back to hybrid

@@ -187,7 +187,7 @@ def _build_context_string(
     has_conversation = bool(conversation_context.strip())
     has_glossary = bool(glossary_terms)
 
-    if not has_entities and not has_relationships and not has_chunks and not has_memories and not has_conversation and not has_glossary:
+    if not any((has_entities, has_relationships, has_chunks, has_memories, has_conversation, has_glossary)):
         return "No relevant context found in knowledge base"
 
     parts: list[str] = []
@@ -205,7 +205,7 @@ def _build_context_string(
         summary_bits.append(f"{len(chunks)} document chunks")
     if has_conversation:
         summary_bits.append("recent conversation")
-    if has_glossary:
+    if has_glossary and glossary_terms:
         summary_bits.append(f"{len(glossary_terms)} glossary terms")
     parts.append("Found " + ", ".join(summary_bits))
     parts.append("")
@@ -220,7 +220,7 @@ def _build_context_string(
         parts.append("")
 
     # --- Glossary Terms ---
-    if has_glossary:
+    if has_glossary and glossary_terms:
         parts.append("## Domain Glossary")
         for g in glossary_terms:
             canonical = g.get("canonical", "")

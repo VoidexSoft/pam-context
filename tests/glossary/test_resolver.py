@@ -40,7 +40,7 @@ async def test_resolve_expands_known_alias(resolver, mock_glossary_store):
 
     assert "Gross Bookings" in result.expanded_query
     assert len(result.resolved_terms) == 1
-    assert result.resolved_terms[0]["canonical"] == "Gross Bookings"
+    assert result.resolved_terms[0].canonical == "Gross Bookings"
     assert result.original_query == "What's the GBs target?"
 
 
@@ -90,7 +90,7 @@ async def test_resolve_deduplicates_canonicals(resolver, mock_glossary_store):
 
     result = await resolver.resolve("GBs and GBs trend")
 
-    canonical_matches = [rt["canonical"] for rt in result.resolved_terms]
+    canonical_matches = [rt.canonical for rt in result.resolved_terms]
     assert canonical_matches.count("Gross Bookings") <= 1
 
 
