@@ -44,7 +44,7 @@ async def _create_services():
     cache_service = None
     try:
         redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
-        await redis_client.ping()
+        await redis_client.ping()  # type: ignore[misc]
         cache_service = CacheService(
             redis_client,
             search_ttl=settings.redis_search_ttl,

@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
     redis_client = None
     try:
         redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
-        await redis_client.ping()
+        await redis_client.ping()  # type: ignore[misc]
         logger.info("redis_connected", url=settings.redis_url)
     except Exception:
         logger.warning("redis_connect_failed", exc_info=True)
