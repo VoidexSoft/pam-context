@@ -2,7 +2,7 @@
 
 import base64
 import json
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
@@ -17,10 +17,11 @@ def encode_cursor(last_id: str, sort_value: str) -> str:
     return base64.urlsafe_b64encode(payload.encode()).decode()
 
 
-def decode_cursor(cursor: str) -> dict:
+def decode_cursor(cursor: str) -> dict[str, Any]:
     """Decode a pagination cursor into its ID and sort value components."""
     raw = base64.urlsafe_b64decode(cursor.encode())
-    return json.loads(raw)
+    decoded: dict[str, Any] = json.loads(raw)
+    return decoded
 
 
 class PaginatedResponse[T](BaseModel):

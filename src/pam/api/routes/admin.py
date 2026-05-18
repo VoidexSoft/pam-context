@@ -2,10 +2,11 @@
 
 import uuid
 from datetime import datetime
+from typing import cast
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import CursorResult, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -157,11 +158,14 @@ async def revoke_role(
     _admin: User | None = Depends(require_admin),
 ):
     """Remove a user's role for a project."""
-    result = await db.execute(
-        delete(UserProjectRole).where(
-            UserProjectRole.user_id == user_id,
-            UserProjectRole.project_id == project_id,
-        )
+    result = cast(
+        CursorResult,
+        await db.execute(
+            delete(UserProjectRole).where(
+                UserProjectRole.user_id == user_id,
+                UserProjectRole.project_id == project_id,
+            )
+        ),
     )
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Role assignment not found")

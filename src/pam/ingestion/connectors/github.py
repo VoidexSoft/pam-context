@@ -32,6 +32,8 @@ class GitHubConnector(CliConnector):
 
     async def list_documents(self) -> list[DocumentInfo]:
         tree_data = await self.run_cli(["api", f"/repos/{self.repo}/git/trees/{self.branch}?recursive=1"])
+        if not isinstance(tree_data, dict):
+            raise TypeError(f"Expected dict from GitHub git/trees API, got {type(tree_data).__name__}")
 
         docs: list[DocumentInfo] = []
         for entry in tree_data.get("tree", []):

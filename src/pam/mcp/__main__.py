@@ -7,11 +7,15 @@ LLM clients (Claude Code, Cursor) connect to this process via stdin/stdout.
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 import structlog
 
 from pam.common.config import get_settings
 from pam.common.logging import configure_logging
+
+if TYPE_CHECKING:
+    from pam.retrieval.search_protocol import SearchService
 
 logger = structlog.get_logger()
 
@@ -40,7 +44,7 @@ async def _create_services():
     cache_service = None
     try:
         redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
-        await redis_client.ping()
+        await redis_client.ping()  # type: ignore[misc]
         cache_service = CacheService(
             redis_client,
             search_ttl=settings.redis_search_ttl,
@@ -49,6 +53,7 @@ async def _create_services():
     except Exception:
         logger.warning("redis_unavailable_in_mcp_mode")
 
+    search_service: SearchService
     if settings.use_haystack_retrieval:
         from pam.retrieval.haystack_search import HaystackSearchService
 
@@ -132,6 +137,8 @@ async def _create_services():
         duckdb_service=duckdb_service,
         cache_service=cache_service,
         memory_service=memory_service,
+        conversation_service=None,
+        glossary_service=None,
     )
     return services, engine
 

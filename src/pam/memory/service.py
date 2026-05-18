@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid as uuid_mod
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import structlog
 
@@ -487,6 +487,7 @@ class MemoryService:
         """Use LLM to merge overlapping memory contents."""
         try:
             from anthropic import AsyncAnthropic
+            from anthropic.types import TextBlock
 
             client = AsyncAnthropic(api_key=self._anthropic_api_key)
             response = await client.messages.create(
@@ -504,7 +505,7 @@ class MemoryService:
                     }
                 ],
             )
-            return response.content[0].text
+            return cast(TextBlock, response.content[0]).text
         except Exception:
             logger.warning("memory_merge_llm_failed", exc_info=True)
             return new_content  # Fallback: use new content as-is

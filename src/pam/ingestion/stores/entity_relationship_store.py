@@ -157,7 +157,7 @@ class EntityRelationshipVDBStore:
         response = await self.client.mget(
             index=index_name,
             body={"ids": doc_ids},
-            _source=["content_hash"],
+            source=["content_hash"],
         )
 
         changed_indices: list[int] = []

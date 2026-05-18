@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # Context Assembly Token Budgets
     context_entity_budget: int = 4000
     context_relationship_budget: int = 6000
-    context_max_tokens: int = 16000
+    context_max_tokens: int = 17000  # Sum of entity + relationship + memory + conversation + glossary budgets
 
     # Mode Router
     mode_confidence_threshold: float = 0.7  # Below this, fall back to hybrid
@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     memory_index: str = "pam_memories"  # ES index for memory embeddings
     memory_dedup_threshold: float = 0.9  # Cosine similarity threshold for dedup
     memory_merge_model: str = "claude-haiku-4-5-20251001"  # LLM for content merge
+
+    # Glossary / Semantic Metadata
+    glossary_index: str = "pam_glossary"  # ES index for glossary term embeddings
+    glossary_dedup_threshold: float = 0.92  # Cosine similarity threshold for term dedup
+    glossary_context_budget: int = 1000  # Token budget for glossary terms in context assembly
 
     # Conversation Service
     conversation_extraction_enabled: bool = True
@@ -163,18 +168,22 @@ class Settings(BaseSettings):
             raise ValueError(f"mode_confidence_threshold must be 0.0-1.0, got {self.mode_confidence_threshold}")
         if not 0.0 <= self.memory_dedup_threshold <= 1.0:
             raise ValueError(f"memory_dedup_threshold must be 0.0-1.0, got {self.memory_dedup_threshold}")
+        if not 0.0 <= self.glossary_dedup_threshold <= 1.0:
+            raise ValueError(f"glossary_dedup_threshold must be 0.0-1.0, got {self.glossary_dedup_threshold}")
         total_budget = (
             self.context_entity_budget
             + self.context_relationship_budget
             + self.context_memory_budget
             + self.conversation_context_max_tokens
+            + self.glossary_context_budget
         )
         if total_budget > self.context_max_tokens:
             raise ValueError(
                 f"context budget overflow: entity ({self.context_entity_budget}) + "
                 f"relationship ({self.context_relationship_budget}) + "
                 f"memory ({self.context_memory_budget}) + "
-                f"conversation ({self.conversation_context_max_tokens}) = {total_budget} > "
+                f"conversation ({self.conversation_context_max_tokens}) + "
+                f"glossary ({self.glossary_context_budget}) = {total_budget} > "
                 f"max ({self.context_max_tokens})"
             )
         return self

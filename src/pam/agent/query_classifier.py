@@ -11,10 +11,11 @@ import json
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import structlog
 from anthropic import AsyncAnthropic
+from anthropic.types import TextBlock
 
 from pam.common.config import Settings, get_settings
 
@@ -321,7 +322,7 @@ async def _llm_classify(
             messages=[{"role": "user", "content": prompt}],
             timeout=10.0,
         )
-        raw_text = response.content[0].text.strip()
+        raw_text = cast(TextBlock, response.content[0]).text.strip()
         data = json.loads(raw_text)
 
         mode_str = data.get("mode", "hybrid")

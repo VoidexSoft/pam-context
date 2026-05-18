@@ -97,7 +97,7 @@ async def extract_graph_for_document(
         if episode_uuid:
             # Attempt to gather entity info before removal
             try:
-                episode = await graph_service.client.get_episode(episode_uuid)
+                episode = await graph_service.client.get_episode(episode_uuid)  # type: ignore[attr-defined]
                 if hasattr(episode, "nodes") and episode.nodes:
                     for node in episode.nodes:
                         node_name = node.name if hasattr(node, "name") else str(node)

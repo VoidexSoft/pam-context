@@ -47,6 +47,8 @@ class GwsDocsConnector(CliConnector):
                     "--page-all",
                 ]
             )
+            if not isinstance(result, dict):
+                raise TypeError(f"Expected dict from drive files list, got {type(result).__name__}")
             for f in result.get("files", []):
                 modified_at = datetime.fromisoformat(f["modifiedTime"]) if f.get("modifiedTime") else None
                 owner = f.get("owners", [{}])[0].get("emailAddress") if f.get("owners") else None
@@ -67,6 +69,8 @@ class GwsDocsConnector(CliConnector):
         # Fetch file metadata (including modifiedTime for bi-temporal timestamps)
         meta_params = json.dumps({"fileId": source_id, "fields": "name,owners,webViewLink,modifiedTime"})
         meta = await self.run_cli(["drive", "files", "get", "--params", meta_params])
+        if not isinstance(meta, dict):
+            raise TypeError(f"Expected dict from drive files get, got {type(meta).__name__}")
         title = meta.get("name", source_id)
         owner = meta.get("owners", [{}])[0].get("emailAddress") if meta.get("owners") else None
         modified_at = datetime.fromisoformat(meta["modifiedTime"]) if meta.get("modifiedTime") else None
@@ -107,6 +111,8 @@ class GwsDocsConnector(CliConnector):
                 params,
             ]
         )
+        if not isinstance(result, dict):
+            raise TypeError(f"Expected dict from drive files get, got {type(result).__name__}")
         md5: str | None = result.get("md5Checksum")
         if md5:
             return md5
