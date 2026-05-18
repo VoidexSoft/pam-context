@@ -281,9 +281,7 @@ async def test_search_returns_empty_when_no_hits(mock_session_factory, mock_stor
 async def test_search_by_alias_returns_results(mock_session_factory, mock_store, mock_embedder):
     """search_by_alias() returns scored results from keyword match."""
     term_id = uuid.uuid4()
-    mock_store.search_by_alias.return_value = [
-        {"term_id": str(term_id), "score": 5.5, "canonical": "GB"}
-    ]
+    mock_store.search_by_alias.return_value = [{"term_id": str(term_id), "score": 5.5, "canonical": "GB"}]
     mock_term = GlossaryTerm(
         id=term_id,
         canonical="Gross Bookings",
