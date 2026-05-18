@@ -228,3 +228,344 @@ def test_assembled_context_includes_glossary():
         glossary_tokens_used=100,
     )
     assert ctx.glossary_tokens_used == 100
+
+
+@pytest.mark.asyncio
+async def test_add_term_rejects_empty_definition(mock_session_factory, mock_store, mock_embedder):
+    """add() raises ValueError for empty definition."""
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    with pytest.raises(ValueError, match="Definition cannot be empty"):
+        await service.add(canonical="Foo", definition="")
+
+
+@pytest.mark.asyncio
+async def test_add_term_rolls_back_es_on_pg_failure(mock_session_factory, mock_store, mock_embedder):
+    """add() deletes ES doc when PG commit fails."""
+    mock_store.find_duplicates.return_value = []
+
+    mock_session = AsyncMock()
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock(side_effect=RuntimeError("pg down"))
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+
+    with pytest.raises(RuntimeError, match="pg down"):
+        await service.add(canonical="Foo", definition="Bar definition")
+
+    mock_store.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_search_returns_empty_when_no_hits(mock_session_factory, mock_store, mock_embedder):
+    """search() returns [] when store has no hits."""
+    mock_store.search.return_value = []
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    results = await service.search(query="anything")
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_search_by_alias_returns_results(mock_session_factory, mock_store, mock_embedder):
+    """search_by_alias() returns scored results from keyword match."""
+    term_id = uuid.uuid4()
+    mock_store.search_by_alias.return_value = [
+        {"term_id": str(term_id), "score": 5.5, "canonical": "GB"}
+    ]
+    mock_term = GlossaryTerm(
+        id=term_id,
+        canonical="Gross Bookings",
+        aliases=["GBs"],
+        definition="Total fare",
+        category="metric",
+        metadata_={},
+        created_at=datetime.now(tz=UTC),
+        updated_at=datetime.now(tz=UTC),
+    )
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [mock_term]
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    results = await service.search_by_alias(alias="GBs")
+    assert len(results) == 1
+    assert results[0].score == 5.5
+
+
+@pytest.mark.asyncio
+async def test_search_by_alias_empty(mock_session_factory, mock_store, mock_embedder):
+    """search_by_alias() returns [] when store empty."""
+    mock_store.search_by_alias.return_value = []
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    results = await service.search_by_alias(alias="x")
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_get_returns_term(mock_session_factory, mock_store, mock_embedder):
+    """get() returns the term when found."""
+    term_id = uuid.uuid4()
+    mock_term = GlossaryTerm(
+        id=term_id,
+        canonical="Foo",
+        aliases=[],
+        definition="def",
+        category="concept",
+        metadata_={},
+        created_at=datetime.now(tz=UTC),
+        updated_at=datetime.now(tz=UTC),
+    )
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_term
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    res = await service.get(term_id)
+    assert res is not None
+    assert res.canonical == "Foo"
+
+
+@pytest.mark.asyncio
+async def test_get_returns_none_when_missing(mock_session_factory, mock_store, mock_embedder):
+    """get() returns None when term absent."""
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = None
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    res = await service.get(uuid.uuid4())
+    assert res is None
+
+
+@pytest.mark.asyncio
+async def test_list_terms_with_filters(mock_session_factory, mock_store, mock_embedder):
+    """list_terms() applies project_id and category filters."""
+    term = GlossaryTerm(
+        id=uuid.uuid4(),
+        canonical="A",
+        aliases=[],
+        definition="d",
+        category="metric",
+        metadata_={},
+        created_at=datetime.now(tz=UTC),
+        updated_at=datetime.now(tz=UTC),
+    )
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = [term]
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    results = await service.list_terms(project_id=uuid.uuid4(), category="metric", limit=10, offset=0)
+    assert len(results) == 1
+    assert results[0].canonical == "A"
+
+
+@pytest.mark.asyncio
+async def test_update_returns_none_when_missing(mock_session_factory, mock_store, mock_embedder):
+    """update() returns None when term not found."""
+    mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = None
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    res = await service.update(uuid.uuid4(), canonical="New")
+    assert res is None
+
+
+@pytest.mark.asyncio
+async def test_update_reindexes_when_content_changes(mock_session_factory, mock_store, mock_embedder):
+    """update() re-embeds and re-indexes when canonical/definition/aliases change."""
+    term_id = uuid.uuid4()
+    term = GlossaryTerm(
+        id=term_id,
+        canonical="Old",
+        aliases=[],
+        definition="old def",
+        category="concept",
+        metadata_={},
+        created_at=datetime.now(tz=UTC),
+        updated_at=datetime.now(tz=UTC),
+    )
+    mock_session = AsyncMock()
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = term
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    res = await service.update(
+        term_id,
+        canonical="New",
+        aliases=["alt"],
+        definition="new def",
+        category="metric",
+        metadata={"k": "v"},
+    )
+    assert res is not None
+    mock_store.index_term.assert_awaited_once()
+    mock_embedder.embed_texts.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_skips_reindex_when_only_metadata_changes(mock_session_factory, mock_store, mock_embedder):
+    """update() does not re-index when only metadata/category change."""
+    term_id = uuid.uuid4()
+    term = GlossaryTerm(
+        id=term_id,
+        canonical="Same",
+        aliases=[],
+        definition="same",
+        category="concept",
+        metadata_={},
+        created_at=datetime.now(tz=UTC),
+        updated_at=datetime.now(tz=UTC),
+    )
+    mock_session = AsyncMock()
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = term
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    res = await service.update(term_id, category="metric", metadata={"x": 1})
+    assert res is not None
+    mock_store.index_term.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_returns_true_when_found(mock_session_factory, mock_store, mock_embedder):
+    """delete() removes term from PG + ES and returns True."""
+    term_id = uuid.uuid4()
+    term = GlossaryTerm(
+        id=term_id,
+        canonical="Foo",
+        aliases=[],
+        definition="def",
+        category="concept",
+        metadata_={},
+        created_at=datetime.now(tz=UTC),
+        updated_at=datetime.now(tz=UTC),
+    )
+    mock_session = AsyncMock()
+    mock_session.delete = AsyncMock()
+    mock_session.flush = AsyncMock()
+    mock_session.commit = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = term
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    ok = await service.delete(term_id)
+    assert ok is True
+    mock_store.delete.assert_awaited_once_with(term_id)
+
+
+def test_create_resolver_returns_alias_resolver(mock_session_factory, mock_store, mock_embedder):
+    """create_resolver() returns an AliasResolver bound to the service's store."""
+    from pam.glossary.resolver import AliasResolver
+
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    resolver = service.create_resolver(min_score=2.0)
+    assert isinstance(resolver, AliasResolver)
+
+
+@pytest.mark.asyncio
+async def test_resolve_aliases_delegates_to_resolver(mock_session_factory, mock_store, mock_embedder):
+    """resolve_aliases() uses a fresh resolver to resolve the query."""
+    mock_store.search_by_alias.return_value = []
+    service = GlossaryService(
+        session_factory=mock_session_factory,
+        store=mock_store,
+        embedder=mock_embedder,
+    )
+    resolved = await service.resolve_aliases("show me GBs", project_id=uuid.uuid4())
+    assert resolved.expanded_query == "show me GBs"
+
+
+@pytest.mark.asyncio
+async def test_create_from_settings_builds_service(mock_session_factory, mock_embedder):
+    """create_from_settings() wires up a GlossaryStore and returns a service."""
+    from unittest.mock import patch
+
+    es_client = AsyncMock()
+    settings = MagicMock()
+    settings.glossary_index = "glossary_test"
+    settings.embedding_dims = 1536
+    settings.glossary_dedup_threshold = 0.9
+
+    with patch("pam.glossary.store.GlossaryStore.ensure_index", new=AsyncMock()):
+        svc = await GlossaryService.create_from_settings(
+            session_factory=mock_session_factory,
+            es_client=es_client,
+            embedder=mock_embedder,
+            settings=settings,
+        )
+    assert isinstance(svc, GlossaryService)
+    assert svc._dedup_threshold == 0.9
