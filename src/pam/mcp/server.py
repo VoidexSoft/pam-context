@@ -1032,7 +1032,8 @@ async def _pam_glossary_resolve(
         return json.dumps({"error": f"Invalid project_id: {project_id}"})
 
     result = await services.glossary_service.resolve_aliases(
-        query=query, project_id=parsed_project_id,
+        query=query,
+        project_id=parsed_project_id,
     )
 
     return json.dumps(

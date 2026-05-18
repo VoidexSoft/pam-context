@@ -204,9 +204,7 @@ class GlossaryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(GlossaryTerm).where(GlossaryTerm.id.in_(term_ids))
-            )
+            result = await session.execute(select(GlossaryTerm).where(GlossaryTerm.id.in_(term_ids)))
             terms = result.scalars().all()
 
         term_map = {str(t.id): t for t in terms}
@@ -245,9 +243,7 @@ class GlossaryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(GlossaryTerm).where(GlossaryTerm.id.in_(term_ids))
-            )
+            result = await session.execute(select(GlossaryTerm).where(GlossaryTerm.id.in_(term_ids)))
             terms = result.scalars().all()
 
         term_map = {str(t.id): t for t in terms}
@@ -269,9 +265,7 @@ class GlossaryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(GlossaryTerm).where(GlossaryTerm.id == term_id)
-            )
+            result = await session.execute(select(GlossaryTerm).where(GlossaryTerm.id == term_id))
             term = result.scalars().first()
             if term is None:
                 return None
@@ -312,9 +306,7 @@ class GlossaryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(GlossaryTerm).where(GlossaryTerm.id == term_id)
-            )
+            result = await session.execute(select(GlossaryTerm).where(GlossaryTerm.id == term_id))
             term = result.scalars().first()
             if term is None:
                 return None
@@ -366,9 +358,7 @@ class GlossaryService:
         from sqlalchemy import select
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(GlossaryTerm).where(GlossaryTerm.id == term_id)
-            )
+            result = await session.execute(select(GlossaryTerm).where(GlossaryTerm.id == term_id))
             term = result.scalars().first()
             if term is None:
                 return False

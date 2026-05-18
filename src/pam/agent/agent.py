@@ -548,8 +548,7 @@ class RetrievalAgent:
                 if resolved.resolved_terms:
                     resolved_terms = resolved.resolved_terms
                     # Enhance ES query with canonical terms for better BM25 recall
-                    expansions = [rt.canonical for rt in resolved_terms
-                                  if rt.matched.lower() != rt.canonical.lower()]
+                    expansions = [rt.canonical for rt in resolved_terms if rt.matched.lower() != rt.canonical.lower()]
                     if expansions:
                         query = f"{query} {' '.join(expansions)}"
                         logger.info("smart_search_query_expanded", expansions=expansions)
@@ -720,12 +719,15 @@ class RetrievalAgent:
         # Fetch relevant glossary terms for context
         glossary_context: list[dict] = []
         if resolved_terms:
-            glossary_context.extend({
-                "canonical": rt.canonical,
-                "definition": rt.definition,
-                "aliases": [],
-                "score": 1.0,
-            } for rt in resolved_terms)
+            glossary_context.extend(
+                {
+                    "canonical": rt.canonical,
+                    "definition": rt.definition,
+                    "aliases": [],
+                    "score": 1.0,
+                }
+                for rt in resolved_terms
+            )
         budget = ContextBudget(
             entity_tokens=settings.context_entity_budget,
             relationship_tokens=settings.context_relationship_budget,

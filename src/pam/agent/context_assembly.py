@@ -348,7 +348,10 @@ def assemble_context(
     glossary_results = glossary_results or []
     glossary_sorted = sorted(glossary_results, key=lambda x: x.get("score", 0), reverse=True)
     glossary_truncated, glossary_tokens_used, _ = truncate_list_by_token_budget(
-        glossary_sorted, "definition", budget.glossary_tokens, budget.max_item_tokens,
+        glossary_sorted,
+        "definition",
+        budget.glossary_tokens,
+        budget.max_item_tokens,
     )
 
     # ---- Stage 1: Collect & Normalize ----

@@ -17,8 +17,15 @@ def test_glossary_term_model_has_required_fields():
     """GlossaryTerm ORM model has all expected columns."""
     columns = {c.name for c in GlossaryTerm.__table__.columns}
     expected = {
-        "id", "project_id", "canonical", "aliases", "definition",
-        "category", "metadata", "created_at", "updated_at",
+        "id",
+        "project_id",
+        "canonical",
+        "aliases",
+        "definition",
+        "category",
+        "metadata",
+        "created_at",
+        "updated_at",
     }
     assert expected.issubset(columns), f"Missing columns: {expected - columns}"
 

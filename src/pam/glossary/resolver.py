@@ -89,21 +89,21 @@ class AliasResolver:
                 continue
 
             seen_canonicals.add(canonical.lower())
-            resolved_terms.append(ResolvedTermItem(
-                matched=candidate,
-                canonical=canonical,
-                definition=hit.get("definition", ""),
-                category=hit.get("category", ""),
-            ))
+            resolved_terms.append(
+                ResolvedTermItem(
+                    matched=candidate,
+                    canonical=canonical,
+                    definition=hit.get("definition", ""),
+                    category=hit.get("category", ""),
+                )
+            )
 
         if not resolved_terms:
             return ResolvedQuery(original_query=query, expanded_query=query)
 
         # Build expanded query: original + glossary context
         expansions = [
-            f'{rt.matched} (= {rt.canonical})'
-            for rt in resolved_terms
-            if rt.matched.lower() != rt.canonical.lower()
+            f"{rt.matched} (= {rt.canonical})" for rt in resolved_terms if rt.matched.lower() != rt.canonical.lower()
         ]
 
         expanded = query
@@ -144,16 +144,34 @@ class AliasResolver:
             _add(match.group(1))
 
         # Uppercase abbreviations: GBs, EMEA, US&C
-        for match in re.finditer(r'\b[A-Z][A-Z&]+[a-z]?\b', query):
+        for match in re.finditer(r"\b[A-Z][A-Z&]+[a-z]?\b", query):
             _add(match.group())
 
         # Individual words (3+ chars, not stop words)
         stop_words = {
-            "the", "what", "how", "why", "who", "when", "where",
-            "is", "are", "was", "were", "and", "for", "our",
-            "last", "this", "that", "with", "from", "have", "has",
+            "the",
+            "what",
+            "how",
+            "why",
+            "who",
+            "when",
+            "where",
+            "is",
+            "are",
+            "was",
+            "were",
+            "and",
+            "for",
+            "our",
+            "last",
+            "this",
+            "that",
+            "with",
+            "from",
+            "have",
+            "has",
         }
-        for word in re.findall(r'\b\w+\b', query):
+        for word in re.findall(r"\b\w+\b", query):
             if len(word) >= 3 and word.lower() not in stop_words:
                 _add(word)
 

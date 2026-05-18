@@ -79,10 +79,26 @@ async def test_resolve_skips_low_score(resolver, mock_glossary_store):
 async def test_resolve_deduplicates_canonicals(resolver, mock_glossary_store):
     """resolve() doesn't add the same canonical term twice."""
     mock_glossary_store.search_by_alias.side_effect = [
-        [{"term_id": "abc", "score": 10.0, "canonical": "Gross Bookings",
-          "aliases": ["GBs"], "definition": "Total fare", "category": "metric"}],
-        [{"term_id": "abc", "score": 10.0, "canonical": "Gross Bookings",
-          "aliases": ["GBs"], "definition": "Total fare", "category": "metric"}],
+        [
+            {
+                "term_id": "abc",
+                "score": 10.0,
+                "canonical": "Gross Bookings",
+                "aliases": ["GBs"],
+                "definition": "Total fare",
+                "category": "metric",
+            }
+        ],
+        [
+            {
+                "term_id": "abc",
+                "score": 10.0,
+                "canonical": "Gross Bookings",
+                "aliases": ["GBs"],
+                "definition": "Total fare",
+                "category": "metric",
+            }
+        ],
         [],
         [],
         [],
